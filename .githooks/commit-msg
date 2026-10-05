@@ -1,0 +1,43 @@
+#!/bin/sh
+# 커밋 메시지를 쓴 직후에 실행됩니다. 형식이 틀리면 커밋이 취소됩니다.
+. "$(dirname -- "$0")/common.sh"
+
+MSG_FILE="$1"
+# 주석(#)과 빈 줄을 뺀 첫 줄이 제목입니다.
+SUBJECT="$(grep -v '^#' "$MSG_FILE" | sed '/^[[:space:]]*$/d' | head -1)"
+
+# merge / revert 커밋은 git 이 자동으로 만드는 것이라 검사하지 않습니다.
+case "$SUBJECT" in
+  "Merge "*|"Revert "*) exit 0 ;;
+esac
+
+# 형식:  타입: 한국어 설명
+if ! printf '%s' "$SUBJECT" | grep -qE '^(feat|fix|refactor|style|docs|chore|test)(\([a-z0-9/-]+\))?: .+'; then
+  say "🛑 커밋 메시지 형식이 규칙과 다릅니다.
+
+  쓴 메시지:  $SUBJECT
+
+  형식:  타입: 무엇을 했는지 한국어로
+  타입:  feat  fix  refactor  style  docs  chore  test
+
+  예시
+    feat: 날짜별 공부 계획 목록 API 추가
+    fix: 자정 넘은 공부 기록이 다음 날로 잡히는 문제 수정
+    chore: git 훅에 .env 커밋 차단 추가
+
+  Claude Code 를 쓰면 /save 가 메시지를 알아서 써줍니다."
+  exit 1
+fi
+
+# 제목이 너무 길면 알려줍니다. (막지는 않습니다)
+if [ "$(printf '%s' "$SUBJECT" | wc -m | tr -d ' ')" -gt 60 ]; then
+  printf '\n\033[33m⚠️  커밋 제목이 조금 깁니다. 50자 이내를 권장합니다.\033[0m\n\n' >&2
+fi
+
+# 제목 끝의 마침표는 붙이지 않기로 했습니다.
+case "$SUBJECT" in
+  *.) say "🛑 커밋 제목 끝에는 마침표를 쓰지 않습니다.
+
+  쓴 메시지:  $SUBJECT"
+      exit 1 ;;
+esac
