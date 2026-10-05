@@ -173,10 +173,18 @@ git 훅(.githooks/)을 통째로 건너뜁니다.
 
 훅이 막았다면 이유가 있습니다. 훅이 보여준 안내문을 읽고 그대로 고치세요.'
 
-# 훅 위치를 확인하는 것(git config core.hooksPath)과 .githooks 로 켜는 것만 허용합니다.
-if printf '%s' "$CMD" | grep -qiE 'core\.hookspath' \
-  && ! printf '%s' "$CMD" | grep -qE 'git[[:space:]]+config[[:space:]]+(--local[[:space:]]+)?core\.hooksPath[[:space:]]+\.githooks([[:space:]]|$|[;&|])' \
-  && ! printf '%s' "$CMD" | grep -qE 'git[[:space:]]+config[[:space:]]+(--get[[:space:]]+)?core\.hooksPath[[:space:]]*($|[;&|])'; then
+check 'git[[:space:]]+-c[[:space:]]*core\.hookspath=' \
+'git -c core.hooksPath=... 는 막아두었습니다.
+
+그 명령 한 번만 git 훅(.githooks/)을 다른 곳으로 돌려서 안전장치를 건너뜁니다.
+훅이 막았다면 이유가 있습니다. 훅이 보여준 안내문을 읽고 그대로 고치세요.'
+
+# 실제로 실행하는 "git config ... core.hooksPath ..." 부분만 뽑아서 검사합니다.
+# (PR 본문·커밋 메시지에 core.hooksPath 라는 글자가 들어 있는 것만으로는 막지 않습니다)
+# 허용: 확인(git config core.hooksPath)과 켜기(git config core.hooksPath .githooks)
+HOOKS_CMDS="$(printf '%s' "$CMD" | grep -oiE 'git[[:space:]]+config([[:space:]]+--?[a-z-]+)*[[:space:]]+core\.hookspath([[:space:]]+[^[:space:];&|`]+)?')"
+HOOKS_OK='^git[[:space:]]+config([[:space:]]+--(get|local))?[[:space:]]+core\.hookspath([[:space:]]+["'"'"']?\.githooks["'"'"']?)?$'
+if [ -n "$HOOKS_CMDS" ] && printf '%s\n' "$HOOKS_CMDS" | grep -viE "$HOOKS_OK" | grep -q .; then
   deny 'git 훅 위치(core.hooksPath)를 바꾸는 명령은 막아두었습니다.
 
 다른 곳을 가리키게 하거나 지우면 .githooks/ 의 안전장치가 꺼집니다.
