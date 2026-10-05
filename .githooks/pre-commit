@@ -1,0 +1,35 @@
+#!/bin/sh
+# 커밋하기 직전에 실행됩니다. 여기서 exit 1 이면 커밋이 취소됩니다.
+. "$(dirname -- "$0")/common.sh"
+
+BRANCH="$(git symbolic-ref --short -q HEAD)"
+
+# 1) 보호 브랜치에는 직접 커밋할 수 없습니다.
+if is_protected_branch "$BRANCH"; then
+  say "🛑 '$BRANCH' 브랜치에는 직접 커밋할 수 없습니다.
+
+  브랜치 전략:  작업 브랜치  →  develop  →  main
+
+  먼저 작업 브랜치를 만드세요.
+    git switch develop && git pull origin develop && git switch -c feat/작업이름
+
+  Claude Code 를 쓴다면:  /start <만들고 싶은 것>"
+  exit 1
+fi
+
+# 2) 비밀값 파일(.env)은 커밋할 수 없습니다. 빈 값만 있는 .env.example 은 괜찮습니다.
+SECRETS="$(git diff --cached --name-only --diff-filter=ACMR | grep -E '(^|/)\.env($|\.)' | grep -vE '(^|/)\.env\.example$')"
+if [ -n "$SECRETS" ]; then
+  say "🛑 비밀값 파일은 커밋할 수 없습니다.
+
+  올리려던 파일:
+$(printf '%s\n' "$SECRETS" | sed 's/^/    /')
+
+  .env 에는 DB 주소·API 키가 들어 있습니다. 한 번 올라가면 기록에 영원히 남습니다.
+
+  커밋 대상에서 빼세요:
+    git restore --staged <파일>
+
+  새 비밀값 이름을 팀에 알리려면 .env.example 에 '이름=' (빈 값)만 적으세요."
+  exit 1
+fi

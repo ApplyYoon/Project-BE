@@ -1,0 +1,56 @@
+#!/bin/sh
+# 푸시하기 직전에 실행됩니다. 여기서 exit 1 이면 푸시가 취소됩니다.
+. "$(dirname -- "$0")/common.sh"
+
+BRANCH="$(git symbolic-ref --short -q HEAD)"
+ZERO="0000000000000000000000000000000000000000"
+
+# 1) 보호 브랜치를 직접 푸시할 수 없습니다.
+if is_protected_branch "$BRANCH"; then
+  say "🛑 '$BRANCH' 브랜치는 직접 푸시할 수 없습니다.
+
+  브랜치 전략:  작업 브랜치  →  develop  →  main
+  develop 과 main 으로는 PR 로만 들어갑니다."
+  exit 1
+fi
+
+# 2) 강제 푸시와 브랜치 삭제를 막습니다.
+#    git 은 --force 를 알려주지 않지만, 원격 커밋이 내 커밋의 조상이 아니면
+#    (= fast-forward 가 아니면) 원격 기록을 덮어쓰는 것이므로 강제 푸시입니다.
+while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
+  [ -z "$LOCAL_REF" ] && continue
+
+  # 다른 이름으로 main·develop 에 밀어 넣는 것도 막습니다. (예: git push origin feat/x:develop)
+  case "$REMOTE_REF" in
+    refs/heads/main|refs/heads/master|refs/heads/develop)
+      say "🛑 원격 '${REMOTE_REF#refs/heads/}' 브랜치로는 직접 푸시할 수 없습니다.
+
+  develop 과 main 으로는 PR 로만 들어갑니다.
+  내 작업 브랜치 이름 그대로 푸시하세요:
+    git push -u origin $BRANCH"
+      exit 1 ;;
+  esac
+
+  if [ "$LOCAL_SHA" = "$ZERO" ]; then
+    say "🛑 원격 브랜치를 지우는 푸시는 막아두었습니다.
+
+  지우려는 것:  $REMOTE_REF
+
+  그 브랜치의 작업 기록이 사라집니다.
+  정리가 필요하면 GitHub 웹에서 merge 가 끝난 브랜치만 골라 지우세요."
+    exit 1
+  fi
+
+  if [ "$REMOTE_SHA" != "$ZERO" ] && ! git merge-base --is-ancestor "$REMOTE_SHA" "$LOCAL_SHA" 2>/dev/null; then
+    say "🛑 강제 푸시(force push)는 막아두었습니다.
+
+  대상:  $REMOTE_REF
+
+  원격에 있던 커밋을 내 것으로 덮어씁니다.
+  팀원이 그 사이 올린 작업이 사라집니다. 되돌릴 수 없습니다.
+
+  대부분은 최신 코드를 안 받아와서 생기는 문제입니다.
+    git pull origin develop      (또는  /sync)"
+    exit 1
+  fi
+done

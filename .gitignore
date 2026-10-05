@@ -1,0 +1,30 @@
+# 비밀값 — 절대 커밋하지 않습니다. 빈 값의 .env.example 만 올립니다.
+.env
+.env.*
+!.env.example
+
+# Claude Code 개인 설정 (사람마다 다름)
+.claude/settings.local.json
+
+# 로그
+logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 편집기
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.swp
+*.sw?
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
