@@ -38,7 +38,7 @@ git symbolic-ref --short -q HEAD
 git status --short && git diff
 ```
 
-**`.env` 가 목록에 있으면 절대 add 하지 마세요.** (git 훅도 막습니다)
+**설정 파일(`application-*.yml`)이나 코드에 진짜 키·비밀번호가 적혀 있으면 add 하지 마세요.** 값 대신 `${이름}` 자리로 바꾼 뒤에 담습니다. (git 훅도 막습니다)
 
 ## 4. 커밋을 나눌지 판단
 

@@ -25,17 +25,15 @@ git symbolic-ref --short -q HEAD && git status --short && git log origin/develop
 # 디버깅 흔적 — 새로 추가한 줄에 남아 있으면 지웁니다
 git diff origin/develop..HEAD | grep -nE '^\+.*(console\.log|print\(|System\.out|debugger)'
 
-# .env 미포함 — 결과가 비어 있어야 합니다
-git diff --name-only origin/develop..HEAD | grep -E '(^|/)\.env' | grep -v '\.env\.example$'
-
-# 비밀값 — 결과가 비어 있어야 합니다 (OpenAI 키, 비밀번호가 든 DB 주소)
-git diff origin/develop..HEAD | grep -nE 'sk-[A-Za-z0-9]|postgres(ql)?://[^ ]*:[^ ]*@'
+# 비밀값 — 0 이 나와야 합니다 (GPT 키, 비밀번호가 든 DB 주소). 개수만 세고 값은 화면에 찍지 않습니다
+git diff origin/develop..HEAD | grep -E '^\+' | grep -cE '(^|[^A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}|postgres(ql)?://[A-Za-z0-9._-]+:[A-Za-z0-9._%+-]+@'
 
 # 커밋 컨벤션 — 모두 "타입: 설명" 형식이어야 합니다
 git log origin/develop..HEAD --format=%s
 ```
 
-새 API 를 만들었다면 테스트 파일도 diff 에 들어 있는지, 새 환경변수가 생겼다면 `.env.example` 에도 있는지 확인합니다.
+새 API 를 만들었다면 테스트 파일도 diff 에 들어 있는지 확인합니다.
+설정 파일(`application-*.yml`)을 고쳤다면 진짜 값이 아니라 `${이름}` 자리만 적었는지 확인합니다.
 
 - **실패한 게 있으면 PR을 올리지 말고 먼저 고칩니다.**
 - 고친 뒤에는 `/save` 로 다시 커밋하고 이 단계를 처음부터 다시 합니다.
@@ -91,7 +89,7 @@ BODY
 > PR 올렸어요 👉 https://github.com/.../pull/7
 >
 > 바꾼 것: 계획 목록 API, 날짜 형식 검사, docs/API.md 예시
-> 자동 확인: 빌드·테스트 ✅ .env 없음 ✅ 비밀값 없음 ✅ 커밋 형식 ✅ (체크리스트에 반영했어요)
+> 자동 확인: 빌드·테스트 ✅ 비밀값 없음 ✅ 커밋 형식 ✅ (체크리스트에 반영했어요)
 > 남은 것: 다른 사용자의 데이터가 안 보이는지 확인 → PR 페이지에서 체크해 주세요
 >
 > 확인이 끝나면 GitHub 웹에서 직접 Merge 버튼을 눌러주세요. (리뷰를 부탁했다면 답을 받은 뒤에)
