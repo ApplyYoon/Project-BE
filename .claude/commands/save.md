@@ -18,12 +18,17 @@ git symbolic-ref --short -q HEAD
 
 ## 2. 검사 통과시키기
 
-> 검사 명령(테스트·린트)은 서버 뼈대(#4)에서 도구를 정하면 여기에 추가합니다. (CLAUDE.md 5장)
+```bash
+./gradlew spotlessApply          # 코드 모양 자동 정리
+./gradlew spotlessCheck build    # 정리 검사 + 빌드 + 테스트
+```
 
-지금은 CLAUDE.md 5장의 확인을 합니다.
+(Windows 는 `./gradlew` 대신 `.\gradlew.bat`. 문서만 고쳤어도 돌립니다 — 몇 초면 끝납니다)
+
+`spotlessApply` 가 파일을 고쳤다면 그 변경도 같이 커밋합니다.
 
 - 훅(`.githooks/`, `.claude/hooks/`)을 고쳤으면 직접 실행해서 확인
-- `db/schema.sql` 을 고쳤으면 "Neon 에서 실행 확인" 을 사용자에게 부탁
+- API 를 만들거나 고쳤으면 서버를 켜서(`./gradlew bootRun`) 실제로 불러 보기
 
 실패하면 **커밋하지 말고** 원인을 고칩니다. 고쳐도 안 되면 에러 메시지를 그대로 보여주고 물어봅니다.
 

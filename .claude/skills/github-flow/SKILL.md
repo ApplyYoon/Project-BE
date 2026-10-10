@@ -73,11 +73,16 @@ git switch develop && git pull origin develop && git switch -c feat/11-plan-api
 ### 4. 작업
 
 한 브랜치 = 한 가지 목적. 하다가 다른 것도 고치고 싶어지면 그건 다음 브랜치로 미룹니다.
-비밀값은 `.env` 에만, DB 구조를 바꾸면 `db/schema.sql` 에도 반영합니다.
+비밀값은 코드에 쓰지 않고, 새 API 를 만들면 테스트도 같이 씁니다.
 
 ### 5. 검사 — 통과 못 하면 커밋 금지
 
-> 검사 명령은 서버 뼈대(#4)에서 도구를 정하면 추가합니다. 지금은 CLAUDE.md 5장의 확인을 합니다.
+```bash
+./gradlew spotlessApply          # 코드 모양 자동 정리
+./gradlew spotlessCheck build    # 정리 검사 + 빌드 + 테스트
+```
+
+Windows 는 `.\gradlew.bat`. 그 밖의 확인은 CLAUDE.md 5장을 따릅니다.
 
 ### 6. 커밋 — 메시지는 당신이 씁니다
 
