@@ -15,8 +15,13 @@ src/main/java/com/ithopeschool/projectbe/
 ├── global/                      🌐 여러 기능이 같이 쓰는 것
 │   ├── auth/
 │   │   └── CurrentUserProvider.java "지금 요청한 사용자" 번호를 주는 단 한 곳 (로그인 전엔 테스트 사용자)
-│   └── config/
-│       └── WebConfig.java           CORS 설정 (어느 FE 주소를 허락할지)
+│   ├── config/
+│   │   └── WebConfig.java           CORS 설정 (어느 FE 주소를 허락할지)
+│   └── exception/
+│       ├── GlobalExceptionHandler.java  모든 API 의 에러를 받아 같은 모양으로 돌려주는 곳
+│       ├── ApiException.java            "사용자에게 알려야 하는 에러" 를 낼 때 던지는 예외
+│       ├── ErrorCode.java               에러 종류 목록 (docs/API.md 3장의 표와 같음)
+│       └── ApiErrorResponse.java        에러 응답 모양 { "error": { "code", "message" } }
 │
 └── domain/                      📦 기능 하나 = 폴더 하나
     └── health/                      서버 상태 확인 (가장 작은 예시)

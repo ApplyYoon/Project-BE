@@ -50,7 +50,8 @@ src/main/java/com/ithopeschool/projectbe/
 ├── ProjectBeApplication.java   앱 시작점
 ├── global/                     여러 기능이 같이 쓰는 것 (설정, 공통 예외 등)
 │   ├── auth/CurrentUserProvider.java  "지금 요청한 사용자" 번호 (user_id 는 반드시 여기서 얻음)
-│   └── config/WebConfig.java   CORS 설정
+│   ├── config/WebConfig.java   CORS 설정
+│   └── exception/              공통 에러 처리 (에러는 ApiException 으로 던짐)
 └── domain/                     기능별 폴더 하나씩
     └── health/                 예시: Controller + Service + 응답 DTO
 src/main/resources/             설정 파일 (application.yml, -local.yml, -prod.yml)
@@ -87,7 +88,8 @@ domain/<기능>/
   **진짜 서비스의 값**(운영 DB 비밀번호, GPT 키, SNS 로그인 비밀값)은 어떤 파일에도 적지 않습니다. 받는 방법은 이슈 #76 에서 정합니다.
   판단 기준: "이 값이 새면 돈이 나가거나 진짜 데이터가 보이나?" 그렇다면 적지 않습니다.
 - Controller 는 엔티티를 그대로 돌려주지 않고 **항상 DTO(record)** 로 돌려줍니다.
-- 요청 DTO 는 `@Valid` + Bean Validation(`@NotBlank` 등)으로 입력을 검사합니다.
+- 요청 DTO 는 `@Valid` + Bean Validation(`@NotBlank` 등)으로 입력을 검사합니다. 검사 어노테이션에는 **한국어 `message`** 를 적습니다.
+- 사용자에게 알려야 하는 에러는 **`throw new ApiException(ErrorCode.NOT_FOUND, "한국어 문장")`** 으로 던집니다. 에러 응답을 직접 만들지 않습니다. (`global/exception/`, docs/API.md 3장)
 - 의존성 주입은 **생성자 주입**(`@RequiredArgsConstructor` + `private final`)만 씁니다. `@Autowired` 필드 주입은 테스트 코드에서만.
 - Lombok 은 `@Getter`, `@RequiredArgsConstructor`, `@NoArgsConstructor(access = PROTECTED)` 정도만 씁니다.
 - URL 은 `/api/v1/` 아래 **소문자 kebab-case 복수형**(`/api/v1/study-sessions`), JSON 필드는 **camelCase**.
