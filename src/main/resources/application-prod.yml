@@ -1,0 +1,9 @@
+# 배포용: 값은 전부 환경변수로 주입 (코드에 비밀번호 쓰지 않기)
+spring:
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate

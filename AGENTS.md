@@ -4,31 +4,42 @@
 
 ## 프로젝트
 
-- 학생·입시생 자기관리 앱의 백엔드 API 서버 (FastAPI, Python 3.12, uv)
+- 학생·입시생 자기관리 앱의 백엔드 API 서버 (Java 21, Spring Boot 4.1, Gradle)
 - 프론트엔드: https://github.com/Tmax-IT-Hope-School/Project-FE
-- 팀원 대부분이 코딩 입문자입니다. 코드는 **짧고 읽기 쉽게**, 똑똑한 트릭보다 평범한 코드를 씁니다.
+- 팀원 대부분이 입문자입니다. 코드는 **짧고 읽기 쉽게**, 똑똑한 트릭보다 평범한 코드를 씁니다.
 
 ## 명령어
 
 | 하려는 것 | 명령 |
 | --- | --- |
-| 설치 | `uv sync` |
-| 서버 실행 | `uv run uvicorn app.main:app --reload` |
-| 테스트 | `uv run pytest` |
-| 린트 | `uv run ruff check . --fix` |
-| 포맷 | `uv run ruff format .` |
-| 라이브러리 추가 | `uv add <패키지>` (pip install 쓰지 않기) |
+| 서버 실행 | `./gradlew bootRun` |
+| 테스트 | `./gradlew test` |
+| 코드 정리 | `./gradlew spotlessApply` |
+| 전체 검사 (CI와 동일) | `./gradlew spotlessCheck build` |
 
-작업을 끝내기 전에 **테스트·린트·포맷을 모두 통과**시킵니다. CI에서도 똑같이 검사합니다.
+작업을 끝내기 전에 **`./gradlew spotlessApply` 후 `./gradlew build`를 통과**시킵니다. CI에서도 똑같이 검사합니다.
 
 ## 코드 구조 규칙
 
-- 새 API는 `app/api/v1/<기능>.py`에 `router = APIRouter(prefix="/<기능>", tags=["<기능>"])`로 만들고 `app/api/v1/__init__.py`에 등록합니다.
-- 요청·응답 모양은 `app/schemas/<기능>.py`에 Pydantic 모델로 정의합니다. dict를 그대로 반환하지 않습니다.
-- DB 조회나 외부 API 호출 같은 로직은 `app/services/<기능>.py`에 둡니다. 라우터 함수는 얇게 유지합니다.
-- 설정값·비밀키는 `app/core/config.py`의 `Settings`로 읽습니다. 코드에 키를 직접 쓰지 않고, 새 값은 `.env.example`에도 추가합니다.
-- API를 만들거나 고치면 `tests/test_<기능>.py`에 테스트를 같이 씁니다.
-- URL은 소문자 kebab-case 복수형(`/study-sessions`), JSON 필드는 snake_case로 씁니다.
+기능(도메인)별로 패키지를 나눕니다: `com.ithopeschool.projectbe.domain.<기능>`
+
+```
+domain/<기능>/
+├── <기능>Controller.java   # API 입구. 요청 받고 Service 호출만 (얇게)
+├── <기능>Service.java      # 실제 로직, @Transactional 은 여기
+├── <기능>Repository.java   # JpaRepository 상속
+├── <기능>.java             # JPA 엔티티
+└── dto/                    # 요청·응답 모양 (record 사용)
+```
+
+- 여러 기능이 같이 쓰는 설정·예외 처리는 `global/` 아래에 둡니다.
+- Controller는 엔티티를 그대로 반환하지 않고 항상 DTO(record)로 반환합니다.
+- 요청 DTO에는 `@Valid` + Bean Validation(`@NotBlank` 등)으로 입력을 검사합니다.
+- 의존성 주입은 생성자 주입(`@RequiredArgsConstructor` + `private final`)만 씁니다. `@Autowired` 필드 주입 금지 (테스트 코드 제외).
+- Lombok은 `@Getter`, `@RequiredArgsConstructor`, `@NoArgsConstructor(access = PROTECTED)` 정도만. 엔티티에 `@Setter`, `@Data` 금지.
+- URL은 `/api/v1/` 아래 소문자 kebab-case 복수형(`/api/v1/study-sessions`), JSON 필드는 camelCase.
+- 설정값·비밀키는 `application-*.yml`에서 `${환경변수}`로 읽습니다. 코드에 키를 직접 쓰지 않고, 새 값은 `.env.example`에도 추가합니다.
+- API를 만들거나 고치면 테스트를 같이 씁니다. Controller는 `@WebMvcTest`, Service는 단위 테스트, Repository는 `@DataJpaTest`.
 
 ## Git 규칙
 
@@ -43,5 +54,6 @@
 ## 하지 말 것
 
 - `.env`, API 키, 비밀번호 커밋 (레포가 public입니다)
-- 테스트를 지우거나 skip해서 CI 통과시키기
+- 테스트를 지우거나 `@Disabled`로 꺼서 CI 통과시키기
 - 이슈와 상관없는 파일 대량 수정·포맷 변경
+- 합의 없이 Spring Security 등 큰 라이브러리 추가 (넣으면 모든 API 동작이 바뀝니다)

@@ -4,8 +4,8 @@ Closes #
 
 ## 확인한 것
 
-- [ ] `uv run pytest` 통과
-- [ ] `uv run ruff check .` / `uv run ruff format .` 통과
+- [ ] `./gradlew build` 통과 (테스트 포함)
+- [ ] `./gradlew spotlessApply`로 코드 정리
 - [ ] 새 API면 테스트 추가
 - [ ] 새 환경변수면 `.env.example`에 추가
 
