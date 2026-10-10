@@ -23,7 +23,7 @@ if ! printf '%s' "$SUBJECT" | grep -qE '^(feat|fix|refactor|style|docs|chore|tes
   예시
     feat: 날짜별 공부 계획 목록 API 추가
     fix: 자정 넘은 공부 기록이 다음 날로 잡히는 문제 수정
-    chore: git 훅에 .env 커밋 차단 추가
+    chore: git 훅에 비밀값 커밋 차단 추가
 
   Claude Code 를 쓰면 /save 가 메시지를 알아서 써줍니다."
   exit 1
