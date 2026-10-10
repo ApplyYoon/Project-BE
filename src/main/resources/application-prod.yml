@@ -7,3 +7,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+
+# 배포 서버에서는 Swagger 화면을 끕니다 (API 목록을 아무나 볼 수 없게)
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
