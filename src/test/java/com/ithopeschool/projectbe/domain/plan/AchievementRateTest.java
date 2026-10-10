@@ -54,7 +54,7 @@ class AchievementRateTest {
 
   @Test
   void noPlanMeansCannotCalculate() {
-    // FE 예1) 계획도 기록도 없는 날. FE 는 0 이지만 BE 는 "계산 불가"(null) 로 구분합니다.
+    // FE 예1) 계획도 기록도 없는 날. 0% 가 아니라 "계산 불가"(null) 입니다.
     assertThat(AchievementRate.percentOf(0, 0)).isNull();
     // FE 예3) 목표가 0분인데 30분 공부한 날. 0 으로 나눌 수 없어서 역시 "계산 불가" 입니다.
     assertThat(AchievementRate.percentOf(30, 0)).isNull();

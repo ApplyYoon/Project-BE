@@ -11,7 +11,7 @@ package com.ithopeschool.projectbe.domain.plan;
 //   순공  30분, 목표   0분  →  null  (계산 불가)
 //
 // FE 의 getDaySummary (src/lib/daySummary.ts) 규칙 5·6 과 같은 식입니다.
-// 다른 점 하나: 계획이 없는 날에 FE 는 0 을 돌려주지만, 여기서는 "계산 불가"(null) 로 구분합니다.
+// 계획이 없는 날을 "계산 불가"(null) 로 구분하는 것도 FE 와 같습니다. 한쪽을 고치면 다른 쪽도 같이 고칩니다.
 public final class AchievementRate {
 
   // 값만 계산하는 도구라서 객체를 만들 일이 없습니다.
