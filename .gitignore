@@ -1,7 +1,7 @@
-# 비밀값 — 절대 커밋하지 않습니다. 빈 값의 .env.example 만 올립니다.
+# BE 는 .env 파일을 쓰지 않습니다 (설정은 src/main/resources/application-*.yml).
+# FE 습관대로 만들어 버려도 올라가지 않게 무시만 해 둡니다.
 .env
 .env.*
-!.env.example
 
 # Claude Code 개인 설정 (사람마다 다름)
 .claude/settings.local.json
