@@ -1,11 +1,12 @@
 package com.ithopeschool.projectbe.global.config;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ithopeschool.projectbe.domain.health.HealthController;
 import com.ithopeschool.projectbe.domain.health.HealthService;
-import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -28,14 +29,16 @@ class WebConfigWildcardTest {
   @MockitoBean private HealthService healthService;
 
   @Test
-  void wildcardDoesNotAllowEveryOrigin() {
-    // assertThatThrownBy: 괄호 안의 코드가 에러를 던져야 통과합니다.
-    assertThatThrownBy(
-            () ->
-                mockMvc.perform(
-                    get("/api/v1/health").header("Origin", "https://unknown-site.example.com")))
-        .isInstanceOf(ServletException.class)
+  void wildcardDoesNotAllowEveryOrigin() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/health").header("Origin", "https://unknown-site.example.com"))
+        // 요청은 500 에러로 끝납니다. (공통 에러 처리 GlobalExceptionHandler 가 에러 응답으로 바꿔 줍니다)
+        .andExpect(status().isInternalServerError())
+        // "허락" 표시가 붙지 않습니다. 즉 모든 주소 허용이 되지 않았습니다.
+        .andExpect(header().doesNotExist("Access-Control-Allow-Origin"))
         // 에러 원인이 "allowCredentials 가 true 면 * 를 쓸 수 없다" 인지 확인합니다.
-        .hasMessageContaining("allowCredentials");
+        .andExpect(
+            result ->
+                assertThat(result.getResolvedException()).hasMessageContaining("allowCredentials"));
   }
 }
