@@ -51,7 +51,7 @@ src/main/java/com/ithopeschool/projectbe/
 ├── global/                     여러 기능이 같이 쓰는 것 (설정, 공통 예외 등)
 │   └── config/WebConfig.java   CORS 설정
 └── domain/                     기능별 폴더 하나씩
-    └── health/                 예시: Controller + 응답 DTO
+    └── health/                 예시: Controller + Service + 응답 DTO
 src/main/resources/             설정 파일 (application.yml, -local.yml, -prod.yml)
 src/test/java/                  테스트 (main 과 같은 폴더 구조로)
 build.gradle                    라이브러리 목록과 빌드 설정

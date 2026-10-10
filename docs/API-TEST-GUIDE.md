@@ -72,7 +72,7 @@ Swagger(스웨거)는 우리 서버의 **메뉴판**입니다. 만든 API 가 �
    - **Code**: 상태 코드 (`200` 이면 성공)
    - **Response body**: 돌아온 내용
 
-가장 쉬운 것부터 해 보세요: **상태 확인** → `GET /api/v1/health` → Try it out → Execute → `{"status":"ok"}`
+가장 쉬운 것부터 해 보세요: **상태 확인** → `GET /api/v1/health` → Try it out → Execute → `{"status":"ok","db":"connected"}`
 
 ### 꼭 해 볼 것 3가지
 
