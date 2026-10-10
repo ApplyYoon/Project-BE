@@ -7,7 +7,7 @@
 ## 1. 절대 규칙 3가지
 
 1. **`main` 과 `develop` 에서 직접 작업하지 않는다.** 항상 `develop` 에서 새 브랜치를 판다.
-2. **비밀값(`.env`, API 키, DB 주소)은 절대 커밋하지 않는다.**
+2. **비밀값(API 키, 운영 DB 주소·비밀번호)은 절대 커밋하지 않는다.**
 3. **merge 는 PR 을 올린 사람이 직접 확인한 뒤에 한다.** 리뷰는 선택이다.
 
 ---
@@ -116,7 +116,7 @@ Claude Code 없이 직접 한다면 👉 [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md
 
 ```
 1. README.md 의 "처음 세팅" 대로 저장소를 받고 git 훅을 켠다
-2. Claude Code 에서 /setup 을 친다 (git 훅·GitHub 로그인·.env·MCP 점검)
+2. Claude Code 에서 /setup 을 친다 (JDK 21·빌드·git 훅·GitHub 로그인·MCP 점검)
 3. docs/GIT-GUIDE.md 를 읽는다 (git 이 처음이라면)
 4. 보드에서 good first issue 하나를 골라 /start 로 첫 PR 을 올려본다
 ```

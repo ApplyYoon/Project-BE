@@ -101,7 +101,6 @@ Claude 가 실행하는 모든 Bash 명령을 검사합니다.
 `git push -u origin feat/x`, `git stash pop`, `git checkout -- 파일`, `git clean -n`,
 `git config core.hooksPath .githooks` 등.
 
-`.env` 파일은 Claude 가 **읽지도 못하게** 막아 두었습니다. (`.claude/settings.json`)
 
 ### ② git 훅 (`.githooks/`)
 
@@ -113,7 +112,7 @@ git config core.hooksPath .githooks
 
 | 훅           | 하는 일                                                               |
 | ------------ | --------------------------------------------------------------------- |
-| `pre-commit` | main·develop 직접 커밋 차단 + `.env` 커밋 차단                        |
+| `pre-commit` | main·develop 직접 커밋 차단 + 키·비밀번호가 든 커밋 차단              |
 | `commit-msg` | 커밋 메시지가 `타입: 한국어 설명` 형식인지 검사                       |
 | `pre-push`   | main·develop 직접 푸시, **강제 푸시**, 브랜치 삭제 푸시 차단          |
 
