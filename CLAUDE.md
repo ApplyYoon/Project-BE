@@ -49,6 +49,7 @@ Claude Code(및 다른 AI 에이전트)가 이 저장소에서 작업할 때 **�
 src/main/java/com/ithopeschool/projectbe/
 ├── ProjectBeApplication.java   앱 시작점
 ├── global/                     여러 기능이 같이 쓰는 것 (설정, 공통 예외 등)
+│   ├── auth/CurrentUserProvider.java  "지금 요청한 사용자" 번호 (user_id 는 반드시 여기서 얻음)
 │   └── config/WebConfig.java   CORS 설정
 └── domain/                     기능별 폴더 하나씩
     └── health/                 예시: Controller + 응답 DTO
@@ -95,6 +96,7 @@ domain/<기능>/
 - 시각은 `timestamptz`, 날짜는 `date`. 자바에서는 `Instant` / `LocalDate` 를 쓰면 그렇게 만들어집니다.
 - 로컬에서는 서버를 켤 때 엔티티(`@Entity`)를 보고 **H2 에 테이블이 자동으로 만들어집니다.** (`ddl-auto: create-drop`)
 - 모든 조회·수정에 **`user_id` 조건**을 붙입니다. 다른 사람의 데이터가 섞이면 안 됩니다.
+- `user_id` 는 **`CurrentUserProvider.getCurrentUserId()`** 로만 얻습니다. 숫자를 직접 쓰거나 요청에서 받지 않습니다. (로그인 전에는 테스트 사용자 1번, #20 에서 진짜 로그인으로 바뀜)
 - 사용자 입력은 **SQL 문자열에 직접 붙이지 않습니다.** `@Query` 를 직접 쓸 때도 반드시 파라미터(`:이름`)로 넘깁니다.
 - API 를 만들거나 고치면 **테스트를 같이** 씁니다. Controller 는 `@WebMvcTest`, Service 는 단위 테스트, Repository 는 `@DataJpaTest`.
 - 조금이라도 헷갈릴 코드에는 **한국어 주석 한 줄**.

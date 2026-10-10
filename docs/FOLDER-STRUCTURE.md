@@ -13,6 +13,8 @@ src/main/java/com/ithopeschool/projectbe/
 ├── ProjectBeApplication.java    🚪 시작점. 서버를 켭니다.                거의 안 건드림
 │
 ├── global/                      🌐 여러 기능이 같이 쓰는 것
+│   ├── auth/
+│   │   └── CurrentUserProvider.java "지금 요청한 사용자" 번호를 주는 단 한 곳 (로그인 전엔 테스트 사용자)
 │   └── config/
 │       └── WebConfig.java           CORS 설정 (어느 FE 주소를 허락할지)
 │
