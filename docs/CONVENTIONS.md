@@ -116,7 +116,19 @@ chore: git 훅에 .env 커밋 차단 추가
 
 ## 🧩 코드
 
-FastAPI + uv + Neon(SQL 직접) 으로 정해졌습니다. ([CLAUDE.md](../CLAUDE.md) 1장)
+Java 21 + Spring Boot + Gradle 로 만듭니다. 로컬 DB 는 H2, 원격 DB 는 Neon 으로 옮길 예정입니다. ([CLAUDE.md](../CLAUDE.md) 1장)
 
-> 이름 규칙·폴더 규칙 같은 세부는 서버 뼈대(이슈 #4)에서 정해 여기에 추가합니다.
-> 지금 정해진 코드 규칙은 DB 와 비밀값 규칙뿐입니다 — [CLAUDE.md](../CLAUDE.md) 3장
+| 무엇         | 규칙                                                         | 예                              |
+| ------------ | ------------------------------------------------------------ | ------------------------------- |
+| 폴더         | 기능 하나 = `domain/<기능>/` 폴더 하나                       | `domain/subject/`               |
+| 클래스 이름  | PascalCase + 역할                                            | `SubjectController`, `SubjectService` |
+| API 주소     | `/api/v1/` 아래 소문자 kebab-case 복수형                     | `/api/v1/study-sessions`        |
+| JSON 필드    | camelCase (FE 타입과 같게)                                   | `targetMinutes`                 |
+| DB 컬럼      | snake_case (엔티티 필드를 camelCase 로 쓰면 알아서 바뀜)     | `userId` → `user_id`            |
+| 응답         | 엔티티 말고 항상 DTO(record)                                 | `SubjectResponse`               |
+| 테스트       | `main` 과 같은 폴더에, 이름 뒤에 `Test`                      | `SubjectControllerTest`         |
+
+커밋 전에: `./gradlew spotlessApply` → `./gradlew spotlessCheck build` (Claude Code 는 `/check`)
+
+> 어느 파일을 어디에 만드는지: [FOLDER-STRUCTURE.md](./FOLDER-STRUCTURE.md)
+> 전체 코드 규칙: [CLAUDE.md](../CLAUDE.md) 3장
