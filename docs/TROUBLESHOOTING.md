@@ -169,8 +169,10 @@ Swagger 주소는 http://localhost:8080/swagger-ui.html 입니다. 쓰는 법은
 ### 브라우저 콘솔에 `has been blocked by CORS policy` 가 나와요
 
 **뜻**: FE 주소가 서버의 허락 목록에 없습니다.
-기본으로 허락된 주소는 `http://localhost:5173` 과 `http://localhost:3000` 입니다.
-FE 를 다른 포트로 켰다면 5173 으로 다시 켜거나, 팀장에게 `CORS_ALLOWED_ORIGINS` 에 주소 추가를 부탁하세요.
+기본으로 허락된 주소는 FE 개발 서버 주소 `http://localhost:5173` 하나입니다.
+같은 localhost 라도 포트가 다르면 다른 주소입니다. 5173 을 다른 프로그램(이미 켜 둔 FE 등)이 쓰고 있으면
+FE 가 `5174` 로 켜져서 거절됩니다. 그 프로그램을 끄고 FE 를 5173 으로 다시 켜세요.
+배포 서버에서 막힌다면 팀장에게 `CORS_ALLOWED_ORIGINS` 에 FE 배포 주소 추가를 부탁하세요.
 
 ---
 
