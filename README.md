@@ -70,10 +70,10 @@ git config core.hooksPath .githooks
 브라우저에서 👉 **http://localhost:8080/api/v1/health**
 
 ```json
-{ "status": "ok" }
+{ "status": "ok", "db": "connected" }
 ```
 
-이렇게 나오면 성공입니다.
+이렇게 나오면 성공입니다. (`db` 는 DB 가 붙어 있는지 알려 줍니다. DB 에 못 붙으면 `"db": "error"` 가 나오지만 서버는 꺼지지 않습니다.)
 
 ### 5. API 직접 불러 보기 (Swagger)
 
@@ -207,7 +207,7 @@ src/main/java/com/ithopeschool/projectbe/
 ├── global/                     여러 기능이 같이 쓰는 것 (설정, 공통 예외 등)
 │   └── config/WebConfig.java   CORS 설정
 └── domain/                     기능별 폴더 하나씩
-    └── health/                 예시: Controller + 응답 DTO
+    └── health/                 예시: Controller + Service + 응답 DTO
 src/main/resources/
 ├── application.yml             공통 설정
 ├── application-local.yml       로컬 (H2)

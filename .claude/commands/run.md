@@ -13,7 +13,7 @@ description: 서버를 켜서 브라우저에서 API 응답을 확인합니다
 
 켜진 뒤 아래를 알려주세요.
 
-- 잘 켜졌는지 확인: http://localhost:8080/api/v1/health → `{"status":"ok"}`
+- 잘 켜졌는지 확인: http://localhost:8080/api/v1/health → `{"status":"ok","db":"connected"}`
 - DB 들여다보기: http://localhost:8080/h2-console
   (`JDBC URL` 에 `jdbc:h2:mem:projectbe`, `User Name` 에 `sa`, 비밀번호는 비움)
 - 처음 한 번은 라이브러리를 내려받느라 몇 분 걸립니다.

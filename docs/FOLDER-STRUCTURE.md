@@ -19,7 +19,8 @@ src/main/java/com/ithopeschool/projectbe/
 └── domain/                      📦 기능 하나 = 폴더 하나
     └── health/                      서버 상태 확인 (가장 작은 예시)
         ├── HealthController.java        GET /api/v1/health
-        └── HealthResponse.java          응답 모양 { "status": "ok" }
+        ├── HealthService.java           서버·DB 상태를 확인하는 로직
+        └── HealthResponse.java          응답 모양 { "status": "ok", "db": "connected" }
 
 src/main/resources/              ⚙️ 설정 파일
 ├── application.yml                  공통 설정
