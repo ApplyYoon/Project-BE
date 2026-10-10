@@ -8,6 +8,10 @@ spring:
     open-in-view: false
 
 app:
+  job:
+    # 예약 작업 주소(/api/v1/jobs/**)를 부를 때 X-Job-Key 헤더에 넣어야 하는 비밀 키입니다. (docs/JOBS.md)
+    # 값은 여기에 적지 않고 환경변수 JOB_SECRET_KEY 로 받습니다. 비어 있으면 요청을 전부 거절합니다.
+    secret-key: ${JOB_SECRET_KEY:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
 
