@@ -75,7 +75,14 @@ git config core.hooksPath .githooks
 
 이렇게 나오면 성공입니다.
 
-### 5. DB 들여다보기 (로컬 H2)
+### 5. API 직접 불러 보기 (Swagger)
+
+서버를 켠 채로 👉 **http://localhost:8080/swagger-ui.html**
+
+우리가 만든 API 가 전부 나오는 **메뉴판**입니다. API 를 펼치고 **Try it out → Execute** 를 누르면 직접 불러 볼 수 있습니다.
+"요청", "응답", "200" 이 무슨 말인지 모르겠다면 [docs/API-TEST-GUIDE.md](./docs/API-TEST-GUIDE.md) 부터 읽으세요.
+
+### 6. DB 들여다보기 (로컬 H2)
 
 로컬에서는 **H2 메모리 DB** 를 씁니다. 서버 안에 들어 있어서 설치할 것이 없습니다.
 
@@ -83,9 +90,12 @@ git config core.hooksPath .githooks
 - `JDBC URL` 에 `jdbc:h2:mem:projectbe`, `User Name` 에 `sa`, 비밀번호는 비우고 **Connect**
 - ⚠️ **서버를 끄면 데이터가 전부 사라집니다.** 연습용이라 그렇습니다. 켤 때마다 깨끗한 상태로 시작합니다.
 
-원격 DB(Neon) 는 다음 단계에서 연결합니다. 지금은 계정도, 접속 주소도 필요 없습니다.
+테이블이 서로 어떻게 이어지는지는 [docs/DB.md](./docs/DB.md) 의 **다이어그램**으로 봅니다.
+테이블을 만들 때마다 Claude Code 에서 `/db` 를 치면 그림을 새로 그려 브라우저로 보여 줍니다.
 
-### 6. Claude Code 로 나머지 세팅
+운영 DB(Neon) 는 다음 단계에서 연결합니다. 지금은 계정도, 접속 주소도 필요 없습니다.
+
+### 7. Claude Code 로 나머지 세팅
 
 ```bash
 claude
@@ -129,6 +139,7 @@ Windows 는 `./gradlew` 자리에 `.\gradlew.bat` 을 씁니다.
 | 빌드 도구  | **Gradle** — 저장소에 든 `gradlew` 사용 (따로 설치하지 않음)               |
 | 코드 정리  | Spotless (google-java-format)                                              |
 | 테스트     | JUnit 5                                                                    |
+| API 확인   | **Swagger UI** (springdoc-openapi)                                         |
 | DB         | 로컬: **H2 메모리 DB** / 원격: Neon (PostgreSQL) 으로 옮길 예정            |
 | AI         | OpenAI GPT API — 서버에서만 호출                                           |
 | 배포       | 무료 서비스 예정 — 미정 (이슈 #8). `Dockerfile` 은 준비돼 있습니다         |
@@ -146,9 +157,11 @@ Windows 는 `./gradlew` 자리에 `.\gradlew.bat` 을 씁니다.
 | `/start 공부 계획 API 만들기` | **브랜치 이름을 추천해서 물어보고** 새 브랜치를 만듭니다  |
 | `/save`                       | 검사를 돌리고 **커밋 메시지까지 알아서 써서** 저장        |
 | `/pr`                         | 푸시 + PR 생성 (**체크리스트도 직접 검증해서 채움**)      |
+| `/run`                        | 서버 켜기                                                 |
+| `/swagger`                    | 만든 API 를 Swagger 에서 **직접 불러 보며** 확인          |
+| `/db`                         | 지금 테이블을 **다이어그램으로** 그려서 보여주기          |
 | `/check`                      | 코드 정리 + 빌드 + 테스트를 한 번에                       |
 | `/sync`                       | 팀원이 올린 최신 코드 가져오기                            |
-| `/run`                        | 서버 켜기                                                 |
 | `/fix <에러 메시지>`          | 에러가 무슨 뜻인지 설명하고 같이 고치기                   |
 
 ### 브랜치 전략
@@ -212,6 +225,8 @@ docs/                           팀 문서
 | 문서                                                   | 언제 읽나                      |
 | ------------------------------------------------------ | ------------------------------ |
 | [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md) | 새 파일을 만들기 전에          |
+| [docs/API-TEST-GUIDE.md](./docs/API-TEST-GUIDE.md)     | 요청·응답이 뭔지, Swagger 쓰는 법 |
+| [docs/DB.md](./docs/DB.md)                             | 테이블 다이어그램              |
 | [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 에러가 났을 때                 |
 | [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md)               | git/GitHub 가 처음일 때        |
 | [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)           | 브랜치·커밋·PR 규칙 (한 장)    |

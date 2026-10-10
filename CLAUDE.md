@@ -28,6 +28,7 @@ Claude Code(및 다른 AI 에이전트)가 이 저장소에서 작업할 때 **�
 | 빌드 도구  | **Gradle** — 저장소에 든 `./gradlew` 로 실행 (Gradle 을 따로 설치하지 않음)   |
 | 코드 정리  | Spotless (google-java-format)                                                 |
 | 테스트     | JUnit 5                                                                       |
+| API 확인   | **Swagger UI** (springdoc-openapi) — 만든 API 를 브라우저에서 직접 불러 봄    |
 | DB         | 로컬: **H2 메모리 DB** (설치 불필요) / 원격: Neon (PostgreSQL) 으로 옮길 예정 |
 | AI         | OpenAI GPT API — **서버에서만** 호출                                          |
 | 배포       | 무료 서비스 예정 — 어디인지 미정 (이슈 #8). `Dockerfile` 은 준비됨            |
@@ -86,6 +87,7 @@ domain/<기능>/
 - 의존성 주입은 **생성자 주입**(`@RequiredArgsConstructor` + `private final`)만 씁니다. `@Autowired` 필드 주입은 테스트 코드에서만.
 - Lombok 은 `@Getter`, `@RequiredArgsConstructor`, `@NoArgsConstructor(access = PROTECTED)` 정도만 씁니다.
 - URL 은 `/api/v1/` 아래 **소문자 kebab-case 복수형**(`/api/v1/study-sessions`), JSON 필드는 **camelCase**.
+- Controller 에는 `@Tag(name = "...")`, 메서드에는 `@Operation(summary = "...")` 로 **한국어 설명**을 붙입니다. Swagger 화면에 보이는 글자입니다.
 - DB 테이블·컬럼은 **snake_case**. 엔티티 필드를 camelCase 로 쓰면 Spring 이 알아서 바꿉니다 (`userId` → `user_id`). 엔티티 필드마다 **한국어 주석** 한 줄.
 - 시각은 `timestamptz`, 날짜는 `date`. 자바에서는 `Instant` / `LocalDate` 를 쓰면 그렇게 만들어집니다.
 - 로컬에서는 서버를 켤 때 엔티티(`@Entity`)를 보고 **H2 에 테이블이 자동으로 만들어집니다.** (`ddl-auto: create-drop`)
@@ -102,6 +104,12 @@ domain/<기능>/
 - 테스트를 지우거나 `@Disabled` 로 꺼서 검사를 통과시키기.
 - 엔티티에 `@Setter`, `@Data` 붙이기 — 값이 어디서 바뀌는지 찾기 어려워집니다.
 - 원격 DB(Neon)에 연습 쿼리 돌리기 — 연습은 로컬 H2 에서. (`http://localhost:8080/h2-console`)
+
+### 테이블 설계는 학생이 합니다
+
+테이블 설계는 이 프로젝트에서 **학생이 직접 하는 공부**입니다.
+AI 는 테이블·컬럼을 **먼저 정해 주지 않습니다.** 질문으로 돕고, 학생이 정한 것을 코드로 옮기는 일을 돕습니다.
+만들 때마다 `/db` 로 다이어그램을 새로 그려 눈으로 확인하게 합니다. (`.claude/skills/db-table/SKILL.md`)
 
 ### 원격 DB 는 아직입니다
 
@@ -134,7 +142,9 @@ domain/<기능>/
 
 Windows 는 `./gradlew` 대신 `gradlew.bat` 을 씁니다. Claude Code 에서는 `/check` 한 줄이면 됩니다.
 
-- API 를 만들거나 고쳤으면 `./gradlew bootRun` 으로 서버를 켜서 **실제로 불러 봅니다.** (`http://localhost:8080/api/v1/health`)
+- API 를 만들거나 고쳤으면 서버를 켜서 **Swagger 로 실제로 불러 봅니다.** (`/swagger` — `http://localhost:8080/swagger-ui.html`)
+  잘 되는 경우뿐 아니라 **일부러 틀리게 보낸 경우**(빈 값 → 400, 없는 번호 → 404)도 확인합니다.
+- 엔티티를 만들거나 고쳤으면 `/db` 로 **다이어그램을 새로 그리고** `docs/DB.md` 에 반영합니다.
 - `.githooks/` 나 `.claude/hooks/` 를 고쳤으면 **직접 실행해서** 막을 것은 막고 통과시킬 것은 통과시키는지 확인합니다.
 - 원격 DB(Neon)에서 해야 하는 확인은 **사람에게 부탁합니다.** (AI 는 Neon 계정이 없습니다)
 - 실패하면 **커밋하지 말고** 고친 뒤 다시 확인합니다.
@@ -308,6 +318,8 @@ MCP 도구가 연결돼 있으면 `gh` CLI 대신 써도 됩니다. **규칙은 
 | [docs/AI-GUIDE.md](./docs/AI-GUIDE.md)       | Claude Code·안전장치·MCP   |
 | [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md) | 어느 파일을 어디에 만드나 |
 | [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러와 해결법   |
+| [docs/API-TEST-GUIDE.md](./docs/API-TEST-GUIDE.md)     | 요청·응답 개념, Swagger 사용법 |
+| [docs/DB.md](./docs/DB.md)                             | DB 다이어그램 (`/db` 가 그림) |
 
-스킬(`.claude/skills/`): `github-flow`
-명령어(`.claude/commands/`): `/setup` `/start` `/save` `/pr` `/check` `/sync` `/run` `/fix`
+스킬(`.claude/skills/`): `github-flow` `api-test` `db-table`
+명령어(`.claude/commands/`): `/setup` `/start` `/run` `/swagger` `/db` `/check` `/save` `/pr` `/sync` `/fix`

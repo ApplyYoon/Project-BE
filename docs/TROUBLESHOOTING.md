@@ -141,7 +141,7 @@ List<String> names = new ArrayList<>();   // ❌ import java.util.List; import j
 ```java
 @Service                       // ← 이게 없으면 Controller 가 Service 를 못 받습니다
 @RequiredArgsConstructor
-public class SubjectService { ... }
+public class MemoService { ... }
 ```
 
 ### `No property 'xxx' found for type 'Yyy'`
@@ -149,9 +149,22 @@ public class SubjectService { ... }
 **뜻**: Repository 의 메서드 이름에 엔티티에 없는 필드 이름을 썼습니다. 오타를 확인하세요.
 
 ```java
-List<Subject> findByUsrId(Long userId);    // ❌ usrId 라는 필드는 없음
-List<Subject> findByUserId(Long userId);   // ✅
+List<Memo> findByUsrId(Long userId);    // ❌ usrId 라는 필드는 없음
+List<Memo> findByUserId(Long userId);   // ✅
 ```
+
+### 내가 만든 API 가 Swagger 에 안 보여요
+
+1. 서버를 껐다가 다시 켰는지 확인 (코드를 고치면 다시 켜야 반영됩니다)
+2. Controller 클래스 위에 `@RestController` 가 있는지 확인
+3. 브라우저를 새로고침
+
+Swagger 주소는 http://localhost:8080/swagger-ui.html 입니다. 쓰는 법은 [API-TEST-GUIDE.md](./API-TEST-GUIDE.md).
+
+### Swagger 에서 불렀더니 `500` 이 나와요
+
+**뜻**: 서버 코드에서 에러가 났습니다. 서버를 켠 터미널에 빨간 글자가 길게 나옵니다.
+그중 **`Caused by:`** 로 시작하는 줄이 진짜 원인입니다. `/fix` 뒤에 그 줄을 붙여 넣어 보세요.
 
 ### 브라우저 콘솔에 `has been blocked by CORS policy` 가 나와요
 

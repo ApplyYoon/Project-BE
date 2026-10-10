@@ -33,7 +33,7 @@ src/test/java/com/ithopeschool/projectbe/    🧪 테스트 — main 과 같은 
 
 ## 2. 요청 하나가 지나가는 길
 
-FE 가 "과목 목록 줘" 라고 요청하면, 서버 안에서 이렇게 지나갑니다.
+FE 가 "메모 목록 줘" 라고 요청하면, 서버 안에서 이렇게 지나갑니다.
 
 ```
 FE  ──요청──▶  Controller  ──▶  Service  ──▶  Repository  ──▶  DB
@@ -55,42 +55,42 @@ FE  ──요청──▶  Controller  ──▶  Service  ──▶  Repository
 
 ## 3. 기능 하나를 만들 때
 
-기능 하나는 `domain/<기능>/` 폴더 하나에 모읍니다. 예: 과목(subject)
+기능 하나는 `domain/<기능>/` 폴더 하나에 모읍니다. 예: 메모(memo) — 우리 앱에는 없는, 설명용 예시입니다
 
 ```
-domain/subject/
-├── SubjectController.java   API 입구
-├── SubjectService.java      실제 로직
-├── SubjectRepository.java   DB 창구
-├── Subject.java             엔티티 (subjects 테이블 한 줄)
+domain/memo/
+├── MemoController.java   API 입구
+├── MemoService.java      실제 로직
+├── MemoRepository.java   DB 창구
+├── Memo.java             엔티티 (memos 테이블 한 줄)
 └── dto/
-    └── SubjectResponse.java 응답 모양
+    └── MemoResponse.java 응답 모양
 ```
 
-아래는 **모양을 보여주는 예시**입니다. 실제 코드는 각 기능 이슈에서 만듭니다.
+아래는 **모양을 보여주는 예시**입니다. 메모는 우리 앱에 없는 기능이라, 이걸 보고 **자기 기능에 맞게 직접** 만들어 보세요.
 
 ### 🧱 엔티티 — DB 테이블 한 줄의 모양
 
 ```java
 @Entity
-@Table(name = "subjects")
+@Table(name = "memos")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Subject {
+public class Memo {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  // 이 과목의 주인. 남의 데이터와 섞이지 않게 하는 기준입니다.
+  // 이 메모의 주인. 남의 데이터와 섞이지 않게 하는 기준입니다.
   private Long userId;
 
-  // 과목 이름. 예: "수학"
-  private String name;
+  // 메모 내용. 예: "수학 숙제 챙기기"
+  private String content;
 
-  public Subject(Long userId, String name) {
+  public Memo(Long userId, String content) {
     this.userId = userId;
-    this.name = name;
+    this.content = content;
   }
 }
 ```
@@ -103,10 +103,10 @@ public class Subject {
 ### 🗄 Repository — DB 창구
 
 ```java
-public interface SubjectRepository extends JpaRepository<Subject, Long> {
+public interface MemoRepository extends JpaRepository<Memo, Long> {
 
   // 메서드 이름만 지으면 Spring 이 SQL 을 만들어 줍니다: where user_id = ?
-  List<Subject> findByUserId(Long userId);
+  List<Memo> findByUserId(Long userId);
 }
 ```
 
@@ -117,14 +117,14 @@ public interface SubjectRepository extends JpaRepository<Subject, Long> {
 ```java
 @Service
 @RequiredArgsConstructor
-public class SubjectService {
+public class MemoService {
 
-  private final SubjectRepository subjectRepository;
+  private final MemoRepository memoRepository;
 
   @Transactional(readOnly = true)
-  public List<SubjectResponse> getSubjects(Long userId) {
-    return subjectRepository.findByUserId(userId).stream()
-        .map(subject -> new SubjectResponse(subject.getId(), subject.getName()))
+  public List<MemoResponse> getMemos(Long userId) {
+    return memoRepository.findByUserId(userId).stream()
+        .map(memo -> new MemoResponse(memo.getId(), memo.getContent()))
         .toList();
   }
 }
@@ -136,28 +136,31 @@ public class SubjectService {
 ### 🚪 Controller — API 입구
 
 ```java
+@Tag(name = "메모")
 @RestController
-@RequestMapping("/api/v1/subjects")
+@RequestMapping("/api/v1/memos")
 @RequiredArgsConstructor
-public class SubjectController {
+public class MemoController {
 
-  private final SubjectService subjectService;
+  private final MemoService memoService;
 
+  @Operation(summary = "내 메모 목록")
   @GetMapping
-  public List<SubjectResponse> getSubjects() {
+  public List<MemoResponse> getMemos() {
     Long userId = 1L; // 로그인이 생기기 전까지는 테스트 사용자 (이슈 #6)
-    return subjectService.getSubjects(userId);
+    return memoService.getMemos(userId);
   }
 }
 ```
 
 - Controller 는 **얇게.** 계산이나 `if` 가 길어지면 Service 로 옮깁니다.
+- `@Tag` 와 `@Operation` 은 Swagger 화면에 보이는 **한국어 설명**입니다. 새 API 에는 꼭 붙입니다.
 - 주소는 `/api/v1/` 아래 **소문자 + 하이픈 + 복수형**. 예: `/api/v1/study-sessions`
 
 ### 🍽 DTO — 주고받는 모양
 
 ```java
-public record SubjectResponse(Long id, String name) {}
+public record MemoResponse(Long id, String content) {}
 ```
 
 - **엔티티를 그대로 돌려주지 않습니다.** 항상 DTO 로 바꿔서 돌려줍니다.
@@ -166,11 +169,11 @@ public record SubjectResponse(Long id, String name) {}
 - 요청 DTO 에는 검사 조건을 붙입니다.
 
 ```java
-public record SubjectCreateRequest(@NotBlank String name) {}
+public record MemoCreateRequest(@NotBlank String content) {}
 
 // Controller 에서 @Valid 를 붙여야 검사가 실제로 돌아갑니다.
 @PostMapping
-public SubjectResponse create(@Valid @RequestBody SubjectCreateRequest request) { ... }
+public MemoResponse create(@Valid @RequestBody MemoCreateRequest request) { ... }
 ```
 
 ---
