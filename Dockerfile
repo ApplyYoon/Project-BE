@@ -1,4 +1,5 @@
-# GCP Cloud Run 배포용 (PORT 환경변수를 Cloud Run 이 넣어줌)
+# 도커 이미지를 받아 실행해 주는 서비스(Render 등) 배포용입니다. 서비스가 PORT 환경변수로 포트를 알려 줍니다.
+# 지금은 Render 로 배포합니다. (render.yaml, docs/DEPLOY.md)
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /app
 COPY . .
