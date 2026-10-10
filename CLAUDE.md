@@ -21,19 +21,24 @@ Claude Code(및 다른 AI 에이전트)가 이 저장소에서 작업할 때 **�
 
 ## 1. 기술 스택 (임의로 바꾸지 말 것)
 
-| 구분          | 사용 기술                                                         |
-| ------------- | ----------------------------------------------------------------- |
-| 언어          | Python                                                            |
-| 프레임워크    | **FastAPI**                                                       |
-| 패키지 매니저 | **uv** — `pip install` / poetry 사용 금지                         |
-| DB            | Neon (PostgreSQL) — **SQL 을 직접 씁니다** (psycopg). ORM 은 쓰지 않음 |
-| AI            | OpenAI GPT API — **서버에서만** 호출                              |
-| 배포          | 무료 서비스 예정 — 어디인지 미정 (이슈 #8)                        |
+| 구분       | 사용 기술                                                                     |
+| ---------- | ----------------------------------------------------------------------------- |
+| 언어       | Java 21                                                                       |
+| 프레임워크 | **Spring Boot 4.1** (Web MVC, Data JPA, Validation)                           |
+| 빌드 도구  | **Gradle** — 저장소에 든 `./gradlew` 로 실행 (Gradle 을 따로 설치하지 않음)   |
+| 코드 정리  | Spotless (google-java-format)                                                 |
+| 테스트     | JUnit 5                                                                       |
+| API 확인   | **Swagger UI** (springdoc-openapi) — 만든 API 를 브라우저에서 직접 불러 봄    |
+| DB         | 로컬: **H2 메모리 DB** (설치 불필요) / 원격: Neon (PostgreSQL) 으로 옮길 예정 |
+| AI         | OpenAI GPT API — **서버에서만** 호출                                          |
+| 배포       | 무료 서비스 예정 — 어디인지 미정 (이슈 #8). `Dockerfile` 은 준비됨            |
 
-그 밖의 세부(린트·테스트 도구, 상세 폴더 구조)는 **서버 뼈대 이슈 #4 에서 정합니다.** 그 전에 임의로 정하지 마세요.
+> 처음에는 FastAPI 로 정했다가(#1) **Spring Boot 로 바꿨습니다.**
+> 이슈나 옛 글에 FastAPI·uv·psycopg 가 남아 있어도 **이 표가 기준**입니다.
 
 **새 라이브러리 설치는 반드시 허락을 받고 하세요.** "이거 쓰면 편한데 설치할까요?" 라고 먼저 묻습니다.
-특히 ORM(SQLAlchemy·SQLModel 등)은 팀이 SQL 직접 쓰기로 정했으므로 추가하지 않습니다.
+(`build.gradle` 의 `dependencies` 에 줄을 추가하는 것이 라이브러리 설치입니다.)
+특히 Spring Security 같은 큰 라이브러리는 넣는 순간 **모든 API 의 동작이 바뀌므로** 합의 없이 추가하지 않습니다.
 **라이브러리를 늘리는 것보다, 지금 있는 것으로 만드는 법을 알려주는 게 이 프로젝트의 목적입니다.**
 
 ---
@@ -41,15 +46,33 @@ Claude Code(및 다른 AI 에이전트)가 이 저장소에서 작업할 때 **�
 ## 2. 폴더 구조
 
 ```
-app/           FastAPI 서버 코드
-db/            DB 구조(schema.sql)와 기초 데이터
-tests/         테스트
-docs/          팀 문서 (API 규칙, git 가이드 등)
-.githooks/     커밋·푸시를 검사하는 git 훅
-.claude/       Claude Code 설정·훅·명령어·스킬
+src/main/java/com/ithopeschool/projectbe/
+├── ProjectBeApplication.java   앱 시작점
+├── global/                     여러 기능이 같이 쓰는 것 (설정, 공통 예외 등)
+│   └── config/WebConfig.java   CORS 설정
+└── domain/                     기능별 폴더 하나씩
+    └── health/                 예시: Controller + 응답 DTO
+src/main/resources/             설정 파일 (application.yml, -local.yml, -prod.yml)
+src/test/java/                  테스트 (main 과 같은 폴더 구조로)
+build.gradle                    라이브러리 목록과 빌드 설정
+gradlew, gradlew.bat, gradle/   Gradle 실행 파일 (고치지 않음)
+docs/                           팀 문서 (폴더 구조, 문제 해결, git 가이드 등)
+.githooks/                      커밋·푸시를 검사하는 git 훅
+.claude/                        Claude Code 설정·훅·명령어·스킬
 ```
 
-`app/` 안의 구조는 서버 뼈대(#4)에서 정해 여기에 적습니다.
+기능 하나는 `domain/<기능>/` 폴더 하나에 모읍니다.
+
+```
+domain/<기능>/
+├── <기능>Controller.java   API 입구. 요청을 받고 Service 를 부르기만 (얇게)
+├── <기능>Service.java      실제 로직. @Transactional 은 여기
+├── <기능>Repository.java   DB 창구. JpaRepository 상속
+├── <기능>.java             JPA 엔티티 (DB 테이블 한 줄의 모양)
+└── dto/                    요청·응답 모양 (record 사용)
+```
+
+자세한 설명과 "이건 어디에 만들지?" 판단표: [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md)
 
 ---
 
@@ -57,21 +80,44 @@ docs/          팀 문서 (API 규칙, git 가이드 등)
 
 ### 반드시
 
-- **비밀값은 `.env` 에만.** `DATABASE_URL`, `OPENAI_API_KEY` 같은 값은 코드·문서·커밋 어디에도 쓰지 않습니다.
+- **비밀값은 코드에 쓰지 않습니다.** `DATABASE_URL`, `OPENAI_API_KEY` 같은 값은 `application-*.yml` 에서 `${환경변수}` 로 읽습니다.
 - 저장소에는 **빈 값의 `.env.example`** 만 올립니다. 새 비밀값이 생기면 `.env.example` 에 이름만 추가합니다.
-- DB 테이블·컬럼은 **snake_case**, 테이블·컬럼마다 **한국어 주석(`--`)**.
-- 시각은 `timestamptz`, 날짜는 `date`.
-- DB 구조를 바꾸면 **`db/schema.sql` 에 같이 반영**합니다.
+- Controller 는 엔티티를 그대로 돌려주지 않고 **항상 DTO(record)** 로 돌려줍니다.
+- 요청 DTO 는 `@Valid` + Bean Validation(`@NotBlank` 등)으로 입력을 검사합니다.
+- 의존성 주입은 **생성자 주입**(`@RequiredArgsConstructor` + `private final`)만 씁니다. `@Autowired` 필드 주입은 테스트 코드에서만.
+- Lombok 은 `@Getter`, `@RequiredArgsConstructor`, `@NoArgsConstructor(access = PROTECTED)` 정도만 씁니다.
+- URL 은 `/api/v1/` 아래 **소문자 kebab-case 복수형**(`/api/v1/study-sessions`), JSON 필드는 **camelCase**.
+- Controller 에는 `@Tag(name = "...")`, 메서드에는 `@Operation(summary = "...")` 로 **한국어 설명**을 붙입니다. Swagger 화면에 보이는 글자입니다.
+- DB 테이블·컬럼은 **snake_case**. 엔티티 필드를 camelCase 로 쓰면 Spring 이 알아서 바꿉니다 (`userId` → `user_id`). 엔티티 필드마다 **한국어 주석** 한 줄.
+- 시각은 `timestamptz`, 날짜는 `date`. 자바에서는 `Instant` / `LocalDate` 를 쓰면 그렇게 만들어집니다.
+- 로컬에서는 서버를 켤 때 엔티티(`@Entity`)를 보고 **H2 에 테이블이 자동으로 만들어집니다.** (`ddl-auto: create-drop`)
 - 모든 조회·수정에 **`user_id` 조건**을 붙입니다. 다른 사람의 데이터가 섞이면 안 됩니다.
-- 사용자 입력은 **SQL 문자열에 직접 붙이지 않습니다.** 반드시 파라미터(값 자리)로 넘깁니다.
+- 사용자 입력은 **SQL 문자열에 직접 붙이지 않습니다.** `@Query` 를 직접 쓸 때도 반드시 파라미터(`:이름`)로 넘깁니다.
+- API 를 만들거나 고치면 **테스트를 같이** 씁니다. Controller 는 `@WebMvcTest`, Service 는 단위 테스트, Repository 는 `@DataJpaTest`.
 - 조금이라도 헷갈릴 코드에는 **한국어 주석 한 줄**.
 
 ### 금지
 
 - 비밀값을 코드에 직접 쓰기, `.env` 커밋하기, 로그에 찍기.
 - GPT API 키를 FE 에 주기. FE 에는 서버가 만든 **임시 키**만 줍니다.
-- 에러를 무시 주석이나 빈 `catch`/`except` 로 덮기 — 원인을 고칩니다.
-- Neon 의 `main` 브랜치(배포용 DB)에 연습 쿼리 돌리기 — 개발은 `dev` 브랜치에서.
+- 에러를 무시 주석이나 빈 `catch` 로 덮기 — 원인을 고칩니다.
+- 테스트를 지우거나 `@Disabled` 로 꺼서 검사를 통과시키기.
+- 엔티티에 `@Setter`, `@Data` 붙이기 — 값이 어디서 바뀌는지 찾기 어려워집니다.
+- 원격 DB(Neon)에 연습 쿼리 돌리기 — 연습은 로컬 H2 에서. (`http://localhost:8080/h2-console`)
+
+### 테이블 설계는 학생이 합니다
+
+테이블 설계는 이 프로젝트에서 **학생이 직접 하는 공부**입니다.
+AI 는 테이블·컬럼을 **먼저 정해 주지 않습니다.** 질문으로 돕고, 학생이 정한 것을 코드로 옮기는 일을 돕습니다.
+만들 때마다 `/db` 로 다이어그램을 새로 그려 눈으로 확인하게 합니다. (`.claude/skills/db-table/SKILL.md`)
+
+### 원격 DB 는 아직입니다
+
+지금은 **로컬 H2 만** 씁니다. 서버를 끄면 데이터가 사라지는 연습용 DB 입니다.
+원격 DB(Neon) 연결은 다음 단계에서 하고, 그때 아래를 정해 이 문서에 적습니다.
+
+- 원격 DB 의 테이블을 만드는 방법 (배포 설정은 `ddl-auto: validate` 라 **테이블이 미리 있어야** 합니다)
+- 내 컴퓨터에서 접속 주소를 넣는 방법 (Spring Boot 는 `.env` 파일을 **알아서 읽지 않습니다**)
 
 ---
 
@@ -89,13 +135,18 @@ docs/          팀 문서 (API 규칙, git 가이드 등)
 
 ## 5. 작업이 끝나면 반드시 통과시킬 것
 
-> 검사 명령(테스트·린트·실행 확인)은 서버 뼈대(#4)에서 도구를 정하면 여기에 추가합니다.
-> 명령은 모두 `uv run ...` 으로 실행합니다.
+```bash
+./gradlew spotlessApply          # 코드 모양 자동 정리
+./gradlew spotlessCheck build    # 전체 검사: 정리 검사 + 빌드 + 테스트 (CI 와 같은 명령)
+```
 
-지금 할 수 있는 확인:
+Windows 는 `./gradlew` 대신 `gradlew.bat` 을 씁니다. Claude Code 에서는 `/check` 한 줄이면 됩니다.
 
+- API 를 만들거나 고쳤으면 서버를 켜서 **Swagger 로 실제로 불러 봅니다.** (`/swagger` — `http://localhost:8080/swagger-ui.html`)
+  잘 되는 경우뿐 아니라 **일부러 틀리게 보낸 경우**(빈 값 → 400, 없는 번호 → 404)도 확인합니다.
+- 엔티티를 만들거나 고쳤으면 `/db` 로 **다이어그램을 새로 그리고** `docs/DB.md` 에 반영합니다.
 - `.githooks/` 나 `.claude/hooks/` 를 고쳤으면 **직접 실행해서** 막을 것은 막고 통과시킬 것은 통과시키는지 확인합니다.
-- `db/schema.sql` 을 고쳤으면 **Neon SQL Editor 에서 실행 확인**을 사람에게 부탁합니다. (AI 는 Neon 계정이 없습니다)
+- 원격 DB(Neon)에서 해야 하는 확인은 **사람에게 부탁합니다.** (AI 는 Neon 계정이 없습니다)
 - 실패하면 **커밋하지 말고** 고친 뒤 다시 확인합니다.
 - 고쳐도 안 되면 **에러 메시지 원문을 그대로 보여주고** 사람에게 물어봅니다.
 
@@ -190,7 +241,7 @@ Refs: #11
 - 제목은 커밋과 같은 형식: `feat: 날짜별 공부 계획 목록 API 추가`
 - 본문은 `.github/PULL_REQUEST_TEMPLATE.md` 를 **실제 내용으로** 채웁니다. 빈칸 금지.
 - **체크리스트는 당신이 직접 검증해서 채웁니다.** 사용자에게 확인했냐고 묻지 마세요.
-  단, **돌려보지 않은 항목을 체크하는 것은 절대 금지**입니다. 특히 "Neon 에서 실행 확인" 처럼
+  단, **돌려보지 않은 항목을 체크하는 것은 절대 금지**입니다. 특히 "원격 DB 에서 확인" 처럼
   사람이 해야 하는 항목은 기본적으로 비워두고 사용자에게 안내합니다.
 - 관련 이슈는 `Closes #12` 로 연결.
 - 리뷰는 선택. 사용자가 원할 때만 리뷰어를 지정합니다. merge 는 PR 을 올린 사람이 직접 확인한 뒤 GitHub 웹에서 합니다.
@@ -265,7 +316,10 @@ MCP 도구가 연결돼 있으면 `gh` CLI 대신 써도 됩니다. **규칙은 
 | [docs/CONVENTIONS.md](./docs/CONVENTIONS.md) | 브랜치·커밋·PR 치트시트    |
 | [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md)     | git/GitHub 입문            |
 | [docs/AI-GUIDE.md](./docs/AI-GUIDE.md)       | Claude Code·안전장치·MCP   |
+| [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md) | 어느 파일을 어디에 만드나 |
+| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러와 해결법   |
+| [docs/API-TEST-GUIDE.md](./docs/API-TEST-GUIDE.md)     | 요청·응답 개념, Swagger 사용법 |
+| [docs/DB.md](./docs/DB.md)                             | DB 다이어그램 (`/db` 가 그림) |
 
-스킬(`.claude/skills/`): `github-flow`
-명령어(`.claude/commands/`): `/setup` `/start` `/save` `/pr` `/sync`
-(`/check` `/run` `/fix` 같은 명령은 서버 뼈대(#4)가 생기면 추가합니다)
+스킬(`.claude/skills/`): `github-flow` `api-test` `db-table`
+명령어(`.claude/commands/`): `/setup` `/start` `/run` `/swagger` `/db` `/check` `/save` `/pr` `/sync` `/fix`
