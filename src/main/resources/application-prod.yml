@@ -4,9 +4,25 @@ spring:
     url: ${DATABASE_URL}
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
+    hikari:
+      # 서버가 켜진 뒤 연결을 얻으려고 기다리는 최대 시간(밀리초). 기본은 30초라서, DB 가 멈추면 /health 도 오래 걸립니다.
+      connection-timeout: 3000
+      data-source-properties:
+        # DB 서버가 대답이 없을 때 접속을 기다리는 최대 시간(초). 기본은 10초입니다.
+        connectTimeout: 3
   jpa:
+    # DATABASE_URL 이 틀려도 서버가 꺼지지 않게, 켜지는 동안 DB 에 접속하지 않도록 아래 3가지를 함께 설정합니다.
+    # (이슈 #4) DB 상태는 /api/v1/health 의 "db" 값으로 확인합니다.
+    # 1) DB 종류를 직접 알려 줍니다. (원래는 DB 에 접속해서 알아냅니다)
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate:
+        boot:
+          # 2) 켜질 때 DB 정보를 조회하러 접속하는 동작을 끕니다.
+          allow_jdbc_metadata_access: false
     hibernate:
-      ddl-auto: validate
+      # 3) 켜질 때 테이블을 검사(validate)하면 DB 접속이 필요해서 none 으로 둡니다. 테이블은 미리 만들어 둬야 합니다.
+      ddl-auto: none
 
 # 배포 서버에서는 Swagger 화면을 끕니다 (API 목록을 아무나 볼 수 없게)
 springdoc:
