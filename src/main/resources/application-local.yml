@@ -1,0 +1,13 @@
+# 로컬 개발용: 따로 DB 설치 없이 H2 메모리 DB 사용 (서버 끄면 데이터 사라짐)
+spring:
+  datasource:
+    url: jdbc:h2:mem:projectbe;MODE=PostgreSQL
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true # http://localhost:8080/h2-console
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
