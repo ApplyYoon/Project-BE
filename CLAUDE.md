@@ -31,7 +31,7 @@ Claude Code(및 다른 AI 에이전트)가 이 저장소에서 작업할 때 **�
 | API 확인   | **Swagger UI** (springdoc-openapi) — 만든 API 를 브라우저에서 직접 불러 봄    |
 | DB         | 로컬: **H2 메모리 DB** (설치 불필요) / 원격: Neon (PostgreSQL) 으로 옮길 예정 |
 | AI         | OpenAI GPT API — **서버에서만** 호출                                          |
-| 배포       | 무료 서비스 예정 — 어디인지 미정 (이슈 #8). `Dockerfile` 은 준비됨            |
+| 배포       | **Render** 무료 서버 (이슈 #8) — `render.yaml`, 순서는 `docs/DEPLOY.md`       |
 
 > 처음에는 FastAPI 로 정했다가(#1) **Spring Boot 로 바꿨습니다.**
 > 이슈나 옛 글에 FastAPI·uv·psycopg 가 남아 있어도 **이 표가 기준**입니다.
