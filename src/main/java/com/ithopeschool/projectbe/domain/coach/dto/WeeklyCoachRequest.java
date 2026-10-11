@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
@@ -16,7 +17,9 @@ import java.util.List;
 //    (이 값들은 그대로 AI 에게 건네지기 때문에, 엉뚱한 지시문을 끼워 넣지 못하게 하려는 것이기도 합니다)
 public record WeeklyCoachRequest(
     // 어느 주인지. 그 주의 월요일을 'YYYY-MM-DD' 로 적습니다. 예: "2026-10-05"
-    @NotBlank(message = "어느 주인지(mondayKey) 보내 주세요")
+    // @NotNull 은 "아예 안 보냄" 을, @Pattern 은 "보냈는데 모양이 틀림(빈 글자 포함)" 을 잡습니다.
+    // 둘이 한꺼번에 걸리지 않게 나눠서, 안내 문장이 늘 하나로 정해지게 했습니다.
+    @NotNull(message = "어느 주인지(mondayKey) 보내 주세요")
         @Pattern(regexp = "\\d{4}-\\d{2}-\\d{2}", message = "mondayKey 는 'YYYY-MM-DD' 모양이어야 해요")
         String mondayKey,
     // 문단에 써도 되는 숫자들. AI 는 이 숫자만 가지고 문단을 씁니다.

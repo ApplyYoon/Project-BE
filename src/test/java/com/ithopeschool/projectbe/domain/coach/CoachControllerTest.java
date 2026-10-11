@@ -161,6 +161,7 @@ class CoachControllerTest {
   void rejectsBadMondayKey() throws Exception {
     expectRejected(
         VALID.replace("\"2026-10-05\"", "\"2026/10/05\""), "mondayKey 는 'YYYY-MM-DD' 모양이어야 해요");
-    expectRejected(VALID.replace("\"2026-10-05\"", "\"\""), "어느 주인지(mondayKey) 보내 주세요");
+    expectRejected(VALID.replace("\"2026-10-05\"", "\"\""), "mondayKey 는 'YYYY-MM-DD' 모양이어야 해요");
+    expectRejected(VALID.replace("\"mondayKey\": \"2026-10-05\",", ""), "어느 주인지(mondayKey) 보내 주세요");
   }
 }
