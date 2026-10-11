@@ -61,6 +61,29 @@ class CallScriptTest {
   }
 
   @Test
+  @DisplayName("위로하는 통화(기분이 낮거나 관리 강도 0)는 순서도 바뀐다: 못 한 것을 묻지 않고 기분부터 묻는다")
+  void supportiveCallDoesNotStartWithWhatWentWrong() {
+    Card missedAndLow = card(20, 180, "tired", List.of(3, 2, 1));
+
+    String lowMood = CallScript.instructions(3, 5, missedAndLow);
+    String recovery = CallScript.instructions(0, 3, card(20, 180, "tired", List.of(3)));
+
+    for (String instructions : new String[] {lowMood, recovery}) {
+      assertThat(instructions).contains("1. 짧게 인사하고, 요즘 기분이 어떤지 먼저 물어봐.");
+      assertThat(instructions).contains("어제 못 한 것을 먼저 꺼내지 마");
+      assertThat(instructions).contains("10분만 해도 된다고");
+      // 평소 통화의 "어제는 계획의 몇 %" 로 시작하는 순서와 이유를 캐묻는 질문은 들어가지 않습니다.
+      assertThat(instructions).doesNotContain("어제 한 것을 한 문장으로 말해 줘");
+      assertThat(instructions).doesNotContain("몇 시에 잤는지");
+      // 약속은 그대로 같이 정합니다.
+      assertThat(instructions).contains("4. 오늘의 약속을 같이 정해.");
+    }
+    // 같은 기록이어도 기분이 보통이고 관리 강도가 1 이상이면 평소 순서입니다.
+    assertThat(CallScript.instructions(3, 5, card(20, 180, "tired", List.of(3))))
+        .contains("어제 한 것을 한 문장으로 말해 줘", "몇 시에 잤는지");
+  }
+
+  @Test
   @DisplayName("기분은 가장 최근 것만 본다. 예전에 낮았어도 지금 보통이면 낮지 않다")
   void onlyTheLatestMoodCounts() {
     assertThat(CallScript.isMoodLow(card(190, 240, null, List.of(1, 2, 3)))).isFalse();

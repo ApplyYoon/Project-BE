@@ -48,9 +48,16 @@ public final class CallScript {
     lines.addAll(facts(card));
     lines.add("");
     lines.add("[통화 순서]");
-    lines.add("1. 짧게 인사하고, " + openingStep(card));
-    lines.add("2. " + yesterdayStep(card));
-    lines.add("3. " + todayStep(card));
+    if (isSupportive(careLevel, card)) {
+      // 위로하는 통화: 못 한 것부터 꺼내지 않습니다. 숫자는 [오늘의 사실] 에 있지만, 학생이 먼저 물을 때만 말합니다.
+      lines.add("1. 짧게 인사하고, 요즘 기분이 어떤지 먼저 물어봐. 어제 숫자는 학생이 먼저 물을 때만 말해.");
+      lines.add("2. 힘든 점이 있으면 끝까지 들어 줘. 어제 못 한 것을 먼저 꺼내지 마.");
+      lines.add("3. 오늘은 10분만 해도 된다고 말하고, 할 수 있는 것 하나를 같이 골라.");
+    } else {
+      lines.add("1. 짧게 인사하고, " + openingStep(card));
+      lines.add("2. " + yesterdayStep(card));
+      lines.add("3. " + todayStep(card));
+    }
     lines.add("4. 오늘의 약속을 같이 정해. '만약 ~하면 → ~한다' 한 문장으로. 학생이 정한 문장을 그대로 다시 말해 주고 통화를 끝내.");
     return String.join("\n", lines);
   }
@@ -63,7 +70,7 @@ public final class CallScript {
   //   관리 강도 2(넛지), 또는 독설 수위 2 이하 -> 담백하게 사실만
   //   관리 강도 3·4(채찍) + 독설 수위 3 이상   -> 솔직하게 짚되 사람은 깎아내리지 않기
   static String toneRule(int careLevel, int maxHarshness, CallSessionRequest.Card card) {
-    if (isMoodLow(card) || careLevel <= 0) {
+    if (isSupportive(careLevel, card)) {
       return "위로하고 응원하는 말만 해. 아쉬운 점을 지적하지 마. 오늘은 10분만 해도 충분하다고 말해 줘.";
     }
     if (careLevel == 1) {
@@ -76,6 +83,12 @@ public final class CallScript {
         + " 비꼬거나 겁주지 마. 세기는 5단계 중 "
         + maxHarshness
         + "단계까지만.";
+  }
+
+  // 위로하는 통화여야 하는지 알려줍니다. 기분이 낮거나, 오늘의 관리 강도가 0(회복)일 때입니다.
+  // 이때는 말투뿐 아니라 통화 순서도 바뀝니다. (못 한 것을 묻는 대신 기분부터 묻습니다)
+  static boolean isSupportive(int careLevel, CallSessionRequest.Card card) {
+    return isMoodLow(card) || careLevel <= 0;
   }
 
   // 가장 최근 기분이 낮은지(처짐 이하) 알려줍니다. 기분 기록이 없으면 false 입니다.
