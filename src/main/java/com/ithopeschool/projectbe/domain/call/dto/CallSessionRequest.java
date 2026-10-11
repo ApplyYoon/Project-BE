@@ -74,5 +74,17 @@ public record CallSessionRequest(
       // 연속으로 공부한 날 수
       @Min(value = 0, message = "streakDays 는 0 ~ 3650 이에요")
           @Max(value = 3650, message = "streakDays 는 0 ~ 3650 이에요")
-          Integer streakDays) {}
+          Integer streakDays,
+      // 어제 공부하다가 다른 탭·앱으로 나갔다 온 횟수 (FE 의 "딴짓 감지")
+      @Min(value = 0, message = "yesterdayAwayCount 는 0 ~ 200 이에요")
+          @Max(value = 200, message = "yesterdayAwayCount 는 0 ~ 200 이에요")
+          Integer yesterdayAwayCount,
+      // 어제 가장 자주 나간 시간대 (0 ~ 23시). 나간 적이 없으면 null
+      @Min(value = 0, message = "yesterdayAwayPeakHour 는 0 ~ 23 이에요")
+          @Max(value = 23, message = "yesterdayAwayPeakHour 는 0 ~ 23 이에요")
+          Integer yesterdayAwayPeakHour,
+      // 어제 집중 모드를 스스로 푼 횟수 (설정·안전 브레이크 때문에 저절로 풀린 것은 세지 않습니다)
+      @Min(value = 0, message = "yesterdayUnlockCount 는 0 ~ 50 이에요")
+          @Max(value = 50, message = "yesterdayUnlockCount 는 0 ~ 50 이에요")
+          Integer yesterdayUnlockCount) {}
 }

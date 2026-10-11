@@ -14,7 +14,20 @@ class CallScriptTest {
   private static Card card(
       Integer yesterdayStudy, Integer yesterdayPlan, String missReason, List<Integer> moods) {
     return new Card(
-        yesterdayStudy, yesterdayPlan, missReason, 3, 180, "19:00", 64, 55, 10, moods, 4);
+        yesterdayStudy,
+        yesterdayPlan,
+        missReason,
+        3,
+        180,
+        "19:00",
+        64,
+        55,
+        10,
+        moods,
+        4,
+        null,
+        null,
+        null);
   }
 
   private static final Card ORDINARY = card(190, 240, "phone", List.of(3, 3, 4));
@@ -138,7 +151,7 @@ class CallScriptTest {
   @Test
   @DisplayName("오늘 계획이 없으면 하나를 같이 정하고, 있으면 얼마나 할지 묻는다")
   void todayStepDependsOnTodayPlans() {
-    Card noPlanToday = new Card(190, 240, null, 0, 0, null, 64, 55, 10, null, 4);
+    Card noPlanToday = new Card(190, 240, null, 0, 0, null, 64, 55, 10, null, 4, null, null, null);
 
     assertThat(CallScript.todayStep(noPlanToday)).contains("가장 먼저 할 것 하나");
     assertThat(CallScript.todayStep(ORDINARY)).contains("얼마나 할 것 같은지");
@@ -148,8 +161,8 @@ class CallScriptTest {
   @Test
   @DisplayName("요즘 시작이 평균 15분 넘게 늦으면 시작 시각도 묻는다 (15분까지는 묻지 않는다)")
   void asksAboutStartTimeWhenUsuallyLate() {
-    Card late = new Card(190, 240, null, 3, 180, "19:00", 64, 55, 16, null, 4);
-    Card onTime = new Card(190, 240, null, 3, 180, "19:00", 64, 55, 15, null, 4);
+    Card late = new Card(190, 240, null, 3, 180, "19:00", 64, 55, 16, null, 4, null, null, null);
+    Card onTime = new Card(190, 240, null, 3, 180, "19:00", 64, 55, 15, null, 4, null, null, null);
 
     assertThat(CallScript.todayStep(late)).contains("제시간에 시작하려면");
     assertThat(CallScript.todayStep(onTime)).doesNotContain("제시간에 시작하려면");
@@ -187,12 +200,77 @@ class CallScriptTest {
   @Test
   @DisplayName("모르는 값(null)은 사실에 적지 않고, 아무것도 없으면 '기록이 없어' 한 줄만 적는다")
   void unknownValuesAreLeftOut() {
-    Card onlyYesterday = new Card(60, 0, null, null, null, null, null, null, null, null, null);
-    Card nothing = new Card(null, null, null, null, null, null, null, null, null, null, 0);
+    Card onlyYesterday =
+        new Card(60, 0, null, null, null, null, null, null, null, null, null, null, null, null);
+    Card nothing =
+        new Card(null, null, null, null, null, null, null, null, null, null, 0, null, null, null);
 
     assertThat(CallScript.facts(onlyYesterday)).containsExactly("- 어제 순공시간: 1시간 (어제는 계획이 없었어)");
     assertThat(CallScript.facts(nothing)).containsExactly("- 아직 기록이 없어. 처음 통화하는 것처럼 대해.");
     assertThat(CallScript.facts(null)).containsExactly("- 아직 기록이 없어. 처음 통화하는 것처럼 대해.");
+  }
+
+  // 어제 공부하다 나간 횟수 · 가장 자주 나간 시간대 · 집중 모드를 푼 횟수를 넣은 카드를 만듭니다. (어제 190분 공부, 계획 240분)
+  private static Card cardWithAway(Integer awayCount, Integer peakHour, Integer unlockCount) {
+    return new Card(
+        190, 240, null, 3, 180, "19:00", 64, 55, 10, null, 4, awayCount, peakHour, unlockCount);
+  }
+
+  @Test
+  @DisplayName("어제 공부하다 나간 횟수와 가장 자주 나간 시간대, 집중 모드를 푼 횟수를 사실에 적는다")
+  void awayAndUnlockCountsAreWritten() {
+    assertThat(CallScript.facts(cardWithAway(3, 21, 2)))
+        .contains("- 어제 공부하다가 다른 데로 나갔다 온 횟수: 3번 (21시대에 가장 자주)")
+        .contains("- 어제 집중 모드를 스스로 푼 횟수: 2번");
+    // 시간대를 모르면 횟수만 적습니다.
+    assertThat(CallScript.facts(cardWithAway(1, null, null)))
+        .contains("- 어제 공부하다가 다른 데로 나갔다 온 횟수: 1번");
+  }
+
+  @Test
+  @DisplayName("한 번도 안 나간 것은 공부를 한 날에만 적는다 (공부를 안 한 날의 0번은 칭찬할 일이 아니다)")
+  void zeroAwayIsWrittenOnlyWhenStudied() {
+    assertThat(CallScript.facts(cardWithAway(0, null, 0)))
+        .contains("- 어제는 공부하는 동안 한 번도 다른 데로 나가지 않았어");
+    // 집중 모드를 푼 적이 없으면(0번) 그 줄은 적지 않습니다.
+    assertThat(String.join("\n", CallScript.facts(cardWithAway(0, null, 0))))
+        .doesNotContain("집중 모드");
+
+    Card noStudy = new Card(0, 240, null, 3, 180, "19:00", 64, 55, 10, null, 4, 0, null, 0);
+    assertThat(String.join("\n", CallScript.facts(noStudy))).doesNotContain("나가지 않았어");
+
+    // 값을 안 보냈으면(null) 아무 줄도 적지 않습니다. (예전 FE 와 통화해도 그대로 동작합니다)
+    assertThat(String.join("\n", CallScript.facts(cardWithAway(null, null, null))))
+        .doesNotContain("나갔다 온")
+        .doesNotContain("나가지 않았어");
+  }
+
+  @Test
+  @DisplayName("어제 계획을 못 채웠고 3번 이상 나갔으면, 탓하지 않고 그때 무슨 일이 있었는지 묻게 한다")
+  void manyAwaysAddAQuestion() {
+    assertThat(CallScript.yesterdayStep(cardWithAway(3, 21, null)))
+        .contains("어제 공부하다가 3번 나갔다 왔어")
+        .contains("탓하지 말고");
+    // 2번까지는 묻지 않습니다.
+    assertThat(CallScript.yesterdayStep(cardWithAway(2, 21, null))).doesNotContain("나갔다 왔어");
+    assertThat(CallScript.yesterdayStep(cardWithAway(null, null, null))).doesNotContain("나갔다 왔어");
+
+    // 계획을 다 채운 날에는 여러 번 나갔어도 묻지 않습니다.
+    Card done = new Card(240, 240, null, 3, 180, "19:00", 64, 55, 10, null, 4, 5, 21, null);
+    assertThat(CallScript.yesterdayStep(done)).doesNotContain("나갔다 왔어");
+  }
+
+  @Test
+  @DisplayName("위로하는 통화에서는 나간 횟수를 묻는 말이 통화 순서에 들어가지 않는다")
+  void supportiveCallDoesNotAskAboutAways() {
+    // 가장 최근 기분이 1(많이 처짐)인 날
+    Card lowMood =
+        new Card(100, 240, null, 3, 180, "19:00", 64, 55, 10, List.of(3, 1), 4, 5, 21, 2);
+
+    String instructions = CallScript.instructions(3, 3, lowMood);
+    String order = instructions.substring(instructions.indexOf("[통화 순서]"));
+
+    assertThat(order).doesNotContain("나갔다 왔어");
   }
 
   @Test
