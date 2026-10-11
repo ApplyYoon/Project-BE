@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachResponse;
+import com.ithopeschool.projectbe.domain.coach.dto.CoachParagraphResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
@@ -64,7 +64,7 @@ class CoachControllerTest {
   @DisplayName("FE 가 보내는 모양 그대로 통과하고, AI 문단을 200 으로 돌려준다")
   void returnsParagraph() throws Exception {
     given(coachService.weeklyParagraph(any()))
-        .willReturn(new WeeklyCoachResponse("이번 주는 계획의 64% 를 했어."));
+        .willReturn(new CoachParagraphResponse("이번 주는 계획의 64% 를 했어."));
 
     weekly(VALID)
         .andExpect(status().isOk())
@@ -74,7 +74,7 @@ class CoachControllerTest {
   @Test
   @DisplayName("AI 문단이 없으면 필드를 빼지 않고 null 로 돌려준다 (docs/API.md 4장)")
   void returnsNullParagraph() throws Exception {
-    given(coachService.weeklyParagraph(any())).willReturn(WeeklyCoachResponse.none());
+    given(coachService.weeklyParagraph(any())).willReturn(CoachParagraphResponse.none());
 
     weekly(VALID)
         .andExpect(status().isOk())
@@ -142,7 +142,7 @@ class CoachControllerTest {
   @Test
   @DisplayName("관리 강도 한도 0 과 4, 독설 수위 1 과 5 는 통과한다 (경계값)")
   void acceptsLevelsAtTheEdges() throws Exception {
-    given(coachService.weeklyParagraph(any())).willReturn(WeeklyCoachResponse.none());
+    given(coachService.weeklyParagraph(any())).willReturn(CoachParagraphResponse.none());
 
     weekly(
             VALID
