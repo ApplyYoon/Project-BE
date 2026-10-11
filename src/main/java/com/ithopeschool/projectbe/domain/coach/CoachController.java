@@ -1,7 +1,8 @@
 package com.ithopeschool.projectbe.domain.coach;
 
+import com.ithopeschool.projectbe.domain.coach.dto.CoachCommentRequest;
+import com.ithopeschool.projectbe.domain.coach.dto.CoachParagraphResponse;
 import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
-import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -24,7 +25,19 @@ public class CoachController {
   // 만드는 것이 아니라 "물어보는" 것이라 201 이 아니라 200 으로 답합니다.
   @Operation(summary = "주간 코치 문단 받기 (숫자를 주면 AI 가 말로 풀어 줌 · 토큰 필요 · 배포 서버에서만 AI 가 켜짐)")
   @PostMapping("/weekly")
-  public WeeklyCoachResponse weekly(@Valid @RequestBody WeeklyCoachRequest request) {
+  public CoachParagraphResponse weekly(@Valid @RequestBody WeeklyCoachRequest request) {
     return coachService.weeklyParagraph(request);
+  }
+
+  @Operation(summary = "어제 한 줄 받기 (홈 화면 · 숫자를 주면 AI 가 1~2문장으로 풀어 줌 · 토큰 필요)")
+  @PostMapping("/daily")
+  public CoachParagraphResponse daily(@Valid @RequestBody CoachCommentRequest request) {
+    return coachService.dailyParagraph(request);
+  }
+
+  @Operation(summary = "월간 코치 문단 받기 (최근 4주 · 숫자를 주면 AI 가 말로 풀어 줌 · 토큰 필요)")
+  @PostMapping("/monthly")
+  public CoachParagraphResponse monthly(@Valid @RequestBody CoachCommentRequest request) {
+    return coachService.monthlyParagraph(request);
   }
 }

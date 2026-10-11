@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.ithopeschool.projectbe.domain.coach.dto.CoachCommentRequest;
 import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -162,5 +163,50 @@ class CoachServiceTest {
     given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
     assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isEqualTo(GOOD_PARAGRAPH);
     assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isEqualTo(GOOD_PARAGRAPH);
+  }
+
+  // ---- 어제 한 줄 · 월간 ----
+
+  private static final CoachCommentRequest COMMENT_REQUEST =
+      new CoachCommentRequest(REQUEST.numbers(), 1, 3);
+
+  @Test
+  @DisplayName("어제 한 줄은 '어제 하루' 지침으로, 월간은 '최근 4주' 지침으로 GPT 에게 묻는다")
+  void eachKindUsesItsOwnInstructions() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+
+    coachService.dailyParagraph(COMMENT_REQUEST);
+    coachService.monthlyParagraph(COMMENT_REQUEST);
+
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> input = ArgumentCaptor.forClass(String.class);
+    verify(coachAiClient, times(2)).ask(instructions.capture(), input.capture());
+    assertThat(instructions.getAllValues().get(0))
+        .isEqualTo(CoachPrompt.instructions(CoachKind.DAILY, 1, 3));
+    assertThat(input.getAllValues().get(0)).startsWith("어제 숫자야.");
+    assertThat(instructions.getAllValues().get(1))
+        .isEqualTo(CoachPrompt.instructions(CoachKind.MONTHLY, 1, 3));
+    assertThat(input.getAllValues().get(1)).startsWith("최근 4주 숫자야.");
+  }
+
+  @Test
+  @DisplayName("어제 한 줄·월간도 지어낸 숫자가 있으면 버리고, 로그인이 필요하고, 하루 한도를 같이 쓴다")
+  void otherKindsFollowTheSameRules() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of("어제는 계획의 70% 를 했어."));
+    assertThat(coachService.dailyParagraph(COMMENT_REQUEST).paragraph()).isNull();
+
+    // 위에서 1번 썼고, 한도는 2번입니다. 월간으로 1번 더 쓰면 다음은 종류와 상관없이 막힙니다.
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    assertThat(coachService.monthlyParagraph(COMMENT_REQUEST).paragraph())
+        .isEqualTo(GOOD_PARAGRAPH);
+    assertThat(coachService.dailyParagraph(COMMENT_REQUEST).paragraph()).isNull();
+    assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isNull();
+
+    given(currentUserProvider.getCurrentUserId())
+        .willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"));
+    assertThatThrownBy(() -> coachService.dailyParagraph(COMMENT_REQUEST))
+        .isInstanceOf(ApiException.class);
+    assertThatThrownBy(() -> coachService.monthlyParagraph(COMMENT_REQUEST))
+        .isInstanceOf(ApiException.class);
   }
 }

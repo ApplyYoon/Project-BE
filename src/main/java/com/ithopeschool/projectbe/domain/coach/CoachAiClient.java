@@ -18,6 +18,7 @@ import org.springframework.web.client.RestClientException;
 //
 // ■ 배포 서버에서만 켜집니다
 //   GPT 키와 모델 이름은 application-prod.yml 에만 자리가 있습니다. (환경변수 OPENAI_API_KEY, OPENAI_MODEL)
+//   모델은 기본값(gpt-6-luna)이 있어서, 배포 서버에 키만 넣으면 켜집니다.
 //   내 컴퓨터(local)에는 자리가 없어서, 환경변수를 넣어도 GPT 를 부르지 않습니다. (isEnabled() 가 false)
 //   키가 여러 컴퓨터에 퍼지면 새어 나가기 쉽고, 부를 때마다 돈이 나가기 때문입니다.
 //
@@ -62,7 +63,7 @@ public class CoachAiClient {
     if (isEnabled()) {
       log.info("[AI] GPT 를 쓸 수 있어요. (키와 모델 이름이 설정돼 있습니다)");
     } else {
-      log.info("[AI] GPT 가 꺼져 있어요. 배포 서버에 OPENAI_API_KEY 와 OPENAI_MODEL 이 있어야 켜집니다.");
+      log.info("[AI] GPT 가 꺼져 있어요. 배포 서버에 OPENAI_API_KEY 가 있어야 켜집니다.");
     }
   }
 
