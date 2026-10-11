@@ -23,10 +23,12 @@ services:
       # 이 서버를 불러도 되는 FE 주소 (예: https://내-fe.vercel.app). 끝에 / 를 붙이지 않습니다.
       - key: CORS_ALLOWED_ORIGINS
         sync: false
-      # GPT(OpenAI) 키와 모델 이름. 둘 다 넣어야 AI 기능이 켜집니다. 비워 두면 AI 없이 돌아갑니다. (docs/DEPLOY.md "AI(GPT) 켜기")
+      # GPT(OpenAI) 키. 넣으면 글 AI 가 켜집니다. 비워 두면 AI 없이 돌아갑니다. (docs/DEPLOY.md "AI(GPT) 켜기")
+      # 글 모델은 gpt-6-luna 를 씁니다. 바꾸고 싶을 때만 Render 화면에서 OPENAI_MODEL 을 따로 추가합니다.
       - key: OPENAI_API_KEY
         sync: false
-      - key: OPENAI_MODEL
+      # 음성 통화에 쓸 모델 이름. 글 모델보다 훨씬 비쌉니다. 비워 두면 통화만 꺼진 채로 돌아갑니다. (docs/DEPLOY.md "AI 통화 켜기")
+      - key: OPENAI_REALTIME_MODEL
         sync: false
 
       # ── 비밀이 아닌 값은 여기에 적어도 됩니다. ──

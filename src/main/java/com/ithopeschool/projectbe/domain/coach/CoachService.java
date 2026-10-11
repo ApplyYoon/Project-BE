@@ -1,13 +1,16 @@
 package com.ithopeschool.projectbe.domain.coach;
 
+import com.ithopeschool.projectbe.domain.coach.dto.CoachCommentRequest;
+import com.ithopeschool.projectbe.domain.coach.dto.CoachParagraphResponse;
 import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
-import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachResponse;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-// 주간 리포트 맨 위의 "코치 한 문단" 을 AI 에게 부탁하는 로직입니다. (이슈 #87 · FE src/lib/weeklyCoach.ts)
+// 숫자를 주고 "코치 한마디" 를 AI 에게 부탁하는 로직입니다. (이슈 #87 · FE src/lib/weeklyCoach.ts 등)
+// 어제 한 줄(홈) · 주간 리포트 · 월간 리포트, 세 자리가 같이 씁니다.
 //
 // 순서
 //   1. 로그인한 사람인지 확인한다          (아니면 401)
@@ -26,25 +29,45 @@ public class CoachService {
   private final CoachAiClient coachAiClient;
   private final CoachDailyLimit coachDailyLimit;
 
-  public WeeklyCoachResponse weeklyParagraph(WeeklyCoachRequest request) {
+  // 주간 리포트의 코치 한마디
+  public CoachParagraphResponse weeklyParagraph(WeeklyCoachRequest request) {
+    return paragraph(
+        CoachKind.WEEKLY, request.numbers(), request.maxCareLevel(), request.maxHarshness());
+  }
+
+  // 홈의 "어제 한 줄"
+  public CoachParagraphResponse dailyParagraph(CoachCommentRequest request) {
+    return paragraph(
+        CoachKind.DAILY, request.numbers(), request.maxCareLevel(), request.maxHarshness());
+  }
+
+  // 월간 리포트의 코치 한마디
+  public CoachParagraphResponse monthlyParagraph(CoachCommentRequest request) {
+    return paragraph(
+        CoachKind.MONTHLY, request.numbers(), request.maxCareLevel(), request.maxHarshness());
+  }
+
+  // 어느 종류든 같은 순서로 처리합니다. 달라지는 것은 AI 에게 주는 지침(기간·문장 수·권하는 행동)뿐입니다.
+  private CoachParagraphResponse paragraph(
+      CoachKind kind, List<WeeklyCoachRequest.Number> numbers, int maxCareLevel, int maxHarshness) {
     // 로그인하지 않은 요청은 여기서 401 이 나갑니다. 아무나 불러서 GPT 비용을 쓰게 두면 안 됩니다.
     Long userId = currentUserProvider.getCurrentUserId();
 
     if (!coachAiClient.isEnabled()) {
-      return WeeklyCoachResponse.none();
+      return CoachParagraphResponse.none();
     }
     if (!coachDailyLimit.tryUse(userId)) {
-      return WeeklyCoachResponse.none();
+      return CoachParagraphResponse.none();
     }
 
     Optional<String> paragraph =
         coachAiClient.ask(
-            CoachPrompt.instructions(request.maxCareLevel(), request.maxHarshness()),
-            CoachPrompt.input(request.numbers()));
+            CoachPrompt.instructions(kind, maxCareLevel, maxHarshness),
+            CoachPrompt.input(kind, numbers));
 
-    if (paragraph.isEmpty() || !CoachParagraphCheck.isSafe(paragraph.get(), request.numbers())) {
-      return WeeklyCoachResponse.none();
+    if (paragraph.isEmpty() || !CoachParagraphCheck.isSafe(paragraph.get(), numbers)) {
+      return CoachParagraphResponse.none();
     }
-    return new WeeklyCoachResponse(paragraph.get());
+    return new CoachParagraphResponse(paragraph.get());
   }
 }
