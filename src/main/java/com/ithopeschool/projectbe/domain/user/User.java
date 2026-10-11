@@ -37,4 +37,9 @@ public class User {
     this.nickname = nickname;
     this.createdAt = Instant.now();
   }
+
+  // 별명을 바꿉니다. (@Setter 를 쓰지 않고, 바꿀 수 있는 값만 이름을 지어 메서드로 엽니다)
+  public void changeNickname(String nickname) {
+    this.nickname = nickname;
+  }
 }
