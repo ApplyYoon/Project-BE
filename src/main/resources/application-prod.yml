@@ -25,13 +25,14 @@ spring:
       ddl-auto: none
 
 # GPT(OpenAI) 키와 모델 이름입니다. 배포 서버의 환경변수에서만 받습니다. (Render 의 Environment 화면에서 입력)
-# 이 자리는 배포 설정에만 있어서, AI 기능은 배포 서버에서만 켜집니다. 둘 중 하나라도 비어 있으면 꺼집니다.
+# 이 자리는 배포 설정에만 있어서, AI 기능은 배포 서버에서만 켜집니다. 키가 비어 있으면 꺼집니다.
 # ⚠️ 키 값을 이 파일에 직접 적지 않습니다. (적으면 git 에 영원히 남습니다)
 app:
   ai:
     openai-api-key: ${OPENAI_API_KEY:}
-    # 어떤 GPT 모델을 쓸지. 모델마다 값이 크게 다르니 docs/DEPLOY.md 의 "AI(GPT) 켜기" 를 보고 정합니다.
-    model: ${OPENAI_MODEL:}
+    # 글을 쓰는 GPT 모델. 2026-10-11 에 gpt-6-luna 로 정했습니다. (가장 싼 최신 계열. docs/DEPLOY.md "AI(GPT) 켜기")
+    # 다른 모델로 바꾸려면 환경변수 OPENAI_MODEL 에 이름을 넣습니다. 코드를 고치지 않아도 됩니다.
+    model: ${OPENAI_MODEL:gpt-6-luna}
     # 음성 통화에 쓸 모델. 글 모델과 다른 "음성 전용" 모델이고 훨씬 비쌉니다. 비워 두면 통화만 꺼집니다. (docs/DEPLOY.md "AI 통화 켜기")
     realtime-model: ${OPENAI_REALTIME_MODEL:}
     # AI 의 목소리. OpenAI 가 정해 둔 이름 중 하나입니다.

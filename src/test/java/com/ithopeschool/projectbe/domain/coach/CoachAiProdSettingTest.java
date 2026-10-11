@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.Environment;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -27,11 +28,13 @@ class CoachAiProdSettingTest {
 
     @MockitoBean private CoachService coachService;
     @Autowired private CoachAiClient coachAiClient;
+    @Autowired private Environment environment;
 
     @Test
-    @DisplayName("AI 가 켜진다")
-    void aiIsOn() {
+    @DisplayName("AI 가 켜지고, 넣은 모델 이름을 쓴다 (기본값보다 환경변수가 먼저)")
+    void aiIsOnWithTheGivenModel() {
       assertThat(coachAiClient.isEnabled()).isTrue();
+      assertThat(environment.getProperty("app.ai.model")).isEqualTo("test-model");
     }
   }
 
@@ -40,16 +43,18 @@ class CoachAiProdSettingTest {
   @Import(CoachAiClient.class)
   @ActiveProfiles("prod")
   @TestPropertySource(properties = {"OPENAI_API_KEY=test-key-123"})
-  @DisplayName("배포 서버에 키만 있고 모델 이름이 없을 때")
+  @DisplayName("배포 서버에 키만 넣었을 때 (모델 이름은 안 넣음)")
   class WithKeyOnly {
 
     @MockitoBean private CoachService coachService;
     @Autowired private CoachAiClient coachAiClient;
+    @Autowired private Environment environment;
 
     @Test
-    @DisplayName("AI 가 꺼져 있다")
-    void aiIsOff() {
-      assertThat(coachAiClient.isEnabled()).isFalse();
+    @DisplayName("AI 가 켜지고, 모델은 기본값 gpt-6-luna 를 쓴다")
+    void aiIsOnWithTheDefaultModel() {
+      assertThat(coachAiClient.isEnabled()).isTrue();
+      assertThat(environment.getProperty("app.ai.model")).isEqualTo("gpt-6-luna");
     }
   }
 
