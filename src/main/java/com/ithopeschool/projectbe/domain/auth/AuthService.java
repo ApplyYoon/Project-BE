@@ -6,6 +6,7 @@ import com.ithopeschool.projectbe.domain.auth.dto.SignupRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.UserResponse;
 import com.ithopeschool.projectbe.domain.user.User;
 import com.ithopeschool.projectbe.domain.user.UserRepository;
+import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.time.Clock;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 //
 //   가입   : 이메일이 처음인지 확인 → 비밀번호를 해시로 바꿈 → users 와 accounts 에 한 줄씩 저장
 //   로그인 : 이메일로 계정을 찾음 → 비밀번호가 맞는지 확인 → 새 토큰을 만들어 해시만 저장하고, 토큰은 FE 에 돌려줌
+//   내 정보 : 요청에 담긴 토큰으로 누구인지 알아내서(CurrentUserProvider) 그 사람의 번호와 별명을 돌려줌
 //
 // ⚠️ 이메일·비밀번호·토큰은 로그에 찍지 않습니다.
 @Service
@@ -40,6 +42,7 @@ public class AuthService {
   private final LoginTokenRepository loginTokenRepository;
   private final PasswordHasher passwordHasher;
   private final TokenHasher tokenHasher;
+  private final CurrentUserProvider currentUserProvider;
   // "지금 몇 시인지" 는 시계에게 묻습니다. 테스트에서 시각을 고정할 수 있습니다. (global/config/ClockConfig)
   private final Clock clock;
 
@@ -104,6 +107,19 @@ public class AuthService {
         new LoginToken(user.getId(), tokenHasher.hash(token), expiresAt, now));
 
     return new LoginResponse(token, UserResponse.from(user));
+  }
+
+  // 내 정보: 지금 로그인한 사람의 번호와 별명을 돌려줍니다.
+  // 토큰이 없거나 틀리면 getCurrentUserId() 가 401 을 던지기 때문에, 여기서는 따로 검사하지 않습니다.
+  @Transactional(readOnly = true)
+  public UserResponse me() {
+    Long userId = currentUserProvider.getCurrentUserId();
+    User user =
+        userRepository
+            .findById(userId)
+            // 토큰은 맞는데 사용자가 없는 경우(지워진 사용자)입니다. 다시 로그인하게 합니다.
+            .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED, "다시 로그인해 주세요"));
+    return UserResponse.from(user);
   }
 
   // 이메일을 비교하기 좋은 모양으로 맞춥니다. 앞뒤 공백을 지우고 소문자로 바꿉니다.

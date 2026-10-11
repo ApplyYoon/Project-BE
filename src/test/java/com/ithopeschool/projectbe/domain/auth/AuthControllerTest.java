@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -227,6 +228,33 @@ class AuthControllerTest {
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"))
         .andExpect(jsonPath("$.error.message").value("이메일 또는 비밀번호가 맞지 않아요"));
+  }
+
+  // ---- 내 정보 ----
+
+  @Test
+  @DisplayName("내 정보는 200 과 { id, name } 을 돌려준다")
+  void meReturnsUser() throws Exception {
+    given(authService.me()).willReturn(new UserResponse("1", "티맥이"));
+
+    mockMvc
+        .perform(get("/api/v1/auth/me").header("Authorization", "Bearer token-abc"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value("1"))
+        .andExpect(jsonPath("$.name").value("티맥이"))
+        .andExpect(jsonPath("$.length()").value(2));
+  }
+
+  @Test
+  @DisplayName("로그인하지 않고 내 정보를 부르면 401 과 에러 모양")
+  void meUnauthorized() throws Exception {
+    given(authService.me()).willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"));
+
+    mockMvc
+        .perform(get("/api/v1/auth/me"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"))
+        .andExpect(jsonPath("$.error.message").value("로그인이 필요해요"));
   }
 
   @Test

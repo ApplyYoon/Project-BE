@@ -9,6 +9,7 @@ import com.ithopeschool.projectbe.domain.auth.dto.SignupRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.UserResponse;
 import com.ithopeschool.projectbe.domain.user.User;
 import com.ithopeschool.projectbe.domain.user.UserRepository;
+import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.time.Clock;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 // 가입·로그인 로직을 테스트용 DB(H2)에 실제로 넣고 꺼내 보며 확인합니다.
 // 시계는 한 시각에 고정해서, "토큰이 30일 뒤에 끝난다" 같은 것을 정확히 비교합니다.
@@ -36,10 +38,15 @@ class AuthServiceTest {
   // 테스트가 빨리 끝나게 되풀이 횟수는 가장 작은 값으로 둡니다. (횟수와 상관없는 로직을 보는 테스트입니다)
   private final PasswordHasher passwordHasher = new PasswordHasher(PasswordHasher.MIN_ITERATIONS);
   private final TokenHasher tokenHasher = new TokenHasher();
+  // 가짜 요청입니다. 테스트에서 Authorization 헤더를 넣어 "이 토큰으로 부른 요청" 을 흉내 냅니다.
+  private final MockHttpServletRequest request = new MockHttpServletRequest();
   private AuthService authService;
 
   @BeforeEach
   void setUp() {
+    Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+    CurrentUserProvider currentUserProvider =
+        new CurrentUserProvider(request, loginTokenRepository, tokenHasher, clock, "");
     authService =
         new AuthService(
             userRepository,
@@ -47,7 +54,8 @@ class AuthServiceTest {
             loginTokenRepository,
             passwordHasher,
             tokenHasher,
-            Clock.fixed(NOW, ZoneOffset.UTC));
+            currentUserProvider,
+            clock);
   }
 
   // 테스트마다 쓰는 가입 요청입니다. 이메일만 바꿔 가며 씁니다.
@@ -244,5 +252,42 @@ class AuthServiceTest {
         .isInstanceOf(ApiException.class);
     assertThat(authService.login(new LoginRequest("two@starflow.com", "other2026")).user().name())
         .isEqualTo("별빛");
+  }
+
+  // ---- 내 정보 ----
+
+  @Test
+  @DisplayName("로그인해서 받은 토큰으로 부르면 내 번호와 별명을 돌려준다")
+  void meReturnsTheLoggedInUser() {
+    UserResponse signedUp = authService.signup(signupRequest("tmax@starflow.com"));
+    LoginResponse loggedIn = authService.login(new LoginRequest("tmax@starflow.com", "study2026"));
+    request.addHeader("Authorization", "Bearer " + loggedIn.token());
+
+    assertThat(authService.me()).isEqualTo(signedUp);
+  }
+
+  @Test
+  @DisplayName("토큰 없이 부르면 401")
+  void meWithoutTokenIsRejected() {
+    authService.signup(signupRequest("tmax@starflow.com"));
+
+    assertThatThrownBy(() -> authService.me())
+        .isInstanceOf(ApiException.class)
+        .hasMessage("로그인이 필요해요")
+        .extracting(e -> ((ApiException) e).getErrorCode())
+        .isEqualTo(ErrorCode.UNAUTHORIZED);
+  }
+
+  @Test
+  @DisplayName("토큰은 맞는데 사용자가 지워졌으면 401 (다시 로그인하게 한다)")
+  void meWhenUserIsGone() {
+    authService.signup(signupRequest("tmax@starflow.com"));
+    LoginResponse loggedIn = authService.login(new LoginRequest("tmax@starflow.com", "study2026"));
+    request.addHeader("Authorization", "Bearer " + loggedIn.token());
+    userRepository.deleteAll();
+
+    assertThatThrownBy(() -> authService.me())
+        .isInstanceOf(ApiException.class)
+        .hasMessage("다시 로그인해 주세요");
   }
 }
