@@ -15,6 +15,8 @@ erDiagram
     users ||--o{ subjects : "user_id"
     users ||--o{ study_plans : "user_id"
     users ||--o{ study_sessions : "user_id"
+    users ||--o{ accounts : "user_id"
+    users ||--o{ login_tokens : "user_id"
     subjects ||--o{ study_plans : "subject_id"
     subjects ||--o{ study_sessions : "subject_id"
 
@@ -46,6 +48,24 @@ erDiagram
         timestamptz ended_at "공부를 끝낸 시각"
         int pause_count "일시정지를 누른 횟수"
     }
+    accounts {
+        bigint id PK "계정을 구분하는 고유 번호"
+        bigint user_id FK "이 계정의 주인 (사용자 한 명에 계정은 하나)"
+        varchar email "로그인할 때 쓰는 이메일 (소문자로 저장, 중복 불가, 100자까지)"
+        varchar password_hash "비밀번호를 되돌릴 수 없게 바꾼 값 (진짜 비밀번호는 저장하지 않음)"
+        varchar name "실명 (20자까지)"
+        varchar school_code "고른 고등학교의 번호 (안 골랐으면 비어 있음)"
+        varchar school_name "고른 고등학교의 이름 (안 골랐으면 비어 있음)"
+        boolean diary_analysis_agreed "일기·감정 기록을 분석에 써도 된다고 했으면 true (선택 동의)"
+        timestamptz agreed_at "이용약관과 개인정보 수집·이용에 동의한 시각 (필수 동의)"
+    }
+    login_tokens {
+        bigint id PK "토큰을 구분하는 고유 번호"
+        bigint user_id FK "이 토큰의 주인"
+        varchar token_hash "토큰의 해시 (토큰 원문은 저장하지 않음, 중복 불가)"
+        timestamptz expires_at "이 시각이 지나면 쓸 수 없음 (로그인하고 30일 뒤)"
+        timestamptz created_at "토큰을 내준 시각 (= 로그인한 시각)"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
@@ -58,6 +78,11 @@ erDiagram
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
 | `study_plans` | 하루의 공부 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부) | #3 |
 | `study_sessions` | 타이머로 한 번 공부한 기록 하나가 한 줄 (과목, 시작·끝 시각, 일시정지 횟수) | #3 |
+| `accounts` | 이메일로 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시, 실명, 학교, 동의). 사용자 한 명에 하나 | #97 |
+| `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
+
+> `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
+> 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.
 
 ## 그림 읽는 법
 
