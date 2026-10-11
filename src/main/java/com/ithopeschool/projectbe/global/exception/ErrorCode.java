@@ -20,8 +20,12 @@ public enum ErrorCode {
   METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 요청 방법이에요"),
   // 이미 있는 것을 또 만들려고 함
   CONFLICT(HttpStatus.CONFLICT, "이미 있는 값이에요"),
+  // 정해 둔 횟수를 넘게 부름 (하루 통화 횟수 등)
+  TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "오늘은 더 할 수 없어요"),
   // 서버가 예상 못 한 문제
-  INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "잠시 후 다시 시도해 주세요");
+  INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "잠시 후 다시 시도해 주세요"),
+  // 서버는 멀쩡한데 그 기능을 지금 쓸 수 없음 (AI 가 꺼져 있음, AI 회사 쪽 문제 등)
+  SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "지금은 쓸 수 없어요");
 
   // 이 에러일 때 돌려줄 HTTP 상태 번호 (400, 404 ...)
   private final HttpStatus status;

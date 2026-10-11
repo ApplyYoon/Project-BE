@@ -24,6 +24,10 @@ app:
     #
     # 한 사람이 하루에 AI 를 부를 수 있는 횟수입니다. 넘으면 그날은 AI 글 없이 기본 문장만 나갑니다. (비용 지키기)
     daily-limit-per-user: ${AI_DAILY_LIMIT_PER_USER:20}
+    # 한 사람이 하루에 AI 통화를 걸 수 있는 횟수입니다. 음성은 분 단위로 돈이 나가서 작게 잡았습니다. 넘으면 429 입니다.
+    call-daily-limit-per-user: ${AI_CALL_DAILY_LIMIT_PER_USER:3}
+    # 통화 한 번의 최대 길이(초)입니다. FE 가 이 시간이 되면 통화를 끊습니다.
+    call-max-seconds: ${AI_CALL_MAX_SECONDS:300}
   job:
     # 예약 작업 주소(/api/v1/jobs/**)를 부를 때 X-Job-Key 헤더에 넣어야 하는 비밀 키입니다. (docs/JOBS.md)
     # 값은 여기에 적지 않고 환경변수 JOB_SECRET_KEY 로 받습니다. 비어 있으면 요청을 전부 거절합니다.
