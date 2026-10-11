@@ -81,6 +81,16 @@ public class CurrentUserProvider {
     return loginToken.getUserId();
   }
 
+  // 지금 요청에 담긴 로그인 토큰의 해시를 돌려줍니다. "바로 이 토큰" 을 지워야 하는 로그아웃 같은 곳에서 씁니다.
+  // 토큰이 없거나, DB 에 없는 테스트 토큰이면 null 입니다.
+  public String getCurrentTokenHash() {
+    String token = readToken();
+    if (token == null || isTestToken(token)) {
+      return null;
+    }
+    return tokenHasher.hash(token);
+  }
+
   // 요청 헤더에서 토큰을 꺼냅니다. 헤더가 없거나 모양이 다르면 null 입니다.
   //   "Bearer abc123" -> "abc123"   /   헤더 없음 · "abc123" · "Bearer " -> null
   private String readToken() {

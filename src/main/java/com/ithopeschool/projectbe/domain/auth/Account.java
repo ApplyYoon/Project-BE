@@ -77,4 +77,19 @@ public class Account {
     this.diaryAnalysisAgreed = diaryAnalysisAgreed;
     this.agreedAt = agreedAt;
   }
+
+  // 내 정보를 고칩니다. 이메일은 로그인에 쓰는 값이라 여기서 바꾸지 않습니다.
+  // 선택 동의(일기 분석)는 언제든 켜고 끌 수 있어야 해서 같이 받습니다.
+  public void updateProfile(
+      String name, String schoolCode, String schoolName, boolean diaryAnalysisAgreed) {
+    this.name = name;
+    this.schoolCode = schoolCode;
+    this.schoolName = schoolName;
+    this.diaryAnalysisAgreed = diaryAnalysisAgreed;
+  }
+
+  // 비밀번호를 바꿉니다. 진짜 비밀번호가 아니라 PasswordHasher 가 만든 해시를 받습니다.
+  public void changePasswordHash(String passwordHash) {
+    this.passwordHash = passwordHash;
+  }
 }
