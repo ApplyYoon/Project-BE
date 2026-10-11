@@ -641,7 +641,10 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
     "weekCompletionRate": 55,
     "weekStartDelayMinutes": 23,
     "recentMoods": [3, 2, 4],
-    "streakDays": 4
+    "streakDays": 4,
+    "yesterdayAwayCount": 3,
+    "yesterdayAwayPeakHour": 21,
+    "yesterdayUnlockCount": 1
   }
 }
 ```
@@ -662,10 +665,14 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 | `card.weekStartDelayMinutes` | 이번 주 평균 시작 지연(분). 0 ~ 600                                                    |
 | `card.recentMoods`           | 최근 기분 1 ~ 5. 오래된 날부터, 최대 7개                                               |
 | `card.streakDays`            | 연속으로 공부한 날 수                                                                  |
+| `card.yesterdayAwayCount`    | 어제 공부하다가 다른 탭·앱으로 나갔다 온 횟수. 0 ~ 200                                 |
+| `card.yesterdayAwayPeakHour` | 어제 가장 자주 나간 시간대. 0 ~ 23 (나간 적이 없으면 `null`)                           |
+| `card.yesterdayUnlockCount`  | 어제 집중 모드를 스스로 푼 횟수. 0 ~ 50 (저절로 풀린 것은 세지 않음)                   |
 
 - 카드의 값은 **모두 선택**입니다. 모르는 값은 `null` 로 보내거나 빼면 됩니다. (`0` 과 "모름" 은 다릅니다)
 - 카드에는 **숫자와 정해진 분류값만** 담습니다. 계획 내용·일기·이름 같은 글 원문은 받지 않습니다. 범위를 벗어나거나 모양이 다르면 400 입니다.
 - 어제의 달성률은 서버가 5장의 식으로 직접 계산합니다. FE 가 계산한 값을 받지 않습니다.
+- 나간 횟수는 **탓하는 데 쓰지 않습니다.** 어제 계획을 못 채웠고 3번 이상 나갔을 때만 "그때 무엇 때문에 나갔는지" 를 한 번 묻게 합니다. 기분이 낮은 날(위로하는 통화)에는 묻지 않습니다.
 
 **응답 200**
 

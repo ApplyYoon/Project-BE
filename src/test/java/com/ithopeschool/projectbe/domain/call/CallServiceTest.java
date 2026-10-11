@@ -44,7 +44,10 @@ class CallServiceTest {
 
   private static final CallSessionRequest REQUEST =
       new CallSessionRequest(
-          2, 3, new Card(100, 240, "phone", 3, 180, "19:00", 64, 55, 10, List.of(3, 3), 4));
+          2,
+          3,
+          new Card(
+              100, 240, "phone", 3, 180, "19:00", 64, 55, 10, List.of(3, 3), 4, null, null, null));
 
   @BeforeEach
   void loggedInAndCallOn() {

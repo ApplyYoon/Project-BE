@@ -49,7 +49,10 @@ class CallControllerTest {
           "weekCompletionRate": 55,
           "weekStartDelayMinutes": 23,
           "recentMoods": [3, 2, 4],
-          "streakDays": 4
+          "streakDays": 4,
+          "yesterdayAwayCount": 3,
+          "yesterdayAwayPeakHour": 21,
+          "yesterdayUnlockCount": 1
         }
       }
       """;
@@ -126,6 +129,15 @@ class CallControllerTest {
         VALID.replace("\"todayPlanCount\": 3", "\"todayPlanCount\": 51"),
         "todayPlanCount 는 0 ~ 50 이에요");
     expectRejected(VALID.replace("[3, 2, 4]", "[3, 6]"), "기분은 1 ~ 5 예요");
+    expectRejected(
+        VALID.replace("\"yesterdayAwayCount\": 3", "\"yesterdayAwayCount\": 201"),
+        "yesterdayAwayCount 는 0 ~ 200 이에요");
+    expectRejected(
+        VALID.replace("\"yesterdayAwayPeakHour\": 21", "\"yesterdayAwayPeakHour\": 24"),
+        "yesterdayAwayPeakHour 는 0 ~ 23 이에요");
+    expectRejected(
+        VALID.replace("\"yesterdayUnlockCount\": 1", "\"yesterdayUnlockCount\": -1"),
+        "yesterdayUnlockCount 는 0 ~ 50 이에요");
     expectRejected(
         VALID.replace("[3, 2, 4]", "[1, 2, 3, 4, 5, 1, 2, 3]"), "recentMoods 는 7개까지 보낼 수 있어요");
   }

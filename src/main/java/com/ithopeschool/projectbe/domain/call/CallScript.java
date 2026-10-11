@@ -22,6 +22,8 @@ public final class CallScript {
   static final int LOW_MOOD = 2;
   // 평균 시작 지연이 이 값(분)을 넘으면 "시작 시각" 을 통화에서 다룹니다. (FE 의 주간 코치 규칙과 같은 기준)
   static final int LATE_START_MINUTES = 15;
+  // 어제 공부하다 나갔다 온 횟수가 이 값 이상이면, 그 시간에 무슨 일이 있었는지 통화에서 물어봅니다.
+  static final int MANY_AWAY_COUNT = 3;
 
   private CallScript() {}
 
@@ -156,6 +158,24 @@ public final class CallScript {
     if (card.streakDays() != null && card.streakDays() > 0) {
       lines.add("- 연속으로 공부한 날: " + card.streakDays() + "일");
     }
+    // 어제 공부하다가 다른 탭·앱으로 나갔다 온 기록입니다. 웹 앱은 다른 앱을 막지 못해서, 나간 것을 세어 둡니다.
+    if (card.yesterdayAwayCount() != null) {
+      boolean studiedYesterday =
+          card.yesterdayStudyMinutes() != null && card.yesterdayStudyMinutes() > 0;
+      if (card.yesterdayAwayCount() > 0) {
+        String line = "- 어제 공부하다가 다른 데로 나갔다 온 횟수: " + card.yesterdayAwayCount() + "번";
+        if (card.yesterdayAwayPeakHour() != null) {
+          line += " (" + card.yesterdayAwayPeakHour() + "시대에 가장 자주)";
+        }
+        lines.add(line);
+      } else if (studiedYesterday) {
+        // 0번은 공부를 한 날에만 뜻이 있습니다. 공부를 안 한 날의 0번은 칭찬할 일이 아닙니다.
+        lines.add("- 어제는 공부하는 동안 한 번도 다른 데로 나가지 않았어");
+      }
+    }
+    if (card.yesterdayUnlockCount() != null && card.yesterdayUnlockCount() > 0) {
+      lines.add("- 어제 집중 모드를 스스로 푼 횟수: " + card.yesterdayUnlockCount() + "번");
+    }
 
     if (lines.isEmpty()) {
       lines.add("- 아직 기록이 없어. 처음 통화하는 것처럼 대해.");
@@ -203,12 +223,27 @@ public final class CallScript {
       return "어제 계획을 다 채웠어. 무엇이 도움이 됐는지 물어보고, 그 방법을 오늘도 써 보자고 해.";
     }
     if (card.yesterdayMissReason() == null) {
-      return "어제 계획을 다 채우지 못했어. 무엇이 가장 걸렸는지 한 가지만 물어봐.";
+      return "어제 계획을 다 채우지 못했어. 무엇이 가장 걸렸는지 한 가지만 물어봐." + awayQuestion(card);
     }
     return "어제 계획을 다 채우지 못했고, 이유는 '"
         + missReasonLabel(card.yesterdayMissReason())
         + "' 라고 했어. "
-        + missReasonQuestion(card.yesterdayMissReason());
+        + missReasonQuestion(card.yesterdayMissReason())
+        + awayQuestion(card);
+  }
+
+  // 어제 공부하다 여러 번 나갔다 왔으면 덧붙이는 질문입니다. 아니면 빈 글자입니다.
+  // 나간 것을 탓하려는 게 아니라, 어느 때가 힘든지 스스로 알아보게 하려는 질문입니다.
+  // (계획을 다 채운 날에는 묻지 않습니다. yesterdayStep 이 못 채운 날에만 이 함수를 부릅니다)
+  static String awayQuestion(CallSessionRequest.Card card) {
+    if (card == null
+        || card.yesterdayAwayCount() == null
+        || card.yesterdayAwayCount() < MANY_AWAY_COUNT) {
+      return "";
+    }
+    return " 어제 공부하다가 "
+        + card.yesterdayAwayCount()
+        + "번 나갔다 왔어. 탓하지 말고, 그때 무엇 때문에 나가게 됐는지 한 번만 물어봐.";
   }
 
   // 3번: 오늘에 대해 물을 것. 오늘 계획이 있는지, 요즘 시작이 늦는지에 따라 달라집니다.
