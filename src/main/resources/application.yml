@@ -8,6 +8,12 @@ spring:
     open-in-view: false
 
 app:
+  auth:
+    # 비밀번호를 해시(되돌릴 수 없는 값)로 바꿀 때 계산을 되풀이하는 횟수입니다. (domain/auth/PasswordHasher)
+    # 클수록 안전하지만 가입·로그인이 그만큼 느려집니다. 기본값 210000 은 OWASP 권장값입니다.
+    # 배포 서버가 느려서 로그인이 몇 초씩 걸리면 환경변수 PASSWORD_HASH_ITERATIONS 로 조절합니다. (docs/DEPLOY.md)
+    # 비밀값이 아니라서 값을 적어도 됩니다. 횟수를 바꿔도 예전에 가입한 사람은 그대로 로그인됩니다.
+    password-hash-iterations: ${PASSWORD_HASH_ITERATIONS:210000}
   job:
     # 예약 작업 주소(/api/v1/jobs/**)를 부를 때 X-Job-Key 헤더에 넣어야 하는 비밀 키입니다. (docs/JOBS.md)
     # 값은 여기에 적지 않고 환경변수 JOB_SECRET_KEY 로 받습니다. 비어 있으면 요청을 전부 거절합니다.
