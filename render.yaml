@@ -23,7 +23,11 @@ services:
       # 이 서버를 불러도 되는 FE 주소 (예: https://내-fe.vercel.app). 끝에 / 를 붙이지 않습니다.
       - key: CORS_ALLOWED_ORIGINS
         sync: false
-      # GPT 기능이 생기면 OPENAI_API_KEY 도 같은 방법(sync: false)으로 추가합니다.
+      # GPT(OpenAI) 키와 모델 이름. 둘 다 넣어야 AI 기능이 켜집니다. 비워 두면 AI 없이 돌아갑니다. (docs/DEPLOY.md "AI(GPT) 켜기")
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        sync: false
 
       # ── 비밀이 아닌 값은 여기에 적어도 됩니다. ──
       # 자바가 메모리를 쓰는 방식입니다. 무료 서버는 메모리가 512MB 뿐이라 자바에게 알려 줘야 합니다.
