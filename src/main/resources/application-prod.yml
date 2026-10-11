@@ -32,6 +32,10 @@ app:
     openai-api-key: ${OPENAI_API_KEY:}
     # 어떤 GPT 모델을 쓸지. 모델마다 값이 크게 다르니 docs/DEPLOY.md 의 "AI(GPT) 켜기" 를 보고 정합니다.
     model: ${OPENAI_MODEL:}
+    # 음성 통화에 쓸 모델. 글 모델과 다른 "음성 전용" 모델이고 훨씬 비쌉니다. 비워 두면 통화만 꺼집니다. (docs/DEPLOY.md "AI 통화 켜기")
+    realtime-model: ${OPENAI_REALTIME_MODEL:}
+    # AI 의 목소리. OpenAI 가 정해 둔 이름 중 하나입니다.
+    realtime-voice: ${OPENAI_REALTIME_VOICE:marin}
 
 # 배포 서버에서는 Swagger 화면을 끕니다 (API 목록을 아무나 볼 수 없게)
 springdoc:
