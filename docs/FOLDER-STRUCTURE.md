@@ -14,7 +14,7 @@ src/main/java/com/ithopeschool/projectbe/
 │
 ├── global/                      🌐 여러 기능이 같이 쓰는 것
 │   ├── auth/
-│   │   └── CurrentUserProvider.java "지금 요청한 사용자" 번호를 주는 단 한 곳 (로그인 전엔 테스트 사용자)
+│   │   └── CurrentUserProvider.java "지금 요청한 사용자" 번호를 주는 단 한 곳 (요청의 로그인 토큰을 봄)
 │   ├── config/
 │   │   └── WebConfig.java           CORS 설정 (어느 FE 주소를 허락할지)
 │   └── exception/
@@ -151,11 +151,13 @@ public class MemoService {
 public class MemoController {
 
   private final MemoService memoService;
+  private final CurrentUserProvider currentUserProvider;
 
   @Operation(summary = "내 메모 목록")
   @GetMapping
   public List<MemoResponse> getMemos() {
-    Long userId = 1L; // 로그인이 생기기 전까지는 테스트 사용자 (이슈 #6)
+    // 요청의 로그인 토큰을 보고 "누구인지" 를 알아냅니다. 로그인하지 않았으면 여기서 401 이 나갑니다.
+    Long userId = currentUserProvider.getCurrentUserId();
     return memoService.getMemos(userId);
   }
 }

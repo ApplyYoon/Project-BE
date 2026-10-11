@@ -24,6 +24,15 @@ spring:
       # 3) 켜질 때 테이블을 검사(validate)하면 DB 접속이 필요해서 none 으로 둡니다. 테이블은 미리 만들어 둬야 합니다.
       ddl-auto: none
 
+# GPT(OpenAI) 키와 모델 이름입니다. 배포 서버의 환경변수에서만 받습니다. (Render 의 Environment 화면에서 입력)
+# 이 자리는 배포 설정에만 있어서, AI 기능은 배포 서버에서만 켜집니다. 둘 중 하나라도 비어 있으면 꺼집니다.
+# ⚠️ 키 값을 이 파일에 직접 적지 않습니다. (적으면 git 에 영원히 남습니다)
+app:
+  ai:
+    openai-api-key: ${OPENAI_API_KEY:}
+    # 어떤 GPT 모델을 쓸지. 모델마다 값이 크게 다르니 docs/DEPLOY.md 의 "AI(GPT) 켜기" 를 보고 정합니다.
+    model: ${OPENAI_MODEL:}
+
 # 배포 서버에서는 Swagger 화면을 끕니다 (API 목록을 아무나 볼 수 없게)
 springdoc:
   api-docs:
