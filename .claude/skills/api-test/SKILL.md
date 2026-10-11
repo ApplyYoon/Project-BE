@@ -70,14 +70,17 @@ public class MemoController {
 
 ## 4. 로그인이 필요한 API — 테스트 토큰
 
-진짜 SNS 로그인은 Swagger 에서 하기 어렵습니다. 그래서 **내 컴퓨터(local)에서만 통하는 테스트 토큰**을 씁니다.
+로컬 DB 는 서버를 끄면 비워져서, 켤 때마다 가입·로그인을 다시 해야 토큰을 받습니다. 번거로워서 **내 컴퓨터(local)에서만 통하는 테스트 토큰**을 씁니다.
 
 - Swagger 화면 오른쪽 위 **Authorize** → 테스트 토큰을 붙여 넣고 **Authorize** → 이후 요청에 자동으로 붙습니다.
 - curl 로는 `-H 'Authorization: Bearer <테스트 토큰>'`
 - 토큰 값은 `src/main/resources/application-local.yml` 의 `app.auth.test-token` 에 있습니다.
 
-테스트 토큰을 서버가 알아보게 하는 코드는 **이슈 #6·#20 에서 만듭니다.**
-`application-local.yml` 에 `app.auth.test-token` 이 아직 없다면 로그인이 필요한 API 가 없는 단계이므로, 토큰 없이 부릅니다.
+- 테스트 토큰으로 부르면 서버가 켜질 때 만들어 둔 **테스트 사용자(1번)** 로 로그인한 것으로 봅니다. (`CurrentUserProvider`, `LocalTestUserInitializer`)
+- 확인: `GET /api/v1/auth/me` 가 `{"id":"1","name":"테스트 사용자"}` 를 돌려주면 됩니다.
+
+새 API 가 로그인한 사람만 쓰는 것이라면 Service 에서 **`currentUserProvider.getCurrentUserId()`** 를 불렀는지 꼭 봅니다.
+이 메서드를 부르지 않은 API 는 토큰 없이도 불립니다. 토큰 없이 불러서 **401 이 나오는지** 를 확인 목록에 넣으세요.
 
 ⚠️ 테스트 토큰은 배포 서버(prod)에서 통하면 안 됩니다. 배포 설정에는 넣지 않습니다.
 
