@@ -25,7 +25,7 @@ description: 테이블(엔티티, @Entity)을 새로 만들거나 컬럼을 추�
 
 - 필드는 camelCase — DB 컬럼은 snake_case 로 알아서 바뀝니다 (`userId` → `user_id`)
 - 필드마다 **한국어 주석** 한 줄
-- 시각은 `Instant`, 날짜는 `LocalDate`
+- 시각은 `Instant`, 날짜는 `LocalDate`. "하루 안의 몇 시 몇 분"(계획의 시작 시각 `19:00`)만 `LocalTime`
 - `users` 를 뺀 모든 테이블에 `userId` — 누구의 데이터인지 항상 알 수 있어야 합니다
 - `@Setter`, `@Data` 금지. `@Getter` + `@NoArgsConstructor(access = AccessLevel.PROTECTED)` + 직접 만든 생성자
 - `user`, `date`, `order` 같은 **DB 예약어**는 이름으로 쓰면 에러가 납니다 → `@Table(name = "users")`, `planDate`

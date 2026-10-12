@@ -36,6 +36,7 @@ class DbDiagramTest {
           "int", Set.of("INTEGER"),
           "boolean", Set.of("BOOLEAN"),
           "date", Set.of("DATE"),
+          "time", Set.of("TIME"),
           "timestamptz", Set.of("TIMESTAMP WITH TIME ZONE"));
 
   // 그림에 적힌 컬럼 한 줄: 타입, 이름, 키(PK/FK 또는 빈 글자), 설명
@@ -103,12 +104,14 @@ class DbDiagramTest {
     List<String> expectedLines = new ArrayList<>();
     for (String table : OUR_TABLES) {
       for (DiagramColumn column : diagram.get(table)) {
-        boolean looksLikeReference = column.name().endsWith("_id");
+        // xxx_id 이고 xxxs 테이블이 그림에 있으면 FK 입니다. (/db 규칙)
+        // 가리킬 테이블이 아직 없으면(study_plans.routine_id → routines, #85) FK 로 그리지 않습니다.
+        String parent = column.name().replace("_id", "") + "s";
+        boolean looksLikeReference = column.name().endsWith("_id") && diagram.containsKey(parent);
         assertThat(column.key().equals("FK"))
             .as("%s.%s 의 FK 표시", table, column.name())
             .isEqualTo(looksLikeReference);
         if (looksLikeReference) {
-          String parent = column.name().replace("_id", "") + "s";
           expectedLines.add(parent + " -> " + table + " : " + column.name());
         }
       }
