@@ -6,6 +6,7 @@ import com.ithopeschool.projectbe.domain.goal.WeeklyGoal.Kind;
 import com.ithopeschool.projectbe.domain.goal.WeeklyGoal.Progress;
 import com.ithopeschool.projectbe.domain.goal.WeeklyGoal.Status;
 import com.ithopeschool.projectbe.domain.goal.WeeklyGoal.WeekFacts;
+import com.ithopeschool.projectbe.domain.safety.SafetyBrake;
 import org.junit.jupiter.api.Test;
 
 // "이번 주 목표" 제안·판정 규칙(이슈 #88)을 확인합니다.
@@ -80,6 +81,50 @@ class WeeklyGoalTest {
     // FE 예7) 지연을 모름(null), 계획도 없음(null): 완주율 70%(10번) → [지난주만큼(70%)]
     assertThat(WeeklyGoal.candidates(facts(70, 10, null, null)))
         .containsExactly(new WeeklyGoal(Kind.KEEP, 70, 70));
+  }
+
+  // ─── 안전 브레이크가 켜진 주 ───
+
+  // 안전 브레이크의 네 값: 채찍 멈춤 · 회복 모드 · 도움 안내 · 연락 금지 시간
+  private static final SafetyBrake BRAKE_OFF = new SafetyBrake(false, false, false, false);
+
+  @Test
+  void brakeOffSuggestsTheSameAsBefore() {
+    // 지난주: 완주율 55%(20번), 지연 10분, 계획 대비 90% → [완주율 65% 넘기기, 지난주만큼(55%)]
+    WeekFacts lastWeek = facts(55, 20, 10, 90);
+
+    assertThat(WeeklyGoal.candidates(lastWeek, BRAKE_OFF))
+        .isEqualTo(WeeklyGoal.candidates(lastWeek))
+        .hasSize(2);
+  }
+
+  @Test
+  void noSuggestionWhileTheSafetyBrakeIsOn() {
+    WeekFacts lastWeek = facts(55, 20, 10, 90);
+
+    // 채찍 멈춤(위기 표현 · 시험 기간)이 켜진 주
+    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(true, false, false, false)))
+        .isEmpty();
+    // 회복 모드(기분 저하가 이어짐)가 켜진 주
+    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(false, true, false, false)))
+        .isEmpty();
+    // 둘 다 켜지고 도움 안내까지 보여주는 주
+    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(true, true, true, false))).isEmpty();
+  }
+
+  @Test
+  void quietHoursAloneDoNotStopTheSuggestion() {
+    // 연락 금지 시간은 "지금 연락해도 되는지" 일 뿐입니다. 목표 제안과는 상관없습니다.
+    WeekFacts lastWeek = facts(55, 20, 10, 90);
+
+    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(false, false, false, true)))
+        .isEqualTo(WeeklyGoal.candidates(lastWeek));
+  }
+
+  @Test
+  void brakeOffStillNeedsEnoughRecords() {
+    // 안전 브레이크가 꺼져 있어도, 지난주 타이머가 4번뿐이면 제안하지 않습니다.
+    assertThat(WeeklyGoal.candidates(facts(55, 4, 10, 90), BRAKE_OFF)).isEmpty();
   }
 
   @Test
