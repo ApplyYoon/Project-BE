@@ -27,6 +27,7 @@ import org.mockito.ArgumentCaptor;
 // Service 단위 테스트: GPT 를 부르는 곳(CoachAiClient)을 가짜로 바꿔서, GPT 없이 로직만 확인합니다. (이슈 #87 완료 조건)
 //   - GPT 가 좋은 문단을 줬을 때 / 숫자를 지어냈을 때 / 깎아내리는 말을 썼을 때 / 아무것도 안 줬을 때
 //   - 로그인하지 않았을 때, AI 가 꺼져 있을 때, 하루 한도를 넘었을 때는 GPT 를 아예 부르지 않는지
+//   - 같은 숫자로 다시 물으면 받아 둔 문단을 돌려주는지, 안전 브레이크가 켜지면 위로하는 말투로 묻는지
 class CoachServiceTest {
 
   private static final Long USER_ID = 7L;
@@ -39,17 +40,24 @@ class CoachServiceTest {
   private final CoachDailyLimit coachDailyLimit =
       new CoachDailyLimit(2, Clock.fixed(Instant.parse("2026-10-11T06:00:00Z"), ZoneOffset.UTC));
 
-  private final CoachService coachService =
-      new CoachService(currentUserProvider, coachAiClient, coachDailyLimit);
+  // 받아 둔 문단을 기억하는 곳도 진짜 코드를 씁니다.
+  private final CoachParagraphStore coachParagraphStore = new CoachParagraphStore();
 
-  private static final WeeklyCoachRequest REQUEST =
-      new WeeklyCoachRequest(
-          "2026-10-05",
-          List.of(
-              new WeeklyCoachRequest.Number("계획 대비 실제", "64%", "계획 12개"),
-              new WeeklyCoachRequest.Number("완주율", "55%", "20번")),
-          1,
-          3);
+  private final CoachService coachService =
+      new CoachService(currentUserProvider, coachAiClient, coachDailyLimit, coachParagraphStore);
+
+  private static final List<WeeklyCoachRequest.Number> NUMBERS =
+      List.of(
+          new WeeklyCoachRequest.Number("계획 대비 실제", "64%", "계획 12개"),
+          new WeeklyCoachRequest.Number("완주율", "55%", "20번"));
+
+  // 10월 5일 주의 요청입니다. 안전 브레이크는 보내지 않았습니다. (꺼진 것으로 봅니다)
+  private static final WeeklyCoachRequest REQUEST = weekOf("2026-10-05");
+
+  // 숫자는 같고 주만 다른 요청을 만듭니다. 주가 다르면 받아 둔 문단을 쓰지 않고 GPT 에게 새로 묻습니다.
+  private static WeeklyCoachRequest weekOf(String mondayKey) {
+    return new WeeklyCoachRequest(mondayKey, NUMBERS, 1, 3, null);
+  }
 
   @BeforeEach
   void loggedInAndAiOn() {
@@ -130,9 +138,12 @@ class CoachServiceTest {
   void stopsCallingAiAfterTheDailyLimit() {
     given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
 
-    assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isEqualTo(GOOD_PARAGRAPH);
-    assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isEqualTo(GOOD_PARAGRAPH);
-    assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isNull();
+    // 주를 바꿔 가며 묻습니다. (같은 주를 같은 숫자로 다시 물으면 GPT 를 부르지 않아서 한도를 쓰지 않습니다)
+    assertThat(coachService.weeklyParagraph(weekOf("2026-09-21")).paragraph())
+        .isEqualTo(GOOD_PARAGRAPH);
+    assertThat(coachService.weeklyParagraph(weekOf("2026-09-28")).paragraph())
+        .isEqualTo(GOOD_PARAGRAPH);
+    assertThat(coachService.weeklyParagraph(weekOf("2026-10-05")).paragraph()).isNull();
 
     verify(coachAiClient, times(2)).ask(any(), any());
   }
@@ -141,13 +152,14 @@ class CoachServiceTest {
   @DisplayName("한 사람이 한도를 다 써도 다른 사람은 쓸 수 있다")
   void limitIsPerUser() {
     given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
-    coachService.weeklyParagraph(REQUEST);
-    coachService.weeklyParagraph(REQUEST);
-    assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isNull();
+    coachService.weeklyParagraph(weekOf("2026-09-21"));
+    coachService.weeklyParagraph(weekOf("2026-09-28"));
+    assertThat(coachService.weeklyParagraph(weekOf("2026-10-05")).paragraph()).isNull();
 
     given(currentUserProvider.getCurrentUserId()).willReturn(8L);
 
-    assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isEqualTo(GOOD_PARAGRAPH);
+    assertThat(coachService.weeklyParagraph(weekOf("2026-10-05")).paragraph())
+        .isEqualTo(GOOD_PARAGRAPH);
   }
 
   @Test
@@ -161,14 +173,154 @@ class CoachServiceTest {
     // AI 가 켜진 뒤에도 한도 2번이 그대로 남아 있습니다.
     given(coachAiClient.isEnabled()).willReturn(true);
     given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    assertThat(coachService.weeklyParagraph(weekOf("2026-09-28")).paragraph())
+        .isEqualTo(GOOD_PARAGRAPH);
+    assertThat(coachService.weeklyParagraph(weekOf("2026-10-05")).paragraph())
+        .isEqualTo(GOOD_PARAGRAPH);
+    verify(coachAiClient, times(2)).ask(any(), any());
+  }
+
+  // ---- 받아 둔 문단 다시 쓰기 ----
+
+  @Test
+  @DisplayName("같은 주를 같은 숫자로 다시 물으면 GPT 를 부르지 않고 받아 둔 문단을 돌려준다 (하루 한도도 쓰지 않는다)")
+  void sameQuestionReusesTheSavedParagraph() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+
+    // 한도는 2번인데 5번을 물어도 전부 문단이 나옵니다. GPT 는 처음 한 번만 부릅니다.
+    for (int i = 0; i < 5; i++) {
+      assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isEqualTo(GOOD_PARAGRAPH);
+    }
+    verify(coachAiClient, times(1)).ask(any(), any());
+
+    // 한도가 그대로 남아 있어서 다른 주도 물어볼 수 있습니다.
+    assertThat(coachService.weeklyParagraph(weekOf("2026-09-28")).paragraph())
+        .isEqualTo(GOOD_PARAGRAPH);
+    verify(coachAiClient, times(2)).ask(any(), any());
+  }
+
+  @Test
+  @DisplayName("같은 주라도 숫자가 달라지면 GPT 에게 새로 묻는다 (옛 문단의 숫자가 화면과 달라지면 안 된다)")
+  void changedNumbersAskAgain() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    coachService.weeklyParagraph(REQUEST);
+
+    // 그 주에 기록이 늘어서 완주율이 55% 에서 60% 가 됐습니다.
+    WeeklyCoachRequest changed =
+        new WeeklyCoachRequest(
+            "2026-10-05",
+            List.of(
+                new WeeklyCoachRequest.Number("계획 대비 실제", "64%", "계획 12개"),
+                new WeeklyCoachRequest.Number("완주율", "60%", "20번")),
+            1,
+            3,
+            null);
+    String newParagraph = "이번 주는 계획의 64% 를 했어. 완주율은 60% 야.";
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(newParagraph));
+
+    assertThat(coachService.weeklyParagraph(changed).paragraph()).isEqualTo(newParagraph);
+    verify(coachAiClient, times(2)).ask(any(), any());
+  }
+
+  @Test
+  @DisplayName("한도(말투)를 바꾸면 같은 숫자여도 GPT 에게 새로 묻는다")
+  void changedLimitsAskAgain() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    coachService.weeklyParagraph(REQUEST);
+
+    // 독설 허용 수위를 3 에서 1 로 낮췄습니다. 옛 문단은 더 센 말투로 쓴 것이라 다시 쓰면 안 됩니다.
+    coachService.weeklyParagraph(new WeeklyCoachRequest("2026-10-05", NUMBERS, 1, 1, null));
+
+    verify(coachAiClient, times(2)).ask(any(), any());
+  }
+
+  @Test
+  @DisplayName("받아 둔 문단은 그 사람 것만 돌려준다 (다른 사람이 같은 숫자로 물어도 GPT 에게 새로 묻는다)")
+  void savedParagraphIsPerUser() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    coachService.weeklyParagraph(REQUEST);
+
+    given(currentUserProvider.getCurrentUserId()).willReturn(8L);
+    coachService.weeklyParagraph(REQUEST);
+
+    verify(coachAiClient, times(2)).ask(any(), any());
+  }
+
+  @Test
+  @DisplayName("버린 문단은 기억하지 않아서, 다시 물으면 GPT 에게 다시 묻는다")
+  void droppedParagraphIsNotSaved() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of("이번 주는 계획의 70% 를 했어."));
+    assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isNull();
+
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
     assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isEqualTo(GOOD_PARAGRAPH);
-    assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isEqualTo(GOOD_PARAGRAPH);
+    verify(coachAiClient, times(2)).ask(any(), any());
+  }
+
+  // ---- 안전 브레이크 ----
+
+  @Test
+  @DisplayName("안전 브레이크가 켜져 있으면 한도가 몇이든 위로하는 말투 규칙으로 묻는다")
+  void safetyBrakeMakesTheToneSupportive() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+
+    // 관리 강도 한도 4, 독설 허용 수위 5 (가장 센 설정) 이지만 안전 브레이크가 켜져 있습니다.
+    coachService.weeklyParagraph(new WeeklyCoachRequest("2026-10-05", NUMBERS, 4, 5, true));
+
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    verify(coachAiClient).ask(instructions.capture(), any());
+    assertThat(instructions.getValue()).isEqualTo(CoachPrompt.instructions(0, 5));
+    assertThat(instructions.getValue()).contains("위로하고 응원하는 말만", "지적하지 마");
+  }
+
+  @Test
+  @DisplayName("안전 브레이크를 false 로 보내거나 안 보내면 사용자가 정한 한도의 말투 그대로다")
+  void safetyBrakeOffKeepsTheUsersTone() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+
+    coachService.weeklyParagraph(new WeeklyCoachRequest("2026-09-28", NUMBERS, 4, 5, false));
+    coachService.weeklyParagraph(new WeeklyCoachRequest("2026-10-05", NUMBERS, 4, 5, null));
+
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    verify(coachAiClient, times(2)).ask(instructions.capture(), any());
+    assertThat(instructions.getAllValues()).containsOnly(CoachPrompt.instructions(4, 5));
+  }
+
+  @Test
+  @DisplayName("안전 브레이크가 켜지면, 꺼져 있을 때 받아 둔 문단을 다시 쓰지 않는다")
+  void safetyBrakeDoesNotReuseTheHarsherParagraph() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    coachService.weeklyParagraph(new WeeklyCoachRequest("2026-10-05", NUMBERS, 4, 5, false));
+
+    coachService.weeklyParagraph(new WeeklyCoachRequest("2026-10-05", NUMBERS, 4, 5, true));
+
+    // 두 번째는 위로하는 말투로 새로 물어야 합니다.
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    verify(coachAiClient, times(2)).ask(instructions.capture(), any());
+    assertThat(instructions.getAllValues().get(1)).isEqualTo(CoachPrompt.instructions(0, 5));
+  }
+
+  @Test
+  @DisplayName("어제 한 줄·월간도 안전 브레이크가 켜지면 위로하는 말투로 묻는다")
+  void safetyBrakeWorksForOtherKinds() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    CoachCommentRequest braked = new CoachCommentRequest(NUMBERS, 3, 4, true);
+
+    coachService.dailyParagraph(braked);
+    coachService.monthlyParagraph(braked);
+
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    verify(coachAiClient, times(2)).ask(instructions.capture(), any());
+    assertThat(instructions.getAllValues())
+        .containsExactly(
+            CoachPrompt.instructions(CoachKind.DAILY, 0, 4),
+            CoachPrompt.instructions(CoachKind.MONTHLY, 0, 4));
   }
 
   // ---- 어제 한 줄 · 월간 ----
 
   private static final CoachCommentRequest COMMENT_REQUEST =
-      new CoachCommentRequest(REQUEST.numbers(), 1, 3);
+      new CoachCommentRequest(NUMBERS, 1, 3, null);
 
   @Test
   @DisplayName("어제 한 줄은 '어제 하루' 지침으로, 월간은 '최근 4주' 지침으로 GPT 에게 묻는다")

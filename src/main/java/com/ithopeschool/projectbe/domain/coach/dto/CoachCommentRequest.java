@@ -24,4 +24,6 @@ public record CoachCommentRequest(
     // 내가 허용한 독설 수위 (1 ~ 5)
     @Min(value = 1, message = "maxHarshness 는 1 ~ 5 예요")
         @Max(value = 5, message = "maxHarshness 는 1 ~ 5 예요")
-        int maxHarshness) {}
+        int maxHarshness,
+    // 안전 브레이크가 켜져 있는지. true 면 한도가 몇이든 위로하는 말투만 씁니다. 안 보내면 꺼진 것으로 봅니다.
+    Boolean safetyBrakeOn) {}

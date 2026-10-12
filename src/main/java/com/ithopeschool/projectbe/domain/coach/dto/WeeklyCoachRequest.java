@@ -34,7 +34,10 @@ public record WeeklyCoachRequest(
     // 내가 허용한 독설 수위 (1 ~ 5)
     @Min(value = 1, message = "maxHarshness 는 1 ~ 5 예요")
         @Max(value = 5, message = "maxHarshness 는 1 ~ 5 예요")
-        int maxHarshness) {
+        int maxHarshness,
+    // 안전 브레이크가 켜져 있는지. (위기 표현 · 시험 기간 · 기분 저하, FE 의 isSafetyBrakeOnNow)
+    // true 면 한도가 몇이든 위로하는 말투만 씁니다. 안 보내면 꺼진 것으로 봅니다.
+    Boolean safetyBrakeOn) {
 
   // 숫자 하나. FE 의 CoachEvidence 와 같습니다.
   //   { "label": "완주율", "value": "55%", "basis": "20번" }
