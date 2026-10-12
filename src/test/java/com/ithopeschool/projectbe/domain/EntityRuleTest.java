@@ -236,7 +236,18 @@ class EntityRuleTest {
                   "startTime",
                   "kind",
                   "routineId"),
-          "StudySession", List.of("id", "subjectId", "startedAt", "endedAt", "pauseCount"));
+          "StudySession",
+              List.of(
+                  "id",
+                  "subjectId",
+                  "startedAt",
+                  "endedAt",
+                  "pauseCount",
+                  "pausedMs",
+                  "planId",
+                  "targetMinutes",
+                  "stopReason",
+                  "kind"));
 
   // FE 와 이름이 달라지는 필드는 이 두 가지뿐이다
   private static final Map<String, String> RENAMED =
