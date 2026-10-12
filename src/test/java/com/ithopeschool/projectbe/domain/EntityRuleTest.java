@@ -19,6 +19,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -171,9 +172,11 @@ class EntityRuleTest {
   }
 
   @Test
-  @DisplayName("모든 엔티티에서 시각은 Instant, 날짜는 LocalDate 만 쓴다 (Date·LocalDateTime 금지)")
+  @DisplayName(
+      "모든 엔티티에서 시각은 Instant, 날짜는 LocalDate, 하루 안의 몇 시 몇 분은 LocalTime 만 쓴다 (Date·LocalDateTime 금지)")
   void onlyInstantAndLocalDateForTime() {
-    Set<Class<?>> allowedTimeTypes = Set.of(Instant.class, LocalDate.class);
+    // LocalTime 은 계획의 시작 시각(19:00)처럼 "날짜와 상관없는 몇 시 몇 분" 에만 씁니다. (#12)
+    Set<Class<?>> allowedTimeTypes = Set.of(Instant.class, LocalDate.class, LocalTime.class);
     for (Class<?> type : entityClasses()) {
       for (Field field : fields(type)) {
         String typeName = field.getType().getName();
@@ -222,7 +225,17 @@ class EntityRuleTest {
       Map.of(
           "User", List.of("id", "name"), // FE 의 AuthUser
           "Subject", List.of("id", "name", "color"),
-          "StudyPlan", List.of("id", "date", "subjectId", "content", "targetMinutes", "done"),
+          "StudyPlan",
+              List.of(
+                  "id",
+                  "date",
+                  "subjectId",
+                  "content",
+                  "targetMinutes",
+                  "done",
+                  "startTime",
+                  "kind",
+                  "routineId"),
           "StudySession", List.of("id", "subjectId", "startedAt", "endedAt", "pauseCount"));
 
   // FE 와 이름이 달라지는 필드는 이 두 가지뿐이다

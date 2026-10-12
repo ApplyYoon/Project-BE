@@ -20,8 +20,20 @@ class StudyPlanRepositoryTest {
   private static final LocalDate OCT_5 = LocalDate.of(2026, 10, 5);
   private static final LocalDate OCT_6 = LocalDate.of(2026, 10, 6);
 
-  private void save(Long userId, LocalDate date, String content) {
-    em.persistAndFlush(new StudyPlan(userId, 1L, date, content, 60));
+  private StudyPlan save(Long userId, LocalDate date, String content) {
+    return em.persistAndFlush(new StudyPlan(userId, 1L, date, content, 60));
+  }
+
+  @Test
+  @DisplayName("내 계획은 번호로 찾아지고, 남의 계획 번호나 없는 번호는 빈 Optional")
+  void findByIdAndUserId() {
+    StudyPlan mine = save(1L, OCT_5, "수학");
+    StudyPlan others = save(2L, OCT_5, "남의 계획");
+
+    assertThat(studyPlanRepository.findByIdAndUserId(mine.getId(), 1L)).contains(mine);
+    // 번호는 실제로 있어도, 내 것이 아니면 없는 것과 똑같이 취급됩니다. (수정·삭제가 404 가 되는 이유)
+    assertThat(studyPlanRepository.findByIdAndUserId(others.getId(), 1L)).isEmpty();
+    assertThat(studyPlanRepository.findByIdAndUserId(99999L, 1L)).isEmpty();
   }
 
   @Test

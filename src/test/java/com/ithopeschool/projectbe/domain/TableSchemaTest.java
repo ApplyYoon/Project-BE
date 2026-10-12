@@ -52,11 +52,15 @@ class TableSchemaTest {
 
     expected.put("STUDY_PLANS.ID", "BIGINT NOT NULL");
     expected.put("STUDY_PLANS.USER_ID", "BIGINT NOT NULL");
-    expected.put("STUDY_PLANS.SUBJECT_ID", "BIGINT NOT NULL");
+    // 노는 계획(PLAY)은 과목이 없어서 비어도 됩니다. 공부 계획은 검사 규칙이 막습니다. (#12)
+    expected.put("STUDY_PLANS.SUBJECT_ID", "BIGINT NULL");
     expected.put("STUDY_PLANS.PLAN_DATE", "DATE NOT NULL");
     expected.put("STUDY_PLANS.CONTENT", "CHARACTER VARYING(200) NOT NULL");
     expected.put("STUDY_PLANS.TARGET_MINUTES", "INTEGER NOT NULL");
     expected.put("STUDY_PLANS.DONE", "BOOLEAN NOT NULL");
+    expected.put("STUDY_PLANS.START_TIME", "TIME NULL");
+    expected.put("STUDY_PLANS.KIND", "ENUM NOT NULL");
+    expected.put("STUDY_PLANS.ROUTINE_ID", "BIGINT NULL");
 
     expected.put("STUDY_SESSIONS.ID", "BIGINT NOT NULL");
     expected.put("STUDY_SESSIONS.USER_ID", "BIGINT NOT NULL");

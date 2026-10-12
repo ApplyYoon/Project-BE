@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import org.hibernate.exception.ConstraintViolationException;
 import org.hibernate.exception.DataException;
@@ -119,13 +120,54 @@ class StudyPlanTest {
   }
 
   @Test
-  @DisplayName("subjectId 가 없으면 저장되지 않는다")
-  void subjectIdRequired() {
+  @DisplayName("공부 계획(STUDY)은 subjectId 가 없으면 저장되지 않는다")
+  void subjectIdRequiredForStudy() {
     StudyPlan plan = new StudyPlan(1L, null, DAY, "내용", 10);
+
+    // 검사 규칙(ck_study_plans_study_has_subject)이 막습니다.
+    assertThatThrownBy(() -> em.persistAndFlush(plan))
+        .isInstanceOf(ConstraintViolationException.class)
+        .hasMessageContaining("CK_STUDY_PLANS_STUDY_HAS_SUBJECT");
+  }
+
+  @Test
+  @DisplayName("노는 계획(PLAY)은 subjectId 없이 저장된다")
+  void playWithoutSubject() {
+    StudyPlan saved =
+        em.persistFlushFind(new StudyPlan(1L, null, DAY, "친구랑 농구", 60, null, PlanKind.PLAY));
+
+    assertThat(saved.getSubjectId()).isNull();
+    assertThat(saved.getKind()).isEqualTo(PlanKind.PLAY);
+  }
+
+  @Test
+  @DisplayName("짧은 생성자로 만든 계획은 공부 계획 · 시간 미정 · 루틴 아님으로 저장된다")
+  void shortConstructorDefaults() {
+    StudyPlan saved = em.persistFlushFind(new StudyPlan(1L, 10L, DAY, "수학", 30));
+
+    assertThat(saved.getKind()).isEqualTo(PlanKind.STUDY);
+    assertThat(saved.getStartTime()).isNull();
+    assertThat(saved.getRoutineId()).isNull();
+  }
+
+  @Test
+  @DisplayName("시작 시각은 몇 시 몇 분 그대로 저장된다")
+  void startTimeIsStored() {
+    StudyPlan saved =
+        em.persistFlushFind(
+            new StudyPlan(1L, 10L, DAY, "수학", 30, LocalTime.of(19, 0), PlanKind.STUDY));
+
+    assertThat(saved.getStartTime()).isEqualTo(LocalTime.of(19, 0));
+  }
+
+  @Test
+  @DisplayName("종류(kind)가 없으면 저장되지 않는다")
+  void kindRequired() {
+    StudyPlan plan = new StudyPlan(1L, 10L, DAY, "내용", 10, null, null);
 
     assertThatThrownBy(() -> em.persistAndFlush(plan))
         .isInstanceOf(ConstraintViolationException.class)
-        .hasMessageContaining("SUBJECT_ID");
+        .hasMessageContaining("KIND");
   }
 
   @Test

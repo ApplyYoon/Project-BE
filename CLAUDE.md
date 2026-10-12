@@ -96,6 +96,7 @@ domain/<기능>/
 - Controller 에는 `@Tag(name = "...")`, 메서드에는 `@Operation(summary = "...")` 로 **한국어 설명**을 붙입니다. Swagger 화면에 보이는 글자입니다.
 - DB 테이블·컬럼은 **snake_case**. 엔티티 필드를 camelCase 로 쓰면 Spring 이 알아서 바꿉니다 (`userId` → `user_id`). 엔티티 필드마다 **한국어 주석** 한 줄.
 - 시각은 `timestamptz`, 날짜는 `date`. 자바에서는 `Instant` / `LocalDate` 를 쓰면 그렇게 만들어집니다.
+  날짜와 상관없는 "하루 안의 몇 시 몇 분"(계획의 시작 시각 `19:00` 등)만 `LocalTime`(DB `time`)을 씁니다.
 - 로컬에서는 서버를 켤 때 엔티티(`@Entity`)를 보고 **H2 에 테이블이 자동으로 만들어집니다.** (`ddl-auto: create-drop`)
 - 모든 조회·수정에 **`user_id` 조건**을 붙입니다. 다른 사람의 데이터가 섞이면 안 됩니다.
 - `user_id` 는 **`CurrentUserProvider.getCurrentUserId()`** 로만 얻습니다. 숫자를 직접 쓰거나 요청에서 받지 않습니다. 요청의 로그인 토큰을 보고 사용자 번호를 돌려주고, 토큰이 없거나 틀리면 401 을 던집니다. **이 메서드를 부르는 것이 그 API 를 "로그인한 사람만" 쓰게 만드는 방법**입니다. (docs/API.md "로그인이 필요한 API")

@@ -106,7 +106,7 @@ public class Memo {
 - 필드를 `userId` 처럼 camelCase 로 쓰면 DB 컬럼은 `user_id` 로 **알아서** 만들어집니다.
 - 로컬에서는 서버를 켤 때 이 클래스를 보고 **테이블이 자동으로 만들어집니다.** SQL 을 따로 안 써도 됩니다.
 - `@Setter`, `@Data` 는 붙이지 않습니다. 값을 바꾸는 메서드가 필요하면 이름을 지어 직접 만듭니다.
-- 시각은 `Instant`, 날짜는 `LocalDate` 를 씁니다.
+- 시각은 `Instant`, 날짜는 `LocalDate` 를 씁니다. "하루 안의 몇 시 몇 분"(계획의 시작 시각 `19:00`)만 `LocalTime` 을 씁니다.
 
 ### 🗄 Repository — DB 창구
 

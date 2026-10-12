@@ -35,11 +35,14 @@ erDiagram
     study_plans {
         bigint id PK "계획을 구분하는 고유 번호"
         bigint user_id FK "이 계획의 주인"
-        bigint subject_id FK "어떤 과목의 계획인지"
+        bigint subject_id FK "어떤 과목의 계획인지 (노는 계획이면 비어 있음)"
         date plan_date "계획한 날짜"
         varchar content "할 일 내용 (200자까지)"
         int target_minutes "목표 공부 시간(분)"
         boolean done "다 했으면 true, 아직이면 false"
+        time start_time "시작할 시각, 몇 시 몇 분 (안 정했으면 비어 있음)"
+        varchar kind "공부 계획인지 노는 계획인지 (STUDY, PLAY 중 하나)"
+        bigint routine_id "어떤 루틴이 만든 계획인지 (직접 만들었으면 비어 있음)"
     }
     study_sessions {
         bigint id PK "기록을 구분하는 고유 번호"
@@ -85,7 +88,7 @@ erDiagram
 | ------ | ----------- | --------- |
 | `users` | 서비스를 쓰는 사람 한 명이 한 줄 (별명, 가입 시각) | #3 |
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
-| `study_plans` | 하루의 공부 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부) | #3 |
+| `study_plans` | 하루의 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부, 시작 시각, 공부/노는 계획, 루틴) | #3 · #12 |
 | `study_sessions` | 타이머로 한 번 공부한 기록 하나가 한 줄 (과목, 시작·끝 시각, 일시정지 횟수) | #3 |
 | `accounts` | 이메일로 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시, 실명, 학교, 동의). 사용자 한 명에 하나 | #97 |
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
@@ -97,6 +100,10 @@ erDiagram
 > `messages` 는 2026-10-12 에 이슈 #30 을 만들면서 **AI 가 초안을 먼저 만든 테이블**입니다. (사용자가 "AI 가 초안을 만들어 달라" 고 해서 예외로 했습니다)
 > 이슈 완료 조건에 적힌 것(종류, 보낸 시각, 읽은 시각, 주인)에 메시지 내용 글자(`text`)만 더했습니다.
 > FE 의 `AiMessage` 에 있는 `careLevel`(관리 강도), `eventLabel`(이벤트 이름), `source`(AI/앱) 는 **아직 담지 않았습니다.** 필요한지는 위 그림을 보고 정해 주세요.
+
+> `study_plans` 의 `start_time` · `kind` · `routine_id` 는 2026-10-12 에 이슈 #12 에서 더했습니다. (칸 이름과 뜻은 Project#12 의 표, 시작 시각을 `time` 으로 저장하는 것은 학생이 정함)
+> - 공부 계획(`STUDY`)은 `subject_id` 가 꼭 있어야 하고, 노는 계획(`PLAY`)만 비어도 됩니다. DB 에도 검사 규칙(`ck_study_plans_study_has_subject`)으로 걸어 두었습니다.
+> - 루틴 테이블은 아직 없어서(#85) `routine_id` 는 지금 항상 비어 있고, 그림에 선도 없습니다.
 
 ## 그림 읽는 법
 
