@@ -17,6 +17,7 @@ erDiagram
     users ||--o{ study_sessions : "user_id"
     users ||--o{ accounts : "user_id"
     users ||--o{ login_tokens : "user_id"
+    users ||--o{ messages : "user_id"
     subjects ||--o{ study_plans : "subject_id"
     subjects ||--o{ study_sessions : "subject_id"
 
@@ -66,6 +67,14 @@ erDiagram
         timestamptz expires_at "이 시각이 지나면 쓸 수 없음 (로그인하고 30일 뒤)"
         timestamptz created_at "토큰을 내준 시각 (= 로그인한 시각)"
     }
+    messages {
+        bigint id PK "메시지를 구분하는 고유 번호 (나중에 보낸 것일수록 큼)"
+        bigint user_id FK "이 메시지를 받은 사람"
+        varchar kind "메시지 종류 (CARROT, NUDGE, STICK, EVENT, RECOVERY 중 하나)"
+        varchar text "메시지 내용 (500자까지)"
+        timestamptz sent_at "메시지를 보낸 시각"
+        timestamptz read_at "처음 읽은 시각 (아직 안 읽었으면 비어 있음)"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
@@ -80,9 +89,14 @@ erDiagram
 | `study_sessions` | 타이머로 한 번 공부한 기록 하나가 한 줄 (과목, 시작·끝 시각, 일시정지 횟수) | #3 |
 | `accounts` | 이메일로 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시, 실명, 학교, 동의). 사용자 한 명에 하나 | #97 |
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
+| `messages` | AI 가 사용자에게 보낸 메시지 하나가 한 줄 (종류, 내용, 보낸 시각, 읽은 시각) | #30 |
 
 > `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
 > 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.
+
+> `messages` 는 2026-10-12 에 이슈 #30 을 만들면서 **AI 가 초안을 먼저 만든 테이블**입니다. (사용자가 "AI 가 초안을 만들어 달라" 고 해서 예외로 했습니다)
+> 이슈 완료 조건에 적힌 것(종류, 보낸 시각, 읽은 시각, 주인)에 메시지 내용 글자(`text`)만 더했습니다.
+> FE 의 `AiMessage` 에 있는 `careLevel`(관리 강도), `eventLabel`(이벤트 이름), `source`(AI/앱) 는 **아직 담지 않았습니다.** 필요한지는 위 그림을 보고 정해 주세요.
 
 ## 그림 읽는 법
 
