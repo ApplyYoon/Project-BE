@@ -18,7 +18,7 @@ public enum ErrorCode {
   NOT_FOUND(HttpStatus.NOT_FOUND, "찾을 수 없어요"),
   // 그 주소에 없는 요청 방법으로 부름 (GET 만 되는 주소를 POST 로 부름 등)
   METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 요청 방법이에요"),
-  // 이미 있는 것을 또 만들려고 함
+  // 이미 있는 것을 또 만들려고 함, 또는 쓰고 있는 것을 지우려고 함 (계획이 있는 과목 삭제 등)
   CONFLICT(HttpStatus.CONFLICT, "이미 있는 값이에요"),
   // 정해 둔 횟수를 넘게 부름 (하루 통화 횟수 등)
   TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "오늘은 더 할 수 없어요"),
