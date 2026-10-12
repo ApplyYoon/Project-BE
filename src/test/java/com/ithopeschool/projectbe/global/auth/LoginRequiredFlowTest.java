@@ -103,6 +103,13 @@ class LoginRequiredFlowTest {
               "{\"plans\":[" + PLAN_BODY + "]}"),
           new Api("PATCH", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", "{\"done\":true}"),
           new Api("DELETE", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", null),
+          // 공부 기록
+          new Api(
+              "POST",
+              "/api/v1/study-sessions",
+              "/api/v1/study-sessions",
+              "{\"subjectId\":\"1\",\"startedAt\":1790000000000,"
+                  + "\"endedAt\":1790003000000,\"pauseCount\":0}"),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
