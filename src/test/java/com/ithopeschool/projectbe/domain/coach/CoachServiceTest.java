@@ -27,7 +27,7 @@ import org.mockito.ArgumentCaptor;
 // Service 단위 테스트: GPT 를 부르는 곳(CoachAiClient)을 가짜로 바꿔서, GPT 없이 로직만 확인합니다. (이슈 #87 완료 조건)
 //   - GPT 가 좋은 문단을 줬을 때 / 숫자를 지어냈을 때 / 깎아내리는 말을 썼을 때 / 아무것도 안 줬을 때
 //   - 로그인하지 않았을 때, AI 가 꺼져 있을 때, 하루 한도를 넘었을 때는 GPT 를 아예 부르지 않는지
-//   - 안전 브레이크가 켜지면 위로하는 말투로 묻는지
+//   - 같은 숫자로 다시 물으면 받아 둔 문단을 돌려주는지, 안전 브레이크가 켜지면 위로하는 말투로 묻는지
 class CoachServiceTest {
 
   private static final Long USER_ID = 7L;
@@ -40,8 +40,11 @@ class CoachServiceTest {
   private final CoachDailyLimit coachDailyLimit =
       new CoachDailyLimit(2, Clock.fixed(Instant.parse("2026-10-11T06:00:00Z"), ZoneOffset.UTC));
 
+  // 받아 둔 문단을 기억하는 곳도 진짜 코드를 씁니다.
+  private final CoachParagraphStore coachParagraphStore = new CoachParagraphStore();
+
   private final CoachService coachService =
-      new CoachService(currentUserProvider, coachAiClient, coachDailyLimit);
+      new CoachService(currentUserProvider, coachAiClient, coachDailyLimit, coachParagraphStore);
 
   private static final List<WeeklyCoachRequest.Number> NUMBERS =
       List.of(
@@ -51,7 +54,7 @@ class CoachServiceTest {
   // 10월 5일 주의 요청입니다. 안전 브레이크는 보내지 않았습니다. (꺼진 것으로 봅니다)
   private static final WeeklyCoachRequest REQUEST = weekOf("2026-10-05");
 
-  // 숫자는 같고 주만 다른 요청을 만듭니다.
+  // 숫자는 같고 주만 다른 요청을 만듭니다. 주가 다르면 받아 둔 문단을 쓰지 않고 GPT 에게 새로 묻습니다.
   private static WeeklyCoachRequest weekOf(String mondayKey) {
     return new WeeklyCoachRequest(mondayKey, NUMBERS, 1, 3, null);
   }
@@ -135,6 +138,7 @@ class CoachServiceTest {
   void stopsCallingAiAfterTheDailyLimit() {
     given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
 
+    // 주를 바꿔 가며 묻습니다. (같은 주를 같은 숫자로 다시 물으면 GPT 를 부르지 않아서 한도를 쓰지 않습니다)
     assertThat(coachService.weeklyParagraph(weekOf("2026-09-21")).paragraph())
         .isEqualTo(GOOD_PARAGRAPH);
     assertThat(coachService.weeklyParagraph(weekOf("2026-09-28")).paragraph())
@@ -176,6 +180,83 @@ class CoachServiceTest {
     verify(coachAiClient, times(2)).ask(any(), any());
   }
 
+  // ---- 받아 둔 문단 다시 쓰기 ----
+
+  @Test
+  @DisplayName("같은 주를 같은 숫자로 다시 물으면 GPT 를 부르지 않고 받아 둔 문단을 돌려준다 (하루 한도도 쓰지 않는다)")
+  void sameQuestionReusesTheSavedParagraph() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+
+    // 한도는 2번인데 5번을 물어도 전부 문단이 나옵니다. GPT 는 처음 한 번만 부릅니다.
+    for (int i = 0; i < 5; i++) {
+      assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isEqualTo(GOOD_PARAGRAPH);
+    }
+    verify(coachAiClient, times(1)).ask(any(), any());
+
+    // 한도가 그대로 남아 있어서 다른 주도 물어볼 수 있습니다.
+    assertThat(coachService.weeklyParagraph(weekOf("2026-09-28")).paragraph())
+        .isEqualTo(GOOD_PARAGRAPH);
+    verify(coachAiClient, times(2)).ask(any(), any());
+  }
+
+  @Test
+  @DisplayName("같은 주라도 숫자가 달라지면 GPT 에게 새로 묻는다 (옛 문단의 숫자가 화면과 달라지면 안 된다)")
+  void changedNumbersAskAgain() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    coachService.weeklyParagraph(REQUEST);
+
+    // 그 주에 기록이 늘어서 완주율이 55% 에서 60% 가 됐습니다.
+    WeeklyCoachRequest changed =
+        new WeeklyCoachRequest(
+            "2026-10-05",
+            List.of(
+                new WeeklyCoachRequest.Number("계획 대비 실제", "64%", "계획 12개"),
+                new WeeklyCoachRequest.Number("완주율", "60%", "20번")),
+            1,
+            3,
+            null);
+    String newParagraph = "이번 주는 계획의 64% 를 했어. 완주율은 60% 야.";
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(newParagraph));
+
+    assertThat(coachService.weeklyParagraph(changed).paragraph()).isEqualTo(newParagraph);
+    verify(coachAiClient, times(2)).ask(any(), any());
+  }
+
+  @Test
+  @DisplayName("한도(말투)를 바꾸면 같은 숫자여도 GPT 에게 새로 묻는다")
+  void changedLimitsAskAgain() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    coachService.weeklyParagraph(REQUEST);
+
+    // 독설 허용 수위를 3 에서 1 로 낮췄습니다. 옛 문단은 더 센 말투로 쓴 것이라 다시 쓰면 안 됩니다.
+    coachService.weeklyParagraph(new WeeklyCoachRequest("2026-10-05", NUMBERS, 1, 1, null));
+
+    verify(coachAiClient, times(2)).ask(any(), any());
+  }
+
+  @Test
+  @DisplayName("받아 둔 문단은 그 사람 것만 돌려준다 (다른 사람이 같은 숫자로 물어도 GPT 에게 새로 묻는다)")
+  void savedParagraphIsPerUser() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    coachService.weeklyParagraph(REQUEST);
+
+    given(currentUserProvider.getCurrentUserId()).willReturn(8L);
+    coachService.weeklyParagraph(REQUEST);
+
+    verify(coachAiClient, times(2)).ask(any(), any());
+  }
+
+  @Test
+  @DisplayName("버린 문단은 기억하지 않아서, 다시 물으면 GPT 에게 다시 묻는다")
+  void droppedParagraphIsNotSaved() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of("이번 주는 계획의 70% 를 했어."));
+    assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isNull();
+
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isEqualTo(GOOD_PARAGRAPH);
+    verify(coachAiClient, times(2)).ask(any(), any());
+  }
+
   // ---- 안전 브레이크 ----
 
   @Test
@@ -203,6 +284,20 @@ class CoachServiceTest {
     ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
     verify(coachAiClient, times(2)).ask(instructions.capture(), any());
     assertThat(instructions.getAllValues()).containsOnly(CoachPrompt.instructions(4, 5));
+  }
+
+  @Test
+  @DisplayName("안전 브레이크가 켜지면, 꺼져 있을 때 받아 둔 문단을 다시 쓰지 않는다")
+  void safetyBrakeDoesNotReuseTheHarsherParagraph() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    coachService.weeklyParagraph(new WeeklyCoachRequest("2026-10-05", NUMBERS, 4, 5, false));
+
+    coachService.weeklyParagraph(new WeeklyCoachRequest("2026-10-05", NUMBERS, 4, 5, true));
+
+    // 두 번째는 위로하는 말투로 새로 물어야 합니다.
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    verify(coachAiClient, times(2)).ask(instructions.capture(), any());
+    assertThat(instructions.getAllValues().get(1)).isEqualTo(CoachPrompt.instructions(0, 5));
   }
 
   @Test
