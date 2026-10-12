@@ -1,7 +1,10 @@
 package com.ithopeschool.projectbe.domain.coach;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -9,10 +12,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ithopeschool.projectbe.domain.coach.dto.CoachParagraphResponse;
+import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -69,6 +74,22 @@ class CoachControllerTest {
     weekly(VALID)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.paragraph").value("이번 주는 계획의 64% 를 했어."));
+  }
+
+  @Test
+  @DisplayName("안전 브레이크(safetyBrakeOn)는 보내도 되고 안 보내도 된다. 보낸 값은 그대로 로직에 전해진다")
+  void safetyBrakeIsOptional() throws Exception {
+    given(coachService.weeklyParagraph(any())).willReturn(CoachParagraphResponse.none());
+
+    // 안 보낸 요청(VALID)은 null 로, true 로 보낸 요청은 true 로 전해집니다.
+    weekly(VALID).andExpect(status().isOk());
+    weekly(VALID.replace("\"maxHarshness\": 3", "\"maxHarshness\": 3, \"safetyBrakeOn\": true"))
+        .andExpect(status().isOk());
+
+    ArgumentCaptor<WeeklyCoachRequest> requests = ArgumentCaptor.forClass(WeeklyCoachRequest.class);
+    verify(coachService, times(2)).weeklyParagraph(requests.capture());
+    assertThat(requests.getAllValues().get(0).safetyBrakeOn()).isNull();
+    assertThat(requests.getAllValues().get(1).safetyBrakeOn()).isTrue();
   }
 
   @Test

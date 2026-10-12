@@ -19,6 +19,8 @@ import org.springframework.stereotype.Service;
 //   4. 숫자만 주고 문단을 써 달라고 한다
 //   5. 받은 문단을 검사한다                (지어낸 숫자·깎아내리는 말이 있으면 문단 없음)
 //
+// 안전 브레이크가 켜져 있으면(safetyBrakeOn) 사용자가 정한 한도와 상관없이 위로하는 말투만 씁니다.
+//
 // "문단 없음" 은 에러가 아닙니다. { "paragraph": null } 을 돌려주면 FE 가 기본 문장을 보여줍니다.
 // ⚠️ 받은 숫자와 AI 가 쓴 글은 로그에 찍지 않습니다.
 @Service
@@ -32,19 +34,37 @@ public class CoachService {
   // 주간 리포트의 코치 한마디
   public CoachParagraphResponse weeklyParagraph(WeeklyCoachRequest request) {
     return paragraph(
-        CoachKind.WEEKLY, request.numbers(), request.maxCareLevel(), request.maxHarshness());
+        CoachKind.WEEKLY,
+        request.numbers(),
+        careLevelLimit(request.maxCareLevel(), request.safetyBrakeOn()),
+        request.maxHarshness());
   }
 
   // 홈의 "어제 한 줄"
   public CoachParagraphResponse dailyParagraph(CoachCommentRequest request) {
     return paragraph(
-        CoachKind.DAILY, request.numbers(), request.maxCareLevel(), request.maxHarshness());
+        CoachKind.DAILY,
+        request.numbers(),
+        careLevelLimit(request.maxCareLevel(), request.safetyBrakeOn()),
+        request.maxHarshness());
   }
 
   // 월간 리포트의 코치 한마디
   public CoachParagraphResponse monthlyParagraph(CoachCommentRequest request) {
     return paragraph(
-        CoachKind.MONTHLY, request.numbers(), request.maxCareLevel(), request.maxHarshness());
+        CoachKind.MONTHLY,
+        request.numbers(),
+        careLevelLimit(request.maxCareLevel(), request.safetyBrakeOn()),
+        request.maxHarshness());
+  }
+
+  // 말투를 정할 때 쓸 관리 강도 한도를 돌려줍니다.
+  // 안전 브레이크가 켜져 있으면 한도가 몇이든 0(회복)으로 봅니다. 그러면 말투 규칙이 "위로하는 말만" 이 됩니다.
+  // (안전 브레이크는 어떤 설정보다 먼저입니다. CLAUDE.md 4장)
+  //   한도 3, 브레이크 꺼짐(false 또는 안 보냄)  →  3
+  //   한도 3, 브레이크 켜짐                      →  0
+  private static int careLevelLimit(int maxCareLevel, Boolean safetyBrakeOn) {
+    return Boolean.TRUE.equals(safetyBrakeOn) ? 0 : maxCareLevel;
   }
 
   // 어느 종류든 같은 순서로 처리합니다. 달라지는 것은 AI 에게 주는 지침(기간·문장 수·권하는 행동)뿐입니다.
