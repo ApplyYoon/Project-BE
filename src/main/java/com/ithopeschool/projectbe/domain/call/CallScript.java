@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.call;
 
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
+import com.ithopeschool.projectbe.domain.care.ToneGuide;
 import com.ithopeschool.projectbe.domain.plan.AchievementRate;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,7 +36,7 @@ public final class CallScript {
     lines.add("");
     lines.add("[꼭 지킬 것]");
     lines.add("- 아래 [오늘의 사실] 에 적힌 숫자만 말해. 숫자를 새로 만들거나 계산해서 바꾸지 마.");
-    lines.add("- 외모·성적·능력을 깎아내리지 마. 다른 사람과 비교하지 마. 한 일(행동)만 이야기해.");
+    lines.add("- " + ToneGuide.NO_PUT_DOWN_RULE + " 한 일(행동)만 이야기해.");
     lines.add(
         "- 학생이 죽고 싶다, 사라지고 싶다, 자기를 해치고 싶다는 말을 하면 공부 이야기를 바로 멈춰."
             + " 꾸짖거나 가볍게 넘기지 말고 먼저 들어 줘. 그리고 믿을 수 있는 어른에게 꼭 이야기하고,"
@@ -66,31 +67,30 @@ public final class CallScript {
 
   // ---- 말투 ----
 
-  // 말투 규칙 한 줄. 기분이 낮으면 무엇보다 먼저 위로하는 말투로 바꿉니다. (안전이 다른 설정보다 먼저입니다)
+  // 말투 규칙 한 줄. 어떤 말투를 쓸지는 공통 말투 지침(ToneGuide.toneOf)이 정하고, 여기서는 통화에 맞는 문장으로 적습니다.
+  // 기분이 낮으면 무엇보다 먼저 위로하는 말투로 바꿉니다. (안전이 다른 설정보다 먼저입니다)
   //   기분이 처짐 이하 · 관리 강도 0(회복)   -> 위로만
   //   관리 강도 1(당근)                     -> 구체적으로 칭찬
   //   관리 강도 2(넛지), 또는 독설 수위 2 이하 -> 담백하게 사실만
   //   관리 강도 3·4(채찍) + 독설 수위 3 이상   -> 솔직하게 짚되 사람은 깎아내리지 않기
   static String toneRule(int careLevel, int maxHarshness, CallSessionRequest.Card card) {
-    if (isSupportive(careLevel, card)) {
-      return "위로하고 응원하는 말만 해. 아쉬운 점을 지적하지 마. 오늘은 10분만 해도 충분하다고 말해 줘.";
-    }
-    if (careLevel == 1) {
-      return "잘한 점을 숫자와 함께 구체적으로 칭찬해. 아쉬운 점은 한 가지만, 부드럽게 말해.";
-    }
-    if (careLevel == 2 || maxHarshness <= 2) {
-      return "담백하게 사실만 말해. 칭찬도 지적도 길게 하지 마. 꾸짖는 말은 쓰지 마.";
-    }
-    return "아쉬운 점을 숫자와 함께 돌려 말하지 말고 짚어. 그래도 사람을 깎아내리지 말고 한 일만 말해."
-        + " 비꼬거나 겁주지 마. 세기는 5단계 중 "
-        + maxHarshness
-        + "단계까지만.";
+    return switch (ToneGuide.toneOf(careLevel, maxHarshness, isMoodLow(card))) {
+      case SUPPORT -> "위로하고 응원하는 말만 해. 아쉬운 점을 지적하지 마. 오늘은 10분만 해도 충분하다고 말해 줘.";
+      case PRAISE -> "잘한 점을 숫자와 함께 구체적으로 칭찬해. 아쉬운 점은 한 가지만, 부드럽게 말해.";
+      case PLAIN -> "담백하게 사실만 말해. 칭찬도 지적도 길게 하지 마. 꾸짖는 말은 쓰지 마.";
+      case FRANK ->
+          "아쉬운 점을 숫자와 함께 돌려 말하지 말고 짚어. 그래도 사람을 깎아내리지 말고 한 일만 말해."
+              + " 비꼬거나 겁주지 마. 세기는 5단계 중 "
+              + maxHarshness
+              + "단계까지만.";
+    };
   }
 
   // 위로하는 통화여야 하는지 알려줍니다. 기분이 낮거나, 오늘의 관리 강도가 0(회복)일 때입니다.
   // 이때는 말투뿐 아니라 통화 순서도 바뀝니다. (못 한 것을 묻는 대신 기분부터 묻습니다)
   static boolean isSupportive(int careLevel, CallSessionRequest.Card card) {
-    return isMoodLow(card) || careLevel <= 0;
+    // 허용 수위는 위로할지 말지와 상관없어서 아무 값(1)이나 넘깁니다.
+    return ToneGuide.toneOf(careLevel, 1, isMoodLow(card)) == ToneGuide.Tone.SUPPORT;
   }
 
   // 가장 최근 기분이 낮은지(처짐 이하) 알려줍니다. 기분 기록이 없으면 false 입니다.
