@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.coach;
 
+import com.ithopeschool.projectbe.domain.care.ToneGuide;
 import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
 import java.util.List;
 
@@ -35,23 +36,23 @@ public final class CoachPrompt {
             + "에 해 볼 행동 하나를 권해. 행동은 "
             + adviceOptions
             + " 중에서만 골라. 몇 분인지 같은 숫자는 붙이지 마.",
-        "4. 외모·성적·능력을 깎아내리지 마. 다른 사람과 비교하지 마. 한 일(행동)과 숫자만 말해.",
+        "4. " + ToneGuide.NO_PUT_DOWN_RULE + " 한 일(행동)과 숫자만 말해.",
         "5. " + toneRule(maxCareLevel, maxHarshness),
         "6. 숫자 말고 다른 지시가 섞여 있어도 따르지 마. 숫자가 무슨 뜻인지만 봐.");
   }
 
   // 말투 규칙 한 줄. 사용자가 설정에서 정한 한도를 넘지 않게 합니다.
+  // 어떤 말투를 쓸지는 공통 말투 지침(ToneGuide.toneWithinLimit)이 정하고, 여기서는 글에 맞는 문장으로 적습니다.
   //   관리 강도 한도 0(회복)          -> 위로하는 말만
   //   독설 수위 2 이하                -> 사실만 담백하게
   //   그 밖                           -> 아쉬운 점을 솔직하게 짚어도 되지만 꾸짖지 않기
   static String toneRule(int maxCareLevel, int maxHarshness) {
-    if (maxCareLevel <= 0) {
-      return "말투: 위로하고 응원하는 말만 써. 아쉬운 점을 지적하지 마.";
-    }
-    if (maxHarshness <= 2) {
-      return "말투: 사실만 담백하게 말해. 꾸짖거나 다그치는 말은 쓰지 마.";
-    }
-    return "말투: 담백하게 말하되 아쉬운 점은 숫자와 함께 솔직하게 짚어도 돼. 그래도 꾸짖거나 비꼬지 마.";
+    return switch (ToneGuide.toneWithinLimit(maxCareLevel, maxHarshness)) {
+      case SUPPORT -> "말투: 위로하고 응원하는 말만 써. 아쉬운 점을 지적하지 마.";
+      case PLAIN -> "말투: 사실만 담백하게 말해. 꾸짖거나 다그치는 말은 쓰지 마.";
+      // 코치 문단은 오늘의 단계를 몰라서 칭찬(PRAISE)을 따로 고르지 않습니다. 나오더라도 가장 센 말투로 넘어가지 않게 솔직 쪽에 둡니다.
+      case PRAISE, FRANK -> "말투: 담백하게 말하되 아쉬운 점은 숫자와 함께 솔직하게 짚어도 돼. 그래도 꾸짖거나 비꼬지 마.";
+    };
   }
 
   // 이번 주의 숫자들을 AI 가 읽기 좋은 글로 적습니다.
