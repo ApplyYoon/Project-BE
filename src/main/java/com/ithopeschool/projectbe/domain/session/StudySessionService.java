@@ -26,6 +26,11 @@ public class StudySessionService {
   // 순공이 이보다 짧으면 실수로 누른 것으로 보고 저장하지 않습니다. (FE 타이머와 같은 규칙: 1분)
   static final long MIN_STUDY_MILLIS = 60_000;
 
+  // 이보다 앞선 시작 시각은 타이머 기록일 수 없어서 거절합니다. (이 서비스는 2026년에 만들어졌습니다)
+  // 폰 시계가 초기화되면 1970년이 찍히는데, 그런 기록이 저장되면 "1970년 ~ 지금" 이 전부 겹쳐서
+  // 그 뒤로는 어떤 기록도 저장할 수 없게 됩니다. 운영 DB(PostgreSQL)가 담지 못하는 아주 먼 과거 시각도 여기서 막힙니다.
+  static final Instant EARLIEST_START = Instant.parse("2020-01-01T00:00:00Z");
+
   private final CurrentUserProvider currentUserProvider;
   private final StudySessionRepository studySessionRepository;
   // 기록에 붙일 과목이 "내 과목" 인지 확인할 때 씁니다.
@@ -81,6 +86,10 @@ public class StudySessionService {
 
   // 시각과 일시정지 시간이 말이 되는지 봅니다. 아니면 400 입니다.
   private void checkTimes(Instant startedAt, Instant endedAt, long pausedMs) {
+    // 시계가 고장 난 기기에서 온 시각 (EARLIEST_START 설명 참고)
+    if (startedAt.isBefore(EARLIEST_START)) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "시작 시각이 올바르지 않아요");
+    }
     // 끝이 시작보다 앞서거나 같은 기록
     if (!endedAt.isAfter(startedAt)) {
       throw new ApiException(ErrorCode.VALIDATION_ERROR, "끝 시각은 시작 시각보다 뒤여야 해요");

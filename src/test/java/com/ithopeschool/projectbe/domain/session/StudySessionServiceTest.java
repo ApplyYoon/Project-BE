@@ -240,6 +240,33 @@ class StudySessionServiceTest {
     verify(studySessionRepository).save(any());
   }
 
+  @Test
+  @DisplayName("시작 시각이 2020년보다 앞서면 400 (폰 시계가 초기화된 1970년 기록 등)")
+  void startBeforeEarliest() {
+    long earliest = StudySessionService.EARLIEST_START.toEpochMilli();
+    // 1970년에 시작해서 지금 끝난 기록: 저장되면 그 뒤 모든 기록이 "겹침" 으로 막힙니다
+    expectError(simple(0, NOW.toEpochMilli(), null), ErrorCode.VALIDATION_ERROR, "시작 시각이 올바르지 않아요");
+    // 아주 먼 과거 (운영 DB 가 담지 못하는 시각)
+    expectError(
+        simple(-100_000_000_000_000_000L, START, null),
+        ErrorCode.VALIDATION_ERROR,
+        "시작 시각이 올바르지 않아요");
+    expectError(simple(Long.MIN_VALUE, START, null), ErrorCode.VALIDATION_ERROR, "시작 시각이 올바르지 않아요");
+    expectError(
+        simple(earliest - 1, earliest + 600_000, null),
+        ErrorCode.VALIDATION_ERROR,
+        "시작 시각이 올바르지 않아요");
+  }
+
+  @Test
+  @DisplayName("시작 시각이 딱 2020-01-01 00:00(UTC)이면 저장한다")
+  void startAtEarliest() {
+    long earliest = StudySessionService.EARLIEST_START.toEpochMilli();
+    studySessionService.create(simple(earliest, earliest + 600_000, null));
+
+    verify(studySessionRepository).save(any());
+  }
+
   // ---- 일시정지 시간 ----
 
   @Test
