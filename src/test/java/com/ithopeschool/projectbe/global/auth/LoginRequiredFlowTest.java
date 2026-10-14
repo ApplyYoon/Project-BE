@@ -120,6 +120,8 @@ class LoginRequiredFlowTest {
               "/api/v1/realtime/session",
               "{\"careLevel\":1,\"maxHarshness\":3}"),
           // AI 통화 기록 (자막은 학생의 대화입니다)
+          new Api("GET", "/api/v1/calls", "/api/v1/calls", null),
+          new Api("GET", "/api/v1/calls/habits", "/api/v1/calls/habits", null),
           new Api(
               "POST",
               "/api/v1/calls/{id}/finish",
