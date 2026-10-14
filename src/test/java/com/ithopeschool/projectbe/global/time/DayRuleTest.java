@@ -77,4 +77,16 @@ class DayRuleTest {
       TimeZone.setDefault(original);
     }
   }
+
+  @Test
+  void startOfIsFourAmKoreanTime() {
+    // 그날이 시작되는 순간은 한국 시간 새벽 4시 = UTC 전날 19시
+    assertThat(DayRule.startOf(LocalDate.of(2026, 9, 28)))
+        .isEqualTo(Instant.parse("2026-09-27T19:00:00Z"));
+    // 그 순간의 날짜는 다시 그날입니다. 1초 전은 전날입니다.
+    assertThat(DayRule.dateOf(DayRule.startOf(LocalDate.of(2026, 9, 28))))
+        .isEqualTo(LocalDate.of(2026, 9, 28));
+    assertThat(DayRule.dateOf(DayRule.startOf(LocalDate.of(2026, 9, 28)).minusSeconds(1)))
+        .isEqualTo(LocalDate.of(2026, 9, 27));
+  }
 }
