@@ -2,6 +2,8 @@ package com.ithopeschool.projectbe.domain.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.ithopeschool.projectbe.domain.bias.BiasQuestion;
+import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -336,9 +338,80 @@ class CallScriptTest {
         .contains(
             "[말투]\n담백하게 사실만 말해.",
             "[오늘의 사실]\n- 어제 순공시간: 3시간 10분 (계획 4시간 의 79%)",
+            "[생각 습관]\n- 이 통화의 목적 중 하나는 학생이 자기 생각 습관을 스스로 알아차리게 돕는 거야.",
             "1. 짧게 인사하고, 어제 한 것을 한 문장으로 말해 줘. 예: \"어제 순공 3시간 10분, 계획의 79%야.\"",
             "2. 어제 계획을 다 채우지 못했고, 이유는 '폰·SNS' 라고 했어. 공부할 때 폰을 어디에 두면 덜 보게 될지 물어봐.",
-            "3. 오늘은 얼마나 할 것 같은지 물어봐.",
-            "4. 오늘의 약속을 같이 정해.");
+            // 폰 때문에 못 채웠으면 "미래의 나 믿기" 를 확인합니다. (BiasQuestion 규칙 2)
+            "3. 생각 습관 확인: 오늘 확인할 생각 습관은 '미래의 나 믿기'",
+            "떠오르지 않으면 이 질문을 그대로 해: \"내일의 너는 오늘의 너랑 뭐가 다를 것 같아?\"",
+            "4. 오늘은 얼마나 할 것 같은지 물어봐.",
+            "5. 오늘의 약속을 같이 정해.");
+  }
+
+  // ---- 생각 습관 ----
+
+  @Test
+  @DisplayName("생각 습관 규칙에는 모든 습관의 신호 단어와 첫 질문이 한 줄씩 들어 있다")
+  void biasRulesListEveryBias() {
+    String rules = String.join("\n", CallScript.biasRules());
+
+    for (CognitiveBias bias : CognitiveBias.values()) {
+      assertThat(rules).contains(bias.getLabel(), bias.getQuestions().get(0));
+      for (String word : bias.getSignalWords()) {
+        assertThat(rules).contains("'" + word + "'");
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("이름은 생각에 붙이고 사람에게 붙이지 않게 하며, 어쩔 수 없던 일은 캐묻지 않게 한다")
+  void biasRulesProtectTheStudent() {
+    String rules = String.join("\n", CallScript.biasRules());
+
+    assertThat(rules).contains("생각에 이름을 붙여 줘", "학생을 그 이름으로 부르지 마");
+    assertThat(rules).contains("[꼭 지킬 것] 이 언제나 먼저야", "생각 습관 질문은 하지 말고 들어 줘");
+    assertThat(rules).contains("정말 어쩔 수 없던 일이면 생각 습관을 묻지 말고 넘어가");
+    assertThat(rules).contains("두 번까지만");
+  }
+
+  @Test
+  @DisplayName("위로하는 통화에는 생각 습관 규칙도, 확인 단계도 들어가지 않는다")
+  void supportiveCallHasNoBiasQuestions() {
+    Card lowMood = card(20, 180, "tooMuch", List.of(1));
+
+    for (String instructions :
+        List.of(
+            CallScript.instructions(3, 5, lowMood),
+            CallScript.instructions(0, 3, ORDINARY),
+            // 질문을 넘겨도 위로하는 통화면 넣지 않습니다.
+            CallScript.instructions(
+                0, 3, ORDINARY, new BiasQuestion(CognitiveBias.PLANNING_FALLACY, 0)))) {
+      assertThat(instructions).doesNotContain("[생각 습관]", "생각 습관 확인");
+      assertThat(instructions).contains("4. 오늘의 약속을 같이 정해.");
+    }
+  }
+
+  @Test
+  @DisplayName("확인할 습관이 없는 날은 규칙만 넣고 확인 단계는 넣지 않는다 (순서 번호가 하나 줄어든다)")
+  void noBiasQuestionMeansNoBiasStep() {
+    // 피곤해서 못 채웠고 시작 지연도 15분 이하 → 오늘은 따로 묻지 않음
+    String instructions = CallScript.instructions(2, 3, card(100, 240, "tired", List.of(3)));
+
+    assertThat(instructions).contains("[생각 습관]").doesNotContain("생각 습관 확인");
+    assertThat(instructions).contains("3. 오늘은 얼마나 할 것 같은지", "4. 오늘의 약속을 같이 정해.");
+  }
+
+  @Test
+  @DisplayName("넘겨받은 질문으로 확인 단계를 만든다. 문장은 AI 가 바꿔도 되지만 확인할 습관은 바꾸지 못하게 한다")
+  void givenBiasQuestionIsUsed() {
+    BiasQuestion question = new BiasQuestion(CognitiveBias.ALL_OR_NOTHING, 1);
+
+    String instructions = CallScript.instructions(2, 3, ORDINARY, question);
+
+    assertThat(instructions)
+        .contains("오늘 확인할 생각 습관은 '다 아니면 0'")
+        .contains("확인할 습관은 바꾸지 마")
+        .contains(question.text())
+        .doesNotContain("오늘 확인할 생각 습관은 '미래의 나 믿기'");
   }
 }

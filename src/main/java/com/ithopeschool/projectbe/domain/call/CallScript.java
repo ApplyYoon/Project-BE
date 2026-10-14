@@ -1,5 +1,7 @@
 package com.ithopeschool.projectbe.domain.call;
 
+import com.ithopeschool.projectbe.domain.bias.BiasQuestion;
+import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.care.ToneGuide;
 import com.ithopeschool.projectbe.domain.plan.AchievementRate;
@@ -11,6 +13,7 @@ import java.util.List;
 // 통화는 학생이 쌓은 기록을 보고 달라져야 합니다.
 //   - 말투   : 오늘의 관리 강도와 최근 기분으로 정합니다.            (toneRule)
 //   - 질문   : 어제 계획을 채웠는지, 못 채운 이유가 무엇인지로 정합니다. (yesterdayStep, todayStep)
+//   - 생각 습관: 오늘 확인할 생각 습관(인지편향) 질문 하나와, 학생 말에 따라 던질 질문들을 넣습니다. (biasRules)
 //   - 사실   : 숫자는 코드가 정리해서 건네고, AI 는 그 숫자만 말합니다.   (facts)
 //
 // 원칙: 계산은 코드가 합니다. AI 가 직접 계산하면 틀리거나 지어낼 수 있습니다. (기획서 v2 3장)
@@ -29,7 +32,23 @@ public final class CallScript {
   private CallScript() {}
 
   // 통화 한 번의 지침 전체를 만듭니다. card 가 null 이면 기록이 없는 사람으로 보고 만듭니다.
+  // 생각 습관 질문은 학생 카드만 보고 고릅니다. (지난 통화 기록은 보지 않습니다)
   public static String instructions(int careLevel, int maxHarshness, CallSessionRequest.Card card) {
+    BiasQuestion biasQuestion =
+        BiasQuestion.pick(
+            isSupportive(careLevel, card),
+            card == null ? null : card.yesterdayMissReason(),
+            card == null ? null : card.weekStartDelayMinutes(),
+            List.of(),
+            List.of());
+    return instructions(careLevel, maxHarshness, card, biasQuestion);
+  }
+
+  // 통화 한 번의 지침 전체를 만듭니다.
+  // biasQuestion: 오늘 확인할 생각 습관 질문 (BiasQuestion.pick). 묻지 않는 날이면 null
+  public static String instructions(
+      int careLevel, int maxHarshness, CallSessionRequest.Card card, BiasQuestion biasQuestion) {
+    boolean supportive = isSupportive(careLevel, card);
     List<String> lines = new ArrayList<>();
     lines.add("너는 고등학생에게 하루에 한 번 짧게 전화하는 공부 코치야. 한국어 반말로 말해.");
     lines.add("한 번에 한두 문장만 말하고, 학생이 대답할 때까지 기다려. 통화 전체는 3분 안에 끝내.");
@@ -50,19 +69,73 @@ public final class CallScript {
     lines.add("[오늘의 사실]");
     lines.addAll(facts(card));
     lines.add("");
-    lines.add("[통화 순서]");
-    if (isSupportive(careLevel, card)) {
-      // 위로하는 통화: 못 한 것부터 꺼내지 않습니다. 숫자는 [오늘의 사실] 에 있지만, 학생이 먼저 물을 때만 말합니다.
-      lines.add("1. 짧게 인사하고, 요즘 기분이 어떤지 먼저 물어봐. 어제 숫자는 학생이 먼저 물을 때만 말해.");
-      lines.add("2. 힘든 점이 있으면 끝까지 들어 줘. 어제 못 한 것을 먼저 꺼내지 마.");
-      lines.add("3. 오늘은 10분만 해도 된다고 말하고, 할 수 있는 것 하나를 같이 골라.");
-    } else {
-      lines.add("1. 짧게 인사하고, " + openingStep(card));
-      lines.add("2. " + yesterdayStep(card));
-      lines.add("3. " + todayStep(card));
+    // 위로하는 통화에서는 생각 습관을 묻지 않습니다. 힘든 날에 캐물으면 자책으로 이어질 수 있어서입니다.
+    if (!supportive) {
+      lines.add("[생각 습관]");
+      lines.addAll(biasRules());
+      lines.add("");
     }
-    lines.add("4. 오늘의 약속을 같이 정해. '만약 ~하면 → ~한다' 한 문장으로. 학생이 정한 문장을 그대로 다시 말해 주고 통화를 끝내.");
+    lines.add("[통화 순서]");
+    // 생각 습관 질문이 들어가는 날은 순서가 하나 늘어서, 번호를 세어 가며 붙입니다.
+    int step = 1;
+    if (supportive) {
+      // 위로하는 통화: 못 한 것부터 꺼내지 않습니다. 숫자는 [오늘의 사실] 에 있지만, 학생이 먼저 물을 때만 말합니다.
+      lines.add(step++ + ". 짧게 인사하고, 요즘 기분이 어떤지 먼저 물어봐. 어제 숫자는 학생이 먼저 물을 때만 말해.");
+      lines.add(step++ + ". 힘든 점이 있으면 끝까지 들어 줘. 어제 못 한 것을 먼저 꺼내지 마.");
+      lines.add(step++ + ". 오늘은 10분만 해도 된다고 말하고, 할 수 있는 것 하나를 같이 골라.");
+    } else {
+      lines.add(step++ + ". 짧게 인사하고, " + openingStep(card));
+      lines.add(step++ + ". " + yesterdayStep(card));
+      if (biasQuestion != null) {
+        lines.add(step++ + ". " + biasStep(biasQuestion));
+      }
+      lines.add(step++ + ". " + todayStep(card));
+    }
+    lines.add(step + ". 오늘의 약속을 같이 정해. '만약 ~하면 → ~한다' 한 문장으로. 학생이 정한 문장을 그대로 다시 말해 주고 통화를 끝내.");
     return String.join("\n", lines);
+  }
+
+  // ---- 생각 습관 ----
+
+  // 생각 습관(인지편향)을 다루는 규칙들입니다. 목록(CognitiveBias)의 모든 습관을 한 줄씩 적어서,
+  // 학생 말에 신호가 되는 말이 나오면 AI 가 그 습관의 첫 질문을 던질 수 있게 합니다.
+  static List<String> biasRules() {
+    List<String> lines = new ArrayList<>();
+    lines.add("- 이 통화의 목적 중 하나는 학생이 자기 생각 습관을 스스로 알아차리게 돕는 거야. 답을 먼저 말하지 말고, 학생이 답할 때까지 기다려.");
+    lines.add(
+        "- 학생이 알아차리면 \"그런 생각을 '계획 오류' 라고 해\" 처럼 생각에 이름을 붙여 줘."
+            + " 학생을 그 이름으로 부르지 마. \"너는 ~한 사람이야\" 라고 말하지 마.");
+    lines.add("- 위의 [꼭 지킬 것] 이 언제나 먼저야. 학생이 힘들다거나 기분이 많이 처졌다고 하면 생각 습관 질문은 하지 말고 들어 줘.");
+    lines.add("- 아프거나 집안일처럼 정말 어쩔 수 없던 일이면 생각 습관을 묻지 말고 넘어가.");
+    lines.add("- 학생이 아래 말을 하면 그 줄의 질문을 해. 생각 습관 질문은 통화 전체에서 두 번까지만 해.");
+    for (CognitiveBias bias : CognitiveBias.values()) {
+      lines.add(
+          "  - '"
+              + String.join("' · '", bias.getSignalWords())
+              + "' → "
+              + bias.getLabel()
+              + "("
+              + bias.getDescription()
+              + "): \""
+              + bias.getQuestions().get(0)
+              + "\"");
+    }
+    return lines;
+  }
+
+  // 통화 순서에 넣는 "오늘 확인할 생각 습관" 한 단계입니다.
+  // 어떤 습관을 확인할지는 코드가 정하고, 질문 문장은 AI 가 학생 말에 맞춰 바꿔도 됩니다.
+  // 습관을 코드가 정해 두어야 "어떤 습관을 확인한 통화였는지" 가 기록에 남아서 나중에 비교할 수 있습니다.
+  static String biasStep(BiasQuestion biasQuestion) {
+    CognitiveBias bias = biasQuestion.bias();
+    return "생각 습관 확인: 오늘 확인할 생각 습관은 '"
+        + bias.getLabel()
+        + "'("
+        + bias.getDescription()
+        + ")이야. 앞의 대답을 들은 뒤, 학생이 한 말에 맞춰 이 습관을 알아차리게 돕는 질문을 하나 해."
+        + " 질문 문장은 네가 바꿔도 되지만 확인할 습관은 바꾸지 마. 떠오르지 않으면 이 질문을 그대로 해: \""
+        + biasQuestion.text()
+        + "\"";
   }
 
   // ---- 말투 ----
