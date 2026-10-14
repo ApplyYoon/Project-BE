@@ -15,6 +15,9 @@ import com.ithopeschool.projectbe.domain.call.CallKeyClient.CallKey;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
+import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
+import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -44,6 +47,7 @@ class CallServiceTest {
       new CallDailyLimit(2, Clock.fixed(Instant.parse("2026-10-11T06:00:00Z"), ZoneOffset.UTC));
 
   private final CallRecordRepository callRecordRepository = mock(CallRecordRepository.class);
+  private final ThinkingTestRepository thinkingTestRepository = mock(ThinkingTestRepository.class);
   // 지금은 2026-10-11 오후 3시(한국 시간)입니다. 오늘 날짜는 2026-10-11 입니다.
   private static final Instant NOW = Instant.parse("2026-10-11T06:00:00Z");
   private static final LocalDate TODAY = LocalDate.of(2026, 10, 11);
@@ -55,6 +59,7 @@ class CallServiceTest {
           callDailyLimit,
           tokenHasher,
           callRecordRepository,
+          thinkingTestRepository,
           Clock.fixed(NOW, ZoneOffset.UTC),
           300);
 
@@ -406,5 +411,78 @@ class CallServiceTest {
     assertThat(sentInstructions())
         .contains("학생이 스스로 꼽은 약점: '게임', '잠·늦잠'")
         .contains("이걸로 탓하지 말고", "단정하지 마");
+  }
+
+  // ---- 서버에 저장된 생각 습관 테스트 ----
+
+  // 계획 오류만 6.0 이고 나머지는 4.0 인 테스트, 약점은 게임
+  private static ThinkingTest savedTest() {
+    java.util.Map<CognitiveBias, Double> scores = new java.util.EnumMap<>(CognitiveBias.class);
+    for (CognitiveBias bias : CognitiveBias.values()) {
+      scores.put(bias, 4.0);
+    }
+    scores.put(CognitiveBias.PLANNING_FALLACY, 6.0);
+    return new ThinkingTest(
+        USER_ID,
+        NOW,
+        2,
+        scores,
+        java.util.EnumSet.of(com.ithopeschool.projectbe.domain.bias.Weakness.GAME));
+  }
+
+  // 못 채운 이유만 있는 마무리한 통화
+  private static CallRecord callWithReason(LocalDate date, MissReason reason) {
+    CallRecord record =
+        new CallRecord(USER_ID, date, date.atStartOfDay().toInstant(ZoneOffset.UTC), null);
+    record.finish(NOW, "요약", null, null, null, reason, null, null, null);
+    return record;
+  }
+
+  @Test
+  @DisplayName("서버에 저장된 테스트가 있으면 FE 가 보낸 값 대신 그것을 쓴다")
+  void savedTestComesFirst() {
+    given(thinkingTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(Optional.of(savedTest()));
+
+    callService.startSession(
+        new CallSessionRequest(2, 3, null, List.of("ALL_OR_NOTHING"), List.of("SLEEP")));
+
+    assertThat(savedRecord().getAskedBias()).isEqualTo(CognitiveBias.PLANNING_FALLACY);
+    assertThat(sentInstructions())
+        .contains("테스트에서 많이 고른 것: '계획 오류'", "스스로 꼽은 약점: '게임'")
+        .doesNotContain("'다 아니면 0'", "'잠·늦잠'");
+  }
+
+  @Test
+  @DisplayName("통화가 3번 이상 쌓였고 생각과 실제가 다르면, 달랐던 점을 지침에 넣는다")
+  void gapGoesIntoTheScript() {
+    given(thinkingTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(Optional.of(savedTest()));
+    givenPastCalls(
+        callWithReason(TODAY.minusDays(1), MissReason.TOO_MUCH),
+        callWithReason(TODAY.minusDays(2), MissReason.TOO_MUCH),
+        callWithReason(TODAY.minusDays(3), MissReason.TIRED));
+
+    callService.startSession(new CallSessionRequest(2, 3, null, null, null));
+
+    assertThat(sentInstructions())
+        .contains("실제 기록이 이렇게 달랐어")
+        // 꼽지 않은 계획 과다가 2번 → 생각보다 컸어 / 꼽은 게임(폰·SNS)은 0번 → 생각보다 작았어
+        .contains("꼽지 않았던 '계획 과다' 쪽이 실제로는 못 채운 이유로 2번 나왔어")
+        .contains("내가 꼽은 약점 '게임' 쪽은 최근 14일 동안 실제로 못 채운 이유로 나오지 않았어");
+  }
+
+  @Test
+  @DisplayName("통화가 3번보다 적으면 생각과 실제를 견준 문장은 넣지 않는다 (말하기 이름)")
+  void tooFewCallsForGap() {
+    given(thinkingTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(Optional.of(savedTest()));
+    givenPastCalls(
+        callWithReason(TODAY.minusDays(1), MissReason.TOO_MUCH),
+        callWithReason(TODAY.minusDays(2), MissReason.TOO_MUCH));
+
+    callService.startSession(new CallSessionRequest(2, 3, null, null, null));
+
+    assertThat(sentInstructions()).doesNotContain("실제 기록이 이렇게 달랐어");
   }
 }

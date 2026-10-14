@@ -7,6 +7,11 @@ import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallKeyClient.CallKey;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
+import com.ithopeschool.projectbe.domain.thinkingtest.StudyStyle;
+import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingGap;
+import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
+import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
+import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -28,6 +33,8 @@ import org.springframework.stereotype.Service;
 //   3. 오늘 건 횟수가 한도 안인지 본다         (넘었으면 429)
 //   4. 최근 2주의 통화 기록을 읽는다          (CallRecord)
 //   5. 오늘 확인할 생각 습관 질문을 고른다     (BiasQuestion: 자주 보인 습관 → 어제 이유 → 시작 지연 → 가입 테스트)
+//      가입 테스트는 서버에 저장된 결과(thinking_tests)를 먼저 쓰고, 없으면 FE 가 보낸 값을 씁니다.
+//      저장된 결과가 있으면 최근 통화와 견줘 "생각과 실제가 달랐던 점" 도 지침에 넣습니다. (ThinkingGap)
 //   6. 학생 카드와 지난 통화로 대본(지침)을 만든다 (CallScript: 기록에 따라 질문과 말투가 달라집니다)
 //   7. OpenAI 에서 그 대본이 묶인 임시 키를 받는다 (못 받으면 503)
 //   8. 통화 기록을 한 줄 만들고, 임시 키와 기록 번호를 돌려준다
@@ -41,6 +48,8 @@ public class CallService {
 
   // 지난 통화를 볼 기간(일). 오늘을 넣어 최근 2주의 통화로 자주 보이는 생각 습관을 찾습니다.
   static final int RECENT_DAYS = 14;
+  // 지침에 넣는 "테스트에서 많이 해당한 습관" 의 최대 개수 (FE 가 보내는 것과 같은 3개)
+  static final int MAX_SELF_REPORTED = 3;
   // 오늘을 넣어 최근 이 기간(일) 안에 위기 표현이 감지된 통화가 있으면, 오늘 통화는 위로하는 통화로 합니다.
   static final int CRISIS_CARE_DAYS = 7;
 
@@ -49,6 +58,7 @@ public class CallService {
   private final CallDailyLimit callDailyLimit;
   private final TokenHasher tokenHasher;
   private final CallRecordRepository callRecordRepository;
+  private final ThinkingTestRepository thinkingTestRepository;
   private final Clock clock;
   // 통화 한 번의 최대 길이(초). FE 가 이 시간이 되면 끊습니다.
   private final int maxCallSeconds;
@@ -59,6 +69,7 @@ public class CallService {
       CallDailyLimit callDailyLimit,
       TokenHasher tokenHasher,
       CallRecordRepository callRecordRepository,
+      ThinkingTestRepository thinkingTestRepository,
       Clock clock,
       @Value("${app.ai.call-max-seconds:300}") int maxCallSeconds) {
     this.currentUserProvider = currentUserProvider;
@@ -66,6 +77,7 @@ public class CallService {
     this.callDailyLimit = callDailyLimit;
     this.tokenHasher = tokenHasher;
     this.callRecordRepository = callRecordRepository;
+    this.thinkingTestRepository = thinkingTestRepository;
     this.clock = clock;
     this.maxCallSeconds = maxCallSeconds;
   }
@@ -92,8 +104,8 @@ public class CallService {
     int careLevel = hasRecentCrisis(recentCalls, today) ? 0 : request.careLevel();
     CallSessionRequest.Card card = request.card();
 
-    List<CognitiveBias> selfReported = selfReportedOf(request.selfReportedBiases());
-    List<Weakness> weaknesses = weaknessesOf(request.selfReportedWeaknesses());
+    // 생각 습관 테스트 결과. 서버에 저장된 것이 있으면 그것을, 없으면 FE 가 보낸 것을 씁니다.
+    CallScript.SelfReport selfReport = selfReportOf(userId, request, recentCalls);
 
     BiasQuestion biasQuestion =
         BiasQuestion.pick(
@@ -102,7 +114,7 @@ public class CallService {
             card == null ? null : card.weekStartDelayMinutes(),
             foundBiasesOf(recentCalls),
             askedQuestionKeysOf(recentCalls),
-            selfReported);
+            selfReport.biases());
     String instructions =
         CallScript.instructions(
             careLevel,
@@ -110,7 +122,7 @@ public class CallService {
             card,
             biasQuestion,
             pastCallsOf(recentCalls),
-            new CallScript.SelfReport(selfReported, weaknesses));
+            selfReport);
     // OpenAI 에는 "어느 사용자의 요청인지" 를 알아볼 수 없는 글자로만 알려 줍니다. (번호를 그대로 보내지 않습니다)
     String safetyIdentifier = tokenHasher.hash("starflow-user-" + userId);
 
@@ -127,6 +139,34 @@ public class CallService {
         key.get().expiresAtMillis(),
         maxCallSeconds,
         String.valueOf(record.getId()));
+  }
+
+  // 통화 지침에 넣을 "생각" 쪽 자료를 모읍니다.
+  //   서버에 저장된 테스트가 있으면: 많이 해당한 습관(최대 3개) · 약점 칩 · 최근 2주 통화와 견줘 달랐던 점
+  //   없으면: FE 가 요청에 실어 보낸 습관 · 약점 칩 (견줄 것은 없음)
+  // 견준 결과는 통화가 3번 이상 쌓였을 때만 넣습니다. 그 전에는 "달랐다" 고 말하기 이릅니다. (ThinkingGap.MIN_CALLS)
+  private CallScript.SelfReport selfReportOf(
+      Long userId, CallSessionRequest request, List<CallRecord> recentCalls) {
+    Optional<ThinkingTest> saved = thinkingTestRepository.findFirstByUserIdOrderByIdDesc(userId);
+    if (saved.isEmpty()) {
+      return new CallScript.SelfReport(
+          selfReportedOf(request.selfReportedBiases()),
+          weaknessesOf(request.selfReportedWeaknesses()),
+          List.of());
+    }
+    ThinkingTest test = saved.get();
+    List<CognitiveBias> top = StudyStyle.topHabitsOf(test.getScores());
+    List<Weakness> weaknesses = new ArrayList<>();
+    for (Weakness weakness : Weakness.values()) {
+      if (test.getWeaknesses().contains(weakness)) {
+        weaknesses.add(weakness);
+      }
+    }
+    ThinkingGap gap = ThinkingTestService.gapOf(test, recentCalls, RECENT_DAYS);
+    return new CallScript.SelfReport(
+        top.subList(0, Math.min(MAX_SELF_REPORTED, top.size())),
+        weaknesses,
+        gap.enoughData() ? gap.differenceSentences() : List.of());
   }
 
   // 가입 테스트에서 많이 고른 습관 이름들을 목록의 습관으로 바꿉니다. 안 보냈으면 빈 목록입니다.

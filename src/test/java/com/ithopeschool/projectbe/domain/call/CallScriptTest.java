@@ -518,7 +518,9 @@ class CallScriptTest {
             null,
             List.of(),
             new CallScript.SelfReport(
-                List.of(CognitiveBias.PLANNING_FALLACY, CognitiveBias.FUTURE_SELF), List.of()));
+                List.of(CognitiveBias.PLANNING_FALLACY, CognitiveBias.FUTURE_SELF),
+                List.of(),
+                List.of()));
 
     assertThat(instructions)
         .contains("생각 습관 테스트에서 많이 고른 것: '계획 오류', '미래의 나 믿기'")
@@ -538,8 +540,10 @@ class CallScriptTest {
                 null,
                 List.of(),
                 new CallScript.SelfReport(
-                    List.of(CognitiveBias.PLANNING_FALLACY), List.of(Weakness.GAME))))
-        .doesNotContain("생각 습관 테스트", "스스로 꼽은 약점");
+                    List.of(CognitiveBias.PLANNING_FALLACY),
+                    List.of(Weakness.GAME),
+                    List.of("꼽지 않았던 '계획 과다' 쪽이 실제로는 못 채운 이유로 3번 나왔어."))))
+        .doesNotContain("생각 습관 테스트", "스스로 꼽은 약점", "실제 기록이 이렇게 달랐어");
   }
 
   @Test
@@ -548,5 +552,14 @@ class CallScriptTest {
     assertThat(CallScript.weaknessLine(List.of(Weakness.GAME, Weakness.LAZY)))
         .contains("스스로 꼽은 약점: '게임', '게으름'")
         .contains("탓하지 말고", "단정하지 마");
+  }
+
+  @Test
+  @DisplayName("생각과 실제가 달랐던 점은 최대 3개까지, 하나만 골라 탓하지 말고 묻게 한다")
+  void gapLines() {
+    List<String> lines = CallScript.gapLines(List.of("다름 1", "다름 2", "다름 3", "다름 4"));
+
+    assertThat(lines.get(0)).contains("한 가지만 골라", "탓하지 말고", "답을 먼저 말하지 마");
+    assertThat(lines).contains("  - 다름 1", "  - 다름 3").doesNotContain("  - 다름 4");
   }
 }
