@@ -71,17 +71,18 @@ class CallControllerTest {
   }
 
   @Test
-  @DisplayName("통화를 시작하면 200 과 임시 키·끝나는 시각(밀리초 숫자)·최대 길이를 돌려준다")
+  @DisplayName("통화를 시작하면 200 과 임시 키·끝나는 시각(밀리초 숫자)·최대 길이·통화 기록 번호(글자)를 돌려준다")
   void returnsTheKey() throws Exception {
     given(callService.startSession(any()))
-        .willReturn(new CallSessionResponse("ek_abc123", 1791700000000L, 300));
+        .willReturn(new CallSessionResponse("ek_abc123", 1791700000000L, 300, "12"));
 
     start(VALID)
         .andExpect(status().isOk())
         .andExpect(
             content()
                 .json(
-                    "{\"value\":\"ek_abc123\",\"expiresAt\":1791700000000,\"maxCallSeconds\":300}",
+                    "{\"value\":\"ek_abc123\",\"expiresAt\":1791700000000,\"maxCallSeconds\":300,"
+                        + "\"callId\":\"12\"}",
                     true));
 
     ArgumentCaptor<CallSessionRequest> captor = ArgumentCaptor.forClass(CallSessionRequest.class);
@@ -94,7 +95,7 @@ class CallControllerTest {
   @DisplayName("학생 카드가 없거나(null), 카드 안의 값이 비어 있어도 통과한다 (기록이 없는 사람)")
   void acceptsMissingCard() throws Exception {
     given(callService.startSession(any()))
-        .willReturn(new CallSessionResponse("ek_abc123", 1791700000000L, 300));
+        .willReturn(new CallSessionResponse("ek_abc123", 1791700000000L, 300, "12"));
 
     start("{\"careLevel\":1,\"maxHarshness\":3}").andExpect(status().isOk());
     start("{\"careLevel\":1,\"maxHarshness\":3,\"card\":null}").andExpect(status().isOk());
