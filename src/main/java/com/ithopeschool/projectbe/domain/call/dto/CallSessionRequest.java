@@ -27,7 +27,35 @@ public record CallSessionRequest(
         @Max(value = 5, message = "maxHarshness 는 1 ~ 5 예요")
         Integer maxHarshness,
     // 학생 카드. 기록이 하나도 없는 사람은 null 로 보내도 됩니다. (그러면 처음 만난 사람처럼 통화합니다)
-    @Valid Card card) {
+    @Valid Card card,
+    // 가입할 때 한 "생각 습관 테스트" 에서 많이 고른 생각 습관들. 많이 고른 것부터, 최대 3개 (FE src/lib/thinkingTest.ts)
+    // 이름은 생각 습관 목록(CognitiveBias)과 같은 글자입니다. 예: ["PLANNING_FALLACY", "FUTURE_SELF"]
+    // 테스트를 안 했으면 null 이나 빈 목록입니다. 통화 기록이 쌓이기 전에 첫 질문을 고르는 데 씁니다. (BiasQuestion)
+    @Size(max = 3, message = "selfReportedBiases 는 3개까지 보낼 수 있어요")
+        List<
+                @NotNull(message = "selfReportedBiases 에 빈 값이 있어요")
+                @Pattern(regexp = BIAS_NAMES, message = "selfReportedBiases 는 정해진 생각 습관 이름이어야 해요")
+                String>
+            selfReportedBiases,
+    // 생각 습관 테스트 마지막에 고른 "내가 생각하는 나의 약점" 칩 이름들 (Weakness). 안 골랐으면 null 이나 빈 목록
+    // 예: ["GAME", "SLEEP"]. "기타" 에 직접 쓴 글은 받지 않습니다.
+    @Size(max = 11, message = "selfReportedWeaknesses 는 11개까지 보낼 수 있어요")
+        List<
+                @NotNull(message = "selfReportedWeaknesses 에 빈 값이 있어요")
+                @Pattern(
+                    regexp = WEAKNESS_NAMES,
+                    message = "selfReportedWeaknesses 는 정해진 약점 이름이어야 해요")
+                String>
+            selfReportedWeaknesses) {
+
+  // 받을 수 있는 생각 습관 이름들입니다. CognitiveBias 에 습관을 더하면 여기에도 더해야 합니다. (CallControllerTest 가 확인)
+  // 받을 수 있는 약점 이름들입니다. Weakness 에 칩을 더하면 여기에도 더해야 합니다. (CallControllerTest 가 확인)
+  public static final String WEAKNESS_NAMES =
+      "GAME|PHONE|VIDEO|SLEEP|LAZY|DELAY|FOCUS|FRIENDS|TIRED|MOOD|PLANNING";
+
+  public static final String BIAS_NAMES =
+      "PLANNING_FALLACY|FUTURE_SELF|WHAT_THE_HELL|EMOTIONAL_REASONING"
+          + "|EXTERNAL_BLAME|ALL_OR_NOTHING|MORAL_LICENSING|OVERGENERALIZING";
 
   // 학생 카드: 통화에서 쓸 "사실" 들입니다. 모르는 값은 null 로 보냅니다. (0 과 "모름" 은 다릅니다)
   public record Card(

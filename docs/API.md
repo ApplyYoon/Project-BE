@@ -964,6 +964,8 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 | `careLevel`                  | 필수. 오늘의 관리 강도 0 ~ 4 (0 회복 · 1 당근 · 2 넛지 · 3 심리적 채찍 · 4 는 말투가 3 과 같음) |
 | `maxHarshness`               | 필수. 내가 허용한 독설 수위 1 ~ 5                                                      |
 | `card`                       | 선택. 기록이 없는 사람은 `null` 로 보냅니다                                            |
+| `selfReportedBiases`         | 선택. 가입할 때 한 "생각 습관 테스트" 에서 많이 고른 습관 이름, 많이 고른 것부터 3개까지. 예: `["PLANNING_FALLACY", "FUTURE_SELF"]` (생각 습관 목록의 이름만) |
+| `selfReportedWeaknesses`     | 선택. 테스트 마지막에 고른 "내가 생각하는 나의 약점" 칩 이름. 예: `["GAME", "SLEEP"]` (`GAME` `PHONE` `VIDEO` `SLEEP` `LAZY` `DELAY` `FOCUS` `FRIENDS` `TIRED` `MOOD` `PLANNING` 중). "기타" 에 직접 쓴 글은 받지 않습니다 |
 | `card.yesterdayStudyMinutes` | 어제의 순공시간(분). 0 ~ 1440                                                          |
 | `card.yesterdayPlanMinutes`  | 어제 계획의 목표 시간 합계(분). 계획이 없었으면 `0`                                    |
 | `card.yesterdayMissReason`   | 어제 못 채운 이유. `tired` `event` `phone` `tooMuch` `unwilling` `sick` `etc` 중 하나 (FE 의 `MissReason`) |
@@ -994,6 +996,8 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 - 학생 말에 신호 단어가 나오면 그 습관의 질문을 던지게 합니다. 생각 습관 질문은 통화 한 번에 두 번까지입니다.
 - 이름은 **생각에 붙이고 사람에게 붙이지 않습니다.** ("그런 생각을 '계획 오류' 라고 해" O / "너는 계획 오류형이야" X)
 - **위로하는 통화(기분이 낮음 · 관리 강도 0)에서는 생각 습관을 묻지 않습니다.** 힘든 날에 캐물으면 자책으로 이어질 수 있어서입니다.
+- **가입 테스트 결과(`selfReportedBiases`)** 는 실제 기록(지난 통화에서 보인 습관 · 어제 이유 · 시작 지연)이 하나도 없을 때 첫 질문을 고르는 데 씁니다. 지침에도 "스스로 고른 답이라 맞는지 대화로 확인하고 단정하지 마" 와 함께 적습니다.
+- **약점 칩(`selfReportedWeaknesses`)** 은 지침에 "학생이 스스로 꼽은 약점: '게임', '잠·늦잠'. 탓하지 말고 어떤 때 그런지 묻는 데만 써. 단정하지 마." 로 적습니다.
 
 **지난 통화** — 서버는 내 최근 2주의 통화 기록(`call_records`)을 읽어 지침에 더합니다. (FE 가 보내지 않습니다)
 

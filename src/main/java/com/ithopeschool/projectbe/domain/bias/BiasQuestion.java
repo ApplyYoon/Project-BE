@@ -19,7 +19,9 @@ import java.util.Map;
 //      피곤·아픔·약속·기타는 이어 붙이지 않습니다. 정말 어쩔 수 없던 일일 수 있어서입니다.
 //   3) 요즘 시작이 평균 15분 넘게 늦으면                                   →  미래의 나 믿기
 //   4) 최근 통화에서 한 번이라도 보인 생각 습관이 있으면 가장 최근 것
-//   5) 어디에도 안 맞으면                                                  →  null (오늘은 따로 묻지 않음)
+//   5) 가입할 때 한 생각 습관 테스트에서 가장 많이 고른 것                  →  처음 세운 가설을 확인
+//      스스로 고른 답이라 실제 기록(1~4)보다 뒤에 둡니다. 통화 기록이 없는 처음 며칠 동안 쓰입니다.
+//   6) 어디에도 안 맞으면                                                  →  null (오늘은 따로 묻지 않음)
 //
 // ■ 같은 질문이 연달아 나오지 않게
 //   그 습관의 질문 중 최근에 하지 않은 것을 앞에서부터 고릅니다. 전부 했으면 가장 오래전에 한 것을 다시 씁니다.
@@ -31,6 +33,7 @@ import java.util.Map;
 //   위와 같은데 최근에 "PLANNING_FALLACY-0" 을 물었음           →  계획 오류의 1번 질문
 //   최근 기록 없음, 어제 이유 tired, 시작 지연 30분             →  미래의 나 믿기
 //   최근 기록 없음, 어제 이유 없음, 시작 지연 10분              →  null
+//   위와 같은데 가입 테스트에서 [다 아니면 0, 계획 오류] 를 많이 고름  →  다 아니면 0
 public record BiasQuestion(CognitiveBias bias, int index) {
 
   // 최근 통화에서 이 횟수 이상 보이면 "자주 보이는 생각 습관" 으로 봅니다. (규칙 1)
@@ -48,6 +51,22 @@ public record BiasQuestion(CognitiveBias bias, int index) {
     return bias.name() + "-" + index;
   }
 
+  // 가입 테스트 결과 없이 고릅니다. (규칙 5 를 건너뜁니다)
+  public static BiasQuestion pick(
+      boolean supportive,
+      String yesterdayMissReason,
+      Integer weekStartDelayMinutes,
+      List<CognitiveBias> recentFound,
+      List<String> recentAskedKeys) {
+    return pick(
+        supportive,
+        yesterdayMissReason,
+        weekStartDelayMinutes,
+        recentFound,
+        recentAskedKeys,
+        List.of());
+  }
+
   // 오늘 할 질문을 고릅니다. 묻지 않는 날이면 null 입니다.
   //
   // supportive: 위로하는 통화인지 (기분이 낮거나 관리 강도가 0)
@@ -55,12 +74,14 @@ public record BiasQuestion(CognitiveBias bias, int index) {
   // weekStartDelayMinutes: 이번 주 평균 시작 지연(분). 모르면 null
   // recentFound: 최근 통화에서 보인 생각 습관들. 최근 것이 앞에 옵니다. 없으면 빈 목록
   // recentAskedKeys: 최근 통화에서 한 질문의 이름(key)들. 최근 것이 앞에 옵니다. 없으면 빈 목록
+  // selfReported: 가입 테스트에서 많이 고른 습관들. 많이 고른 것이 앞에 옵니다. 테스트를 안 했으면 빈 목록
   public static BiasQuestion pick(
       boolean supportive,
       String yesterdayMissReason,
       Integer weekStartDelayMinutes,
       List<CognitiveBias> recentFound,
-      List<String> recentAskedKeys) {
+      List<String> recentAskedKeys,
+      List<CognitiveBias> selfReported) {
     // 0) 위로하는 통화
     if (supportive) {
       return null;
@@ -83,7 +104,11 @@ public record BiasQuestion(CognitiveBias bias, int index) {
     if (!recentFound.isEmpty()) {
       return questionOf(recentFound.get(0), recentAskedKeys);
     }
-    // 5) 오늘은 따로 묻지 않음
+    // 5) 가입 테스트에서 가장 많이 고른 것
+    if (!selfReported.isEmpty()) {
+      return questionOf(selfReported.get(0), recentAskedKeys);
+    }
+    // 6) 오늘은 따로 묻지 않음
     return null;
   }
 

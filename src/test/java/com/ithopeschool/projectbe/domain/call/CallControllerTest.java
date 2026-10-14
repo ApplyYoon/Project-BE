@@ -10,10 +10,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
+import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
+import java.util.Arrays;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -185,5 +189,55 @@ class CallControllerTest {
         .andExpect(status().isServiceUnavailable())
         .andExpect(jsonPath("$.error.code").value("SERVICE_UNAVAILABLE"))
         .andExpect(jsonPath("$.error.message").value("AI 통화가 아직 켜져 있지 않아요"));
+  }
+
+  @Test
+  @DisplayName("가입 테스트 결과(selfReportedBiases)는 없거나 빈 목록이어도 되고, 습관 이름이면 받는다")
+  void acceptsSelfReportedBiases() throws Exception {
+    given(callService.startSession(any()))
+        .willReturn(new CallSessionResponse("ek_abc123", 1791700000000L, 300, "12"));
+
+    start("{\"careLevel\":1,\"maxHarshness\":3,\"selfReportedBiases\":[\"PLANNING_FALLACY\"]}")
+        .andExpect(status().isOk());
+    start("{\"careLevel\":1,\"maxHarshness\":3,\"selfReportedBiases\":[]}")
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName("가입 테스트 결과에 정해진 습관 이름이 아닌 것이 있거나 4개 이상이면 400")
+  void rejectsBadSelfReportedBiases() throws Exception {
+    expectRejected(
+        "{\"careLevel\":1,\"maxHarshness\":3,\"selfReportedBiases\":[\"LAZY\"]}",
+        "selfReportedBiases 는 정해진 생각 습관 이름이어야 해요");
+    expectRejected(
+        "{\"careLevel\":1,\"maxHarshness\":3,\"selfReportedBiases\":"
+            + "[\"PLANNING_FALLACY\",\"FUTURE_SELF\",\"WHAT_THE_HELL\",\"ALL_OR_NOTHING\"]}",
+        "selfReportedBiases 는 3개까지 보낼 수 있어요");
+  }
+
+  @Test
+  @DisplayName("받을 수 있는 습관 이름(BIAS_NAMES)이 생각 습관 목록과 정확히 같다 (습관을 더하면 여기도 더해야 함)")
+  void biasNamesMatchTheCatalog() {
+    List<String> names = Arrays.asList(CallSessionRequest.BIAS_NAMES.split("\\|"));
+    List<String> catalog = Arrays.stream(CognitiveBias.values()).map(Enum::name).toList();
+
+    assertThat(names).containsExactlyInAnyOrderElementsOf(catalog);
+  }
+
+  @Test
+  @DisplayName("약점 칩(selfReportedWeaknesses)은 정해진 이름만 받는다")
+  void rejectsBadWeaknesses() throws Exception {
+    expectRejected(
+        "{\"careLevel\":1,\"maxHarshness\":3,\"selfReportedWeaknesses\":[\"웹툰\"]}",
+        "selfReportedWeaknesses 는 정해진 약점 이름이어야 해요");
+  }
+
+  @Test
+  @DisplayName("받을 수 있는 약점 이름(WEAKNESS_NAMES)이 약점 목록과 정확히 같다")
+  void weaknessNamesMatchTheEnum() {
+    List<String> names = Arrays.asList(CallSessionRequest.WEAKNESS_NAMES.split("\\|"));
+    List<String> all = Arrays.stream(Weakness.values()).map(Enum::name).toList();
+
+    assertThat(names).containsExactlyInAnyOrderElementsOf(all);
   }
 }
