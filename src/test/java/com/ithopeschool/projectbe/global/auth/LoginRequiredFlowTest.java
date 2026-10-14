@@ -118,7 +118,13 @@ class LoginRequiredFlowTest {
               "POST",
               "/api/v1/realtime/session",
               "/api/v1/realtime/session",
-              "{\"careLevel\":1,\"maxHarshness\":3}"));
+              "{\"careLevel\":1,\"maxHarshness\":3}"),
+          // AI 통화 기록 (자막은 학생의 대화입니다)
+          new Api(
+              "POST",
+              "/api/v1/calls/{id}/finish",
+              "/api/v1/calls/1/finish",
+              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   private static final List<String> PUBLIC =
