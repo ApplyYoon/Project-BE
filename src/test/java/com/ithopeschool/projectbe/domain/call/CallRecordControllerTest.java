@@ -4,14 +4,21 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ithopeschool.projectbe.domain.bias.BiasHabit;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
+import com.ithopeschool.projectbe.domain.call.dto.BiasHabitResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishResponse;
+import com.ithopeschool.projectbe.domain.call.dto.CallRecordResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
+import java.time.LocalDate;
+import java.util.Collections;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -97,8 +104,7 @@ class CallRecordControllerTest {
         "자막 한 줄(text)은 500자까지예요");
     String tooMany =
         "{\"lines\":["
-            + String.join(
-                ",", java.util.Collections.nCopies(201, "{\"speaker\":\"me\",\"text\":\"응\"}"))
+            + String.join(",", Collections.nCopies(201, "{\"speaker\":\"me\",\"text\":\"응\"}"))
             + "]}";
     expectRejected(tooMany, "자막(lines)은 200줄까지 보낼 수 있어요");
     verifyNoInteractions(callRecordService);
@@ -114,5 +120,35 @@ class CallRecordControllerTest {
 
     finish("99", VALID).andExpect(status().isNotFound());
     finish("12", VALID).andExpect(status().isConflict());
+  }
+
+  @Test
+  @DisplayName("내 통화 기록과 자주 보이는 습관을 200 과 목록으로 돌려준다")
+  void listsMyCallsAndHabits() throws Exception {
+    given(callRecordService.getRecentCalls())
+        .willReturn(
+            List.of(
+                new CallRecordResponse(
+                    "12", LocalDate.of(2026, 10, 14), "요약", null, "phone", null, null, null)));
+    given(callRecordService.getHabits())
+        .willReturn(
+            List.of(
+                BiasHabitResponse.from(
+                    new BiasHabit(
+                        CognitiveBias.PLANNING_FALLACY, 3, LocalDate.of(2026, 10, 13), null))));
+
+    mockMvc
+        .perform(get("/api/v1/calls"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].callId").value("12"))
+        .andExpect(jsonPath("$[0].date").value("2026-10-14"))
+        .andExpect(jsonPath("$[0].missReason").value("phone"));
+    mockMvc
+        .perform(get("/api/v1/calls/habits"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].key").value("PLANNING_FALLACY"))
+        .andExpect(jsonPath("$[0].label").value("계획 오류"))
+        .andExpect(jsonPath("$[0].days").value(3))
+        .andExpect(jsonPath("$[0].lastDate").value("2026-10-13"));
   }
 }

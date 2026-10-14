@@ -11,9 +11,11 @@ import static org.mockito.Mockito.verify;
 
 import com.ithopeschool.projectbe.domain.bias.BiasQuestion;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
+import com.ithopeschool.projectbe.domain.call.dto.BiasHabitResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest.Line;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishResponse;
+import com.ithopeschool.projectbe.domain.call.dto.CallRecordResponse;
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -246,5 +248,75 @@ class CallRecordServiceTest {
 
     assertError(() -> service.finish(CALL_ID, TRANSCRIPT), ErrorCode.UNAUTHORIZED, "로그인이 필요해요");
     verify(callRecordRepository, never()).findByIdAndUserId(any(), any());
+  }
+
+  // ---- 내 통화 기록 · 자주 보이는 습관 ----
+
+  // 그날 마무리한 통화 하나. found 가 null 이면 습관이 보이지 않은 통화입니다.
+  private static CallRecord finishedCall(
+      long id, LocalDate date, CognitiveBias found, String evidence) {
+    CallRecord record = new CallRecord(USER_ID, date, NOW, null);
+    ReflectionTestUtils.setField(record, "id", id);
+    record.finish(NOW, "요약 " + id, found, evidence, null, MissReason.TOO_MUCH, "A", "B", true);
+    return record;
+  }
+
+  @Test
+  @DisplayName("내 통화 기록: 오늘을 넣어 최근 30일, 마무리한 통화만, 위기 표현이 감지된 통화는 빼고 돌려준다")
+  void recentCalls() {
+    CallRecord crisis = new CallRecord(USER_ID, LocalDate.of(2026, 10, 13), NOW, null);
+    crisis.finishWithCrisis(NOW);
+    CallRecord unfinished = new CallRecord(USER_ID, LocalDate.of(2026, 10, 14), NOW, null);
+    given(
+            callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
+                USER_ID, LocalDate.of(2026, 9, 15)))
+        .willReturn(
+            List.of(
+                unfinished,
+                finishedCall(5L, LocalDate.of(2026, 10, 14), CognitiveBias.PLANNING_FALLACY, "근거"),
+                crisis,
+                finishedCall(3L, LocalDate.of(2026, 10, 12), null, null)));
+
+    List<CallRecordResponse> calls = service.getRecentCalls();
+
+    assertThat(calls).extracting(CallRecordResponse::callId).containsExactly("5", "3");
+    assertThat(calls.get(0).bias().label()).isEqualTo("계획 오류");
+    assertThat(calls.get(0).bias().evidence()).isEqualTo("근거");
+    assertThat(calls.get(0).missReason()).isEqualTo("tooMuch");
+    assertThat(calls.get(0).promiseKept()).isTrue();
+    assertThat(calls.get(1).bias()).isNull();
+  }
+
+  @Test
+  @DisplayName("자주 보이는 습관: 최근 14일 통화에서 서로 다른 3일 이상 보인 습관만 돌려준다")
+  void habits() {
+    given(
+            callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
+                USER_ID, LocalDate.of(2026, 10, 1)))
+        .willReturn(
+            List.of(
+                finishedCall(
+                    4L, LocalDate.of(2026, 10, 13), CognitiveBias.PLANNING_FALLACY, "금방 한다고 함"),
+                finishedCall(3L, LocalDate.of(2026, 10, 10), CognitiveBias.PLANNING_FALLACY, null),
+                finishedCall(2L, LocalDate.of(2026, 10, 9), CognitiveBias.FUTURE_SELF, null),
+                finishedCall(1L, LocalDate.of(2026, 10, 5), CognitiveBias.PLANNING_FALLACY, null)));
+
+    List<BiasHabitResponse> habits = service.getHabits();
+
+    assertThat(habits).hasSize(1);
+    assertThat(habits.get(0).key()).isEqualTo("PLANNING_FALLACY");
+    assertThat(habits.get(0).days()).isEqualTo(3);
+    assertThat(habits.get(0).lastEvidence()).isEqualTo("금방 한다고 함");
+    assertThat(habits.get(0).solution()).isEqualTo(CognitiveBias.PLANNING_FALLACY.getSolution());
+  }
+
+  @Test
+  @DisplayName("기록 보기도 로그인하지 않았으면 401 이다")
+  void listsRequireLogin() {
+    given(currentUserProvider.getCurrentUserId())
+        .willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"));
+
+    assertError(service::getRecentCalls, ErrorCode.UNAUTHORIZED, "로그인이 필요해요");
+    assertError(service::getHabits, ErrorCode.UNAUTHORIZED, "로그인이 필요해요");
   }
 }

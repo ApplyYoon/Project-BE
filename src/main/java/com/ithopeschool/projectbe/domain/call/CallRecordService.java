@@ -1,22 +1,28 @@
 package com.ithopeschool.projectbe.domain.call;
 
+import com.ithopeschool.projectbe.domain.bias.BiasHabit;
+import com.ithopeschool.projectbe.domain.call.dto.BiasHabitResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishResponse;
+import com.ithopeschool.projectbe.domain.call.dto.CallRecordResponse;
 import com.ithopeschool.projectbe.domain.safety.CrisisText;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
+import com.ithopeschool.projectbe.global.time.DayRule;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-// 통화 기록을 마무리하는 로직입니다. (이슈 #29, docs/API.md "AI 통화 마무리")
+// 통화 기록을 마무리하고, 내 통화 기록을 보여 주는 로직입니다. (이슈 #29, docs/API.md "AI 통화 마무리" · "내 통화 기록")
 //
-// 순서
+// ■ 마무리(finish) 순서
 //   1. 로그인한 사람인지 확인한다                     (아니면 401)
 //   2. 내 통화 기록인지 찾는다                        (없거나 남의 것이면 404)
 //   3. 이미 마무리한 통화인지 본다                    (그렇다면 409)
@@ -36,6 +42,49 @@ public class CallRecordService {
   private final CallRecordRepository callRecordRepository;
   private final CallReviewClient callReviewClient;
   private final Clock clock;
+
+  // 기록 화면에 보여 주는 지난 통화의 기간(일). 오늘을 넣어 최근 30일
+  static final int RECENT_DAYS = 30;
+
+  // 내 최근 30일 통화 기록 (최근 것이 앞). 마무리한 통화만 보여 주고, 위기 표현이 감지된 통화는 뺍니다.
+  // (위기 표현이 감지된 통화는 내용을 남기지 않아서 보여 줄 것이 없습니다)
+  @Transactional(readOnly = true)
+  public List<CallRecordResponse> getRecentCalls() {
+    Long userId = currentUserProvider.getCurrentUserId();
+    LocalDate today = DayRule.dateOf(clock.instant());
+    List<CallRecordResponse> calls = new ArrayList<>();
+    for (CallRecord call : recentCallsOf(userId, today, RECENT_DAYS)) {
+      if (!call.isFinished() || call.isCrisisDetected()) {
+        continue;
+      }
+      String missReason =
+          call.getMissReason() == null ? null : CallCard.missReasonCode(call.getMissReason());
+      calls.add(CallRecordResponse.of(call, missReason));
+    }
+    return calls;
+  }
+
+  // 최근 14일 통화에서 자주 보이는 생각 습관 (BiasHabit). 없으면 빈 목록입니다.
+  @Transactional(readOnly = true)
+  public List<BiasHabitResponse> getHabits() {
+    Long userId = currentUserProvider.getCurrentUserId();
+    LocalDate today = DayRule.dateOf(clock.instant());
+    List<BiasHabit.Sighting> sightings = new ArrayList<>();
+    for (CallRecord call : recentCallsOf(userId, today, BiasHabit.WINDOW_DAYS)) {
+      if (call.getFoundBias() != null) {
+        sightings.add(
+            new BiasHabit.Sighting(
+                call.getCallDate(), call.getFoundBias(), call.getFoundEvidence()));
+      }
+    }
+    return BiasHabit.of(sightings, today).stream().map(BiasHabitResponse::from).toList();
+  }
+
+  // 오늘을 넣어 최근 days 일의 내 통화 (최근 것이 앞)
+  private List<CallRecord> recentCallsOf(Long userId, LocalDate today, int days) {
+    return callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
+        userId, today.minusDays(days - 1));
+  }
 
   // @Transactional 을 붙이지 않은 이유: 중간에 GPT 를 최대 20초 기다립니다.
   // 그동안 DB 연결을 붙잡고 있지 않도록, 찾기와 저장을 따로 합니다. (repository 의 메서드는 각각 알아서 트랜잭션을 엽니다)
