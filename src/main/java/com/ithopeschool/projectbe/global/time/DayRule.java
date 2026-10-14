@@ -30,4 +30,10 @@ public final class DayRule {
     // 1) 한국 시간으로 바꾸고  2) 4시간을 빼고  3) 날짜 부분만 꺼냅니다.
     return instant.atZone(SEOUL).minusHours(DAY_START_HOUR).toLocalDate();
   }
+
+  // 그날이 시작되는 순간(한국 시간 새벽 4시)을 돌려줍니다. "오늘 이미 보냈는지" 처럼 그날 안의 것을 찾을 때 씁니다.
+  //   2026-09-28  →  2026-09-28 04:00 (한국 시간) = 2026-09-27T19:00:00Z
+  public static Instant startOf(LocalDate date) {
+    return date.atTime(DAY_START_HOUR, 0).atZone(SEOUL).toInstant();
+  }
 }
