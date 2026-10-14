@@ -20,6 +20,7 @@ erDiagram
     users ||--o{ messages : "user_id"
     users ||--o{ call_records : "user_id"
     users ||--o{ thinking_tests : "user_id"
+    users ||--o{ push_subscriptions : "user_id"
     thinking_tests ||--o{ thinking_test_scores : "thinking_test_id"
     thinking_tests ||--o{ thinking_test_weaknesses : "thinking_test_id"
     subjects ||--o{ study_plans : "subject_id"
@@ -111,6 +112,14 @@ erDiagram
         varchar habit "생각 습관 이름 (PLANNING_FALLACY 등 8개 중 하나)"
         double average "그 습관의 평균 (1 ~ 7, 역문항은 뒤집어 센 값)"
     }
+    push_subscriptions {
+        bigint id PK "구독을 구분하는 고유 번호"
+        bigint user_id FK "알림을 받을 사람"
+        varchar endpoint "푸시를 보낼 브라우저 회사의 주소 (500자까지, 중복 불가, 기기마다 하나)"
+        varchar p256dh "알림 내용을 잠그는 브라우저의 공개 열쇠 (200자까지)"
+        varchar auth "알림 내용을 잠그는 비밀 값 (100자까지)"
+        timestamptz subscribed_at "구독을 저장한(다시 저장한) 시각"
+    }
     thinking_test_weaknesses {
         bigint thinking_test_id FK "어느 테스트의 약점인지"
         varchar weakness "내가 꼽은 약점 칩 (GAME, PHONE, VIDEO, SLEEP, LAZY, DELAY, FOCUS, FRIENDS, TIRED, MOOD, PLANNING 중 하나)"
@@ -131,6 +140,7 @@ erDiagram
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
 | `messages` | AI 가 사용자에게 보낸 메시지 하나가 한 줄 (종류, 내용, 보낸 시각, 읽은 시각) | #30 |
 | `call_records` | AI 통화 한 번이 한 줄 (확인하려던 생각 습관, 요약, 보인 생각 습관과 근거, 약속, 위기 표현 표시) | #28 · #29 |
+| `push_subscriptions` | 웹 푸시(앱을 닫아도 오는 알림)를 받겠다고 한 기기 하나가 한 줄 (보낼 주소, 잠금 열쇠) | #32 |
 | `thinking_tests` | 생각 습관 테스트 한 번이 한 줄 (마친 시각, 테스트 모양 번호). 다시 하면 새 줄이 쌓임 | #35 |
 | `thinking_test_scores` | 테스트 한 번의 습관 8개 평균이 한 줄씩 (`@ElementCollection`) | #35 |
 | `thinking_test_weaknesses` | 테스트 한 번에서 고른 약점 칩이 한 줄씩 (`@ElementCollection`) | #35 |
