@@ -140,4 +140,37 @@ class BiasQuestionTest {
     assertThat(question.key()).isEqualTo("PLANNING_FALLACY-1");
     assertThat(question.text()).isEqualTo(PLANNING_FALLACY.getQuestions().get(1));
   }
+
+  @Test
+  @DisplayName("5) 실제 기록이 아무것도 없으면 가입 테스트에서 가장 많이 고른 습관을 확인한다")
+  void signupTestIsTheFirstGuess() {
+    List<CognitiveBias> selfReported = List.of(CognitiveBias.ALL_OR_NOTHING, PLANNING_FALLACY);
+
+    assertThat(BiasQuestion.pick(false, null, null, NO_FOUND, NO_ASKED, selfReported).bias())
+        .isEqualTo(CognitiveBias.ALL_OR_NOTHING);
+  }
+
+  @Test
+  @DisplayName("5) 가입 테스트는 실제 기록(보인 습관·어제 이유·시작 지연)보다 뒤다")
+  void realRecordsComeFirst() {
+    List<CognitiveBias> selfReported = List.of(CognitiveBias.ALL_OR_NOTHING);
+
+    assertThat(BiasQuestion.pick(false, "tooMuch", null, NO_FOUND, NO_ASKED, selfReported).bias())
+        .isEqualTo(PLANNING_FALLACY);
+    assertThat(BiasQuestion.pick(false, null, 30, NO_FOUND, NO_ASKED, selfReported).bias())
+        .isEqualTo(FUTURE_SELF);
+    assertThat(
+            BiasQuestion.pick(false, null, null, List.of(WHAT_THE_HELL), NO_ASKED, selfReported)
+                .bias())
+        .isEqualTo(WHAT_THE_HELL);
+  }
+
+  @Test
+  @DisplayName("0) 위로하는 통화에서는 가입 테스트가 있어도 묻지 않는다")
+  void supportiveIgnoresTheSignupTest() {
+    assertThat(
+            BiasQuestion.pick(
+                true, null, null, NO_FOUND, NO_ASKED, List.of(CognitiveBias.ALL_OR_NOTHING)))
+        .isNull();
+  }
 }

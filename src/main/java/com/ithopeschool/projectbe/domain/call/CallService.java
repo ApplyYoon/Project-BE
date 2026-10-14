@@ -26,7 +26,7 @@ import org.springframework.stereotype.Service;
 //   2. 통화를 켤 수 있는 서버인지 본다         (내 컴퓨터에서는 꺼져 있습니다 → 503)
 //   3. 오늘 건 횟수가 한도 안인지 본다         (넘었으면 429)
 //   4. 최근 2주의 통화 기록을 읽는다          (CallRecord)
-//   5. 오늘 확인할 생각 습관 질문을 고른다     (BiasQuestion: 자주 보인 습관 → 어제 이유 → 시작 지연)
+//   5. 오늘 확인할 생각 습관 질문을 고른다     (BiasQuestion: 자주 보인 습관 → 어제 이유 → 시작 지연 → 가입 테스트)
 //   6. 학생 카드와 지난 통화로 대본(지침)을 만든다 (CallScript: 기록에 따라 질문과 말투가 달라집니다)
 //   7. OpenAI 에서 그 대본이 묶인 임시 키를 받는다 (못 받으면 503)
 //   8. 통화 기록을 한 줄 만들고, 임시 키와 기록 번호를 돌려준다
@@ -91,16 +91,24 @@ public class CallService {
     int careLevel = hasRecentCrisis(recentCalls, today) ? 0 : request.careLevel();
     CallSessionRequest.Card card = request.card();
 
+    List<CognitiveBias> selfReported = selfReportedOf(request.selfReportedBiases());
+
     BiasQuestion biasQuestion =
         BiasQuestion.pick(
             CallScript.isSupportive(careLevel, card),
             card == null ? null : card.yesterdayMissReason(),
             card == null ? null : card.weekStartDelayMinutes(),
             foundBiasesOf(recentCalls),
-            askedQuestionKeysOf(recentCalls));
+            askedQuestionKeysOf(recentCalls),
+            selfReported);
     String instructions =
         CallScript.instructions(
-            careLevel, request.maxHarshness(), card, biasQuestion, pastCallsOf(recentCalls));
+            careLevel,
+            request.maxHarshness(),
+            card,
+            biasQuestion,
+            pastCallsOf(recentCalls),
+            selfReported);
     // OpenAI 에는 "어느 사용자의 요청인지" 를 알아볼 수 없는 글자로만 알려 줍니다. (번호를 그대로 보내지 않습니다)
     String safetyIdentifier = tokenHasher.hash("starflow-user-" + userId);
 
@@ -117,6 +125,19 @@ public class CallService {
         key.get().expiresAtMillis(),
         maxCallSeconds,
         String.valueOf(record.getId()));
+  }
+
+  // 가입 테스트에서 많이 고른 습관 이름들을 목록의 습관으로 바꿉니다. 안 보냈으면 빈 목록입니다.
+  // (이름은 요청을 받을 때 이미 검사했습니다. CallSessionRequest.BIAS_NAMES)
+  static List<CognitiveBias> selfReportedOf(List<String> names) {
+    List<CognitiveBias> biases = new ArrayList<>();
+    if (names == null) {
+      return biases;
+    }
+    for (String name : names) {
+      biases.add(CognitiveBias.valueOf(name));
+    }
+    return biases;
   }
 
   // 오늘을 넣어 최근 7일 안에 위기 표현이 감지된 통화가 있으면 true 입니다.

@@ -65,15 +65,27 @@ public final class CallScript {
     return instructions(careLevel, maxHarshness, card, biasQuestion, List.of());
   }
 
-  // 통화 한 번의 지침 전체를 만듭니다.
-  // biasQuestion: 오늘 확인할 생각 습관 질문 (BiasQuestion.pick). 묻지 않는 날이면 null
-  // pastCalls: 지난 통화들. 최근 것이 앞에 옵니다. 없으면 빈 목록
+  // 통화 한 번의 지침 전체를 만듭니다. 가입 테스트 결과는 없는 것으로 봅니다.
   public static String instructions(
       int careLevel,
       int maxHarshness,
       CallSessionRequest.Card card,
       BiasQuestion biasQuestion,
       List<PastCall> pastCalls) {
+    return instructions(careLevel, maxHarshness, card, biasQuestion, pastCalls, List.of());
+  }
+
+  // 통화 한 번의 지침 전체를 만듭니다.
+  // biasQuestion: 오늘 확인할 생각 습관 질문 (BiasQuestion.pick). 묻지 않는 날이면 null
+  // pastCalls: 지난 통화들. 최근 것이 앞에 옵니다. 없으면 빈 목록
+  // selfReported: 가입 테스트에서 많이 고른 생각 습관들. 많이 고른 것이 앞에 옵니다. 테스트를 안 했으면 빈 목록
+  public static String instructions(
+      int careLevel,
+      int maxHarshness,
+      CallSessionRequest.Card card,
+      BiasQuestion biasQuestion,
+      List<PastCall> pastCalls,
+      List<CognitiveBias> selfReported) {
     boolean supportive = isSupportive(careLevel, card);
     List<String> lines = new ArrayList<>();
     lines.add("너는 고등학생에게 하루에 한 번 짧게 전화하는 공부 코치야. 한국어 반말로 말해.");
@@ -104,6 +116,9 @@ public final class CallScript {
     if (!supportive) {
       lines.add("[생각 습관]");
       lines.addAll(biasRules());
+      if (!selfReported.isEmpty()) {
+        lines.add(selfReportedLine(selfReported));
+      }
       lines.add("");
     }
     lines.add("[통화 순서]");
@@ -215,6 +230,18 @@ public final class CallScript {
               + "\"");
     }
     return lines;
+  }
+
+  // 가입 테스트에서 많이 고른 생각 습관을 알려 주는 한 줄입니다. 스스로 고른 답이라 확인이 필요하다고 같이 적습니다.
+  //   [계획 오류, 미래의 나 믿기]  →  "- 학생이 가입할 때 한 생각 습관 테스트에서 많이 고른 것: '계획 오류', '미래의 나 믿기'. …"
+  static String selfReportedLine(List<CognitiveBias> selfReported) {
+    List<String> labels = new ArrayList<>();
+    for (CognitiveBias bias : selfReported) {
+      labels.add("'" + bias.getLabel() + "'");
+    }
+    return "- 학생이 가입할 때 한 생각 습관 테스트에서 많이 고른 것: "
+        + String.join(", ", labels)
+        + ". 학생이 스스로 고른 답이라 맞는지 확인이 필요해. 대화에서 자연스럽게 확인해 보고, 단정하지 마.";
   }
 
   // 통화 순서에 넣는 "오늘 확인할 생각 습관" 한 단계입니다.

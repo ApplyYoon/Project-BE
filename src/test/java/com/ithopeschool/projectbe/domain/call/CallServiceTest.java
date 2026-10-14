@@ -63,7 +63,8 @@ class CallServiceTest {
           2,
           3,
           new Card(
-              100, 240, "phone", 3, 180, "19:00", 64, 55, 10, List.of(3, 3), 4, null, null, null));
+              100, 240, "phone", 3, 180, "19:00", 64, 55, 10, List.of(3, 3), 4, null, null, null),
+          null);
 
   @BeforeEach
   void loggedInAndCallOn() {
@@ -181,7 +182,8 @@ class CallServiceTest {
   @Test
   @DisplayName("학생 카드 없이(null) 걸어도 통화가 시작된다")
   void worksWithoutACard() {
-    CallSessionResponse response = callService.startSession(new CallSessionRequest(1, 3, null));
+    CallSessionResponse response =
+        callService.startSession(new CallSessionRequest(1, 3, null, null));
 
     assertThat(response.value()).isEqualTo("ek_abc123");
   }
@@ -352,7 +354,7 @@ class CallServiceTest {
     crisis.finishWithCrisis(NOW.minusSeconds(86400 * 6 - 180));
     givenPastCalls(crisis);
 
-    callService.startSession(new CallSessionRequest(3, 5, REQUEST.card()));
+    callService.startSession(new CallSessionRequest(3, 5, REQUEST.card(), null));
 
     assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[생각 습관]", "[지난 통화]");
     assertThat(savedRecord().getAskedBias()).isNull();
@@ -369,5 +371,29 @@ class CallServiceTest {
     callService.startSession(REQUEST);
 
     assertThat(sentInstructions()).contains("[생각 습관]").doesNotContain("위로하고 응원하는 말만");
+  }
+
+  // ---- 가입 테스트 ----
+
+  @Test
+  @DisplayName("기록이 하나도 없는 첫 통화는 가입 테스트에서 가장 많이 고른 습관을 확인하고, 지침에 테스트 결과를 적는다")
+  void firstCallUsesTheSignupTest() {
+    callService.startSession(
+        new CallSessionRequest(2, 3, null, List.of("ALL_OR_NOTHING", "PLANNING_FALLACY")));
+
+    assertThat(savedRecord().getAskedBias()).isEqualTo(CognitiveBias.ALL_OR_NOTHING);
+    assertThat(sentInstructions())
+        .contains("오늘 확인할 생각 습관은 '다 아니면 0'")
+        .contains("생각 습관 테스트에서 많이 고른 것: '다 아니면 0', '계획 오류'");
+  }
+
+  @Test
+  @DisplayName("어제 고른 이유가 있으면 가입 테스트보다 그쪽이 먼저다 (실제 기록이 스스로 고른 답보다 먼저)")
+  void realRecordsComeBeforeTheSignupTest() {
+    callService.startSession(
+        new CallSessionRequest(2, 3, REQUEST.card(), List.of("ALL_OR_NOTHING")));
+
+    // 학생 카드의 어제 이유가 폰 → 미래의 나 믿기
+    assertThat(savedRecord().getAskedBias()).isEqualTo(CognitiveBias.FUTURE_SELF);
   }
 }

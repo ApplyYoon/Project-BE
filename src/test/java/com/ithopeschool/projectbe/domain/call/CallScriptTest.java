@@ -503,4 +503,34 @@ class CallScriptTest {
 
     assertThat(instructions).doesNotContain("[지난 통화]", "지난 통화에서 정한 약속", "미래의 나 믿기");
   }
+
+  // ---- 가입 테스트 ----
+
+  @Test
+  @DisplayName("가입 테스트에서 많이 고른 습관을 적고, 스스로 고른 답이라 단정하지 말라고 한다")
+  void signupTestGoesIntoTheRules() {
+    String instructions =
+        CallScript.instructions(
+            2,
+            3,
+            ORDINARY,
+            null,
+            List.of(),
+            List.of(CognitiveBias.PLANNING_FALLACY, CognitiveBias.FUTURE_SELF));
+
+    assertThat(instructions)
+        .contains("생각 습관 테스트에서 많이 고른 것: '계획 오류', '미래의 나 믿기'")
+        .contains("스스로 고른 답이라 맞는지 확인이 필요해", "단정하지 마");
+  }
+
+  @Test
+  @DisplayName("가입 테스트를 안 했거나 위로하는 통화면 그 줄을 넣지 않는다")
+  void noSignupTestLine() {
+    assertThat(CallScript.instructions(2, 3, ORDINARY, null, List.of(), List.of()))
+        .doesNotContain("생각 습관 테스트");
+    assertThat(
+            CallScript.instructions(
+                0, 3, ORDINARY, null, List.of(), List.of(CognitiveBias.PLANNING_FALLACY)))
+        .doesNotContain("생각 습관 테스트");
+  }
 }
