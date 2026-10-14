@@ -28,6 +28,11 @@ app:
     call-daily-limit-per-user: ${AI_CALL_DAILY_LIMIT_PER_USER:3}
     # 통화 한 번의 최대 길이(초)입니다. FE 가 이 시간이 되면 통화를 끊습니다.
     call-max-seconds: ${AI_CALL_MAX_SECONDS:300}
+  push:
+    # 웹 푸시(앱을 닫아도 오는 알림) 설정입니다. (domain/push/WebPushSender)
+    # ⚠️ VAPID 키의 자리는 여기(공통)에 없고 application-prod.yml 에만 있습니다. 그래서 내 컴퓨터에서는 푸시가 꺼져 있습니다.
+    # 알림을 보내는 쪽이 누구인지 알리는 연락처입니다. 푸시 회사(애플·구글)가 문제가 생기면 이리로 연락합니다. 비밀값이 아닙니다.
+    subject: ${PUSH_SUBJECT:https://github.com/Tmax-IT-Hope-School}
   job:
     # 예약 작업 주소(/api/v1/jobs/**)를 부를 때 X-Job-Key 헤더에 넣어야 하는 비밀 키입니다. (docs/JOBS.md)
     # 값은 여기에 적지 않고 환경변수 JOB_SECRET_KEY 로 받습니다. 비어 있으면 요청을 전부 거절합니다.
