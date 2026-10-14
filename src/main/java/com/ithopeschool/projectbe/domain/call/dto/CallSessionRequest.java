@@ -36,9 +36,23 @@ public record CallSessionRequest(
                 @NotNull(message = "selfReportedBiases 에 빈 값이 있어요")
                 @Pattern(regexp = BIAS_NAMES, message = "selfReportedBiases 는 정해진 생각 습관 이름이어야 해요")
                 String>
-            selfReportedBiases) {
+            selfReportedBiases,
+    // 생각 습관 테스트 마지막에 고른 "내가 생각하는 나의 약점" 칩 이름들 (Weakness). 안 골랐으면 null 이나 빈 목록
+    // 예: ["GAME", "SLEEP"]. "기타" 에 직접 쓴 글은 받지 않습니다.
+    @Size(max = 11, message = "selfReportedWeaknesses 는 11개까지 보낼 수 있어요")
+        List<
+                @NotNull(message = "selfReportedWeaknesses 에 빈 값이 있어요")
+                @Pattern(
+                    regexp = WEAKNESS_NAMES,
+                    message = "selfReportedWeaknesses 는 정해진 약점 이름이어야 해요")
+                String>
+            selfReportedWeaknesses) {
 
   // 받을 수 있는 생각 습관 이름들입니다. CognitiveBias 에 습관을 더하면 여기에도 더해야 합니다. (CallControllerTest 가 확인)
+  // 받을 수 있는 약점 이름들입니다. Weakness 에 칩을 더하면 여기에도 더해야 합니다. (CallControllerTest 가 확인)
+  public static final String WEAKNESS_NAMES =
+      "GAME|PHONE|VIDEO|SLEEP|LAZY|DELAY|FOCUS|FRIENDS|TIRED|MOOD|PLANNING";
+
   public static final String BIAS_NAMES =
       "PLANNING_FALLACY|FUTURE_SELF|WHAT_THE_HELL|EMOTIONAL_REASONING"
           + "|EXTERNAL_BLAME|ALL_OR_NOTHING|MORAL_LICENSING|OVERGENERALIZING";

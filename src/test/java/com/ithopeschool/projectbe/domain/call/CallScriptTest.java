@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ithopeschool.projectbe.domain.bias.BiasQuestion;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
+import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
 import java.time.LocalDate;
 import java.util.List;
@@ -516,7 +517,8 @@ class CallScriptTest {
             ORDINARY,
             null,
             List.of(),
-            List.of(CognitiveBias.PLANNING_FALLACY, CognitiveBias.FUTURE_SELF));
+            new CallScript.SelfReport(
+                List.of(CognitiveBias.PLANNING_FALLACY, CognitiveBias.FUTURE_SELF), List.of()));
 
     assertThat(instructions)
         .contains("생각 습관 테스트에서 많이 고른 것: '계획 오류', '미래의 나 믿기'")
@@ -526,11 +528,25 @@ class CallScriptTest {
   @Test
   @DisplayName("가입 테스트를 안 했거나 위로하는 통화면 그 줄을 넣지 않는다")
   void noSignupTestLine() {
-    assertThat(CallScript.instructions(2, 3, ORDINARY, null, List.of(), List.of()))
+    assertThat(CallScript.instructions(2, 3, ORDINARY, null, List.of(), CallScript.SelfReport.NONE))
         .doesNotContain("생각 습관 테스트");
     assertThat(
             CallScript.instructions(
-                0, 3, ORDINARY, null, List.of(), List.of(CognitiveBias.PLANNING_FALLACY)))
-        .doesNotContain("생각 습관 테스트");
+                0,
+                3,
+                ORDINARY,
+                null,
+                List.of(),
+                new CallScript.SelfReport(
+                    List.of(CognitiveBias.PLANNING_FALLACY), List.of(Weakness.GAME))))
+        .doesNotContain("생각 습관 테스트", "스스로 꼽은 약점");
+  }
+
+  @Test
+  @DisplayName("약점 칩은 스스로 꼽은 것이라 탓하지 말고 단정하지 말라고 한다")
+  void weaknessLine() {
+    assertThat(CallScript.weaknessLine(List.of(Weakness.GAME, Weakness.LAZY)))
+        .contains("스스로 꼽은 약점: '게임', '게으름'")
+        .contains("탓하지 말고", "단정하지 마");
   }
 }

@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
+import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -221,5 +222,22 @@ class CallControllerTest {
     List<String> catalog = Arrays.stream(CognitiveBias.values()).map(Enum::name).toList();
 
     assertThat(names).containsExactlyInAnyOrderElementsOf(catalog);
+  }
+
+  @Test
+  @DisplayName("약점 칩(selfReportedWeaknesses)은 정해진 이름만 받는다")
+  void rejectsBadWeaknesses() throws Exception {
+    expectRejected(
+        "{\"careLevel\":1,\"maxHarshness\":3,\"selfReportedWeaknesses\":[\"웹툰\"]}",
+        "selfReportedWeaknesses 는 정해진 약점 이름이어야 해요");
+  }
+
+  @Test
+  @DisplayName("받을 수 있는 약점 이름(WEAKNESS_NAMES)이 약점 목록과 정확히 같다")
+  void weaknessNamesMatchTheEnum() {
+    List<String> names = Arrays.asList(CallSessionRequest.WEAKNESS_NAMES.split("\\|"));
+    List<String> all = Arrays.stream(Weakness.values()).map(Enum::name).toList();
+
+    assertThat(names).containsExactlyInAnyOrderElementsOf(all);
   }
 }

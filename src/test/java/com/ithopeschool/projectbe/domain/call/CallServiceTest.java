@@ -64,6 +64,7 @@ class CallServiceTest {
           3,
           new Card(
               100, 240, "phone", 3, 180, "19:00", 64, 55, 10, List.of(3, 3), 4, null, null, null),
+          null,
           null);
 
   @BeforeEach
@@ -183,7 +184,7 @@ class CallServiceTest {
   @DisplayName("학생 카드 없이(null) 걸어도 통화가 시작된다")
   void worksWithoutACard() {
     CallSessionResponse response =
-        callService.startSession(new CallSessionRequest(1, 3, null, null));
+        callService.startSession(new CallSessionRequest(1, 3, null, null, null));
 
     assertThat(response.value()).isEqualTo("ek_abc123");
   }
@@ -354,7 +355,7 @@ class CallServiceTest {
     crisis.finishWithCrisis(NOW.minusSeconds(86400 * 6 - 180));
     givenPastCalls(crisis);
 
-    callService.startSession(new CallSessionRequest(3, 5, REQUEST.card(), null));
+    callService.startSession(new CallSessionRequest(3, 5, REQUEST.card(), null, null));
 
     assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[생각 습관]", "[지난 통화]");
     assertThat(savedRecord().getAskedBias()).isNull();
@@ -379,7 +380,7 @@ class CallServiceTest {
   @DisplayName("기록이 하나도 없는 첫 통화는 가입 테스트에서 가장 많이 고른 습관을 확인하고, 지침에 테스트 결과를 적는다")
   void firstCallUsesTheSignupTest() {
     callService.startSession(
-        new CallSessionRequest(2, 3, null, List.of("ALL_OR_NOTHING", "PLANNING_FALLACY")));
+        new CallSessionRequest(2, 3, null, List.of("ALL_OR_NOTHING", "PLANNING_FALLACY"), null));
 
     assertThat(savedRecord().getAskedBias()).isEqualTo(CognitiveBias.ALL_OR_NOTHING);
     assertThat(sentInstructions())
@@ -391,9 +392,19 @@ class CallServiceTest {
   @DisplayName("어제 고른 이유가 있으면 가입 테스트보다 그쪽이 먼저다 (실제 기록이 스스로 고른 답보다 먼저)")
   void realRecordsComeBeforeTheSignupTest() {
     callService.startSession(
-        new CallSessionRequest(2, 3, REQUEST.card(), List.of("ALL_OR_NOTHING")));
+        new CallSessionRequest(2, 3, REQUEST.card(), List.of("ALL_OR_NOTHING"), null));
 
     // 학생 카드의 어제 이유가 폰 → 미래의 나 믿기
     assertThat(savedRecord().getAskedBias()).isEqualTo(CognitiveBias.FUTURE_SELF);
+  }
+
+  @Test
+  @DisplayName("가입 테스트에서 고른 약점 칩을 지침에 적고, 탓하지 말고 언제 그런지 묻는 데만 쓰게 한다")
+  void weaknessesGoIntoTheScript() {
+    callService.startSession(new CallSessionRequest(2, 3, null, null, List.of("GAME", "SLEEP")));
+
+    assertThat(sentInstructions())
+        .contains("학생이 스스로 꼽은 약점: '게임', '잠·늦잠'")
+        .contains("이걸로 탓하지 말고", "단정하지 마");
   }
 }

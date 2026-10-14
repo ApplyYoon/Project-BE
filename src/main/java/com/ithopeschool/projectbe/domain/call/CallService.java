@@ -3,6 +3,7 @@ package com.ithopeschool.projectbe.domain.call;
 import com.ithopeschool.projectbe.domain.auth.TokenHasher;
 import com.ithopeschool.projectbe.domain.bias.BiasQuestion;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
+import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallKeyClient.CallKey;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
@@ -92,6 +93,7 @@ public class CallService {
     CallSessionRequest.Card card = request.card();
 
     List<CognitiveBias> selfReported = selfReportedOf(request.selfReportedBiases());
+    List<Weakness> weaknesses = weaknessesOf(request.selfReportedWeaknesses());
 
     BiasQuestion biasQuestion =
         BiasQuestion.pick(
@@ -108,7 +110,7 @@ public class CallService {
             card,
             biasQuestion,
             pastCallsOf(recentCalls),
-            selfReported);
+            new CallScript.SelfReport(selfReported, weaknesses));
     // OpenAI 에는 "어느 사용자의 요청인지" 를 알아볼 수 없는 글자로만 알려 줍니다. (번호를 그대로 보내지 않습니다)
     String safetyIdentifier = tokenHasher.hash("starflow-user-" + userId);
 
@@ -138,6 +140,18 @@ public class CallService {
       biases.add(CognitiveBias.valueOf(name));
     }
     return biases;
+  }
+
+  // 가입 테스트에서 고른 약점 칩 이름들을 Weakness 로 바꿉니다. 안 보냈으면 빈 목록입니다. (이름은 이미 검사했습니다)
+  static List<Weakness> weaknessesOf(List<String> names) {
+    List<Weakness> weaknesses = new ArrayList<>();
+    if (names == null) {
+      return weaknesses;
+    }
+    for (String name : names) {
+      weaknesses.add(Weakness.valueOf(name));
+    }
+    return weaknesses;
   }
 
   // 오늘을 넣어 최근 7일 안에 위기 표현이 감지된 통화가 있으면 true 입니다.

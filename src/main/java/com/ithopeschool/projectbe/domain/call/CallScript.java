@@ -2,6 +2,7 @@ package com.ithopeschool.projectbe.domain.call;
 
 import com.ithopeschool.projectbe.domain.bias.BiasQuestion;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
+import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.care.ToneGuide;
 import com.ithopeschool.projectbe.domain.plan.AchievementRate;
@@ -65,6 +66,13 @@ public final class CallScript {
     return instructions(careLevel, maxHarshness, card, biasQuestion, List.of());
   }
 
+  // 학생이 가입할 때 생각 습관 테스트에서 스스로 고른 것입니다. ("생각" 쪽 자료)
+  // biases: 많이 고른 생각 습관들 (많이 고른 것부터) / weaknesses: "내가 생각하는 나의 약점" 칩들
+  // 테스트를 안 했으면 둘 다 빈 목록입니다. (SelfReport.NONE)
+  public record SelfReport(List<CognitiveBias> biases, List<Weakness> weaknesses) {
+    public static final SelfReport NONE = new SelfReport(List.of(), List.of());
+  }
+
   // 통화 한 번의 지침 전체를 만듭니다. 가입 테스트 결과는 없는 것으로 봅니다.
   public static String instructions(
       int careLevel,
@@ -72,20 +80,20 @@ public final class CallScript {
       CallSessionRequest.Card card,
       BiasQuestion biasQuestion,
       List<PastCall> pastCalls) {
-    return instructions(careLevel, maxHarshness, card, biasQuestion, pastCalls, List.of());
+    return instructions(careLevel, maxHarshness, card, biasQuestion, pastCalls, SelfReport.NONE);
   }
 
   // 통화 한 번의 지침 전체를 만듭니다.
   // biasQuestion: 오늘 확인할 생각 습관 질문 (BiasQuestion.pick). 묻지 않는 날이면 null
   // pastCalls: 지난 통화들. 최근 것이 앞에 옵니다. 없으면 빈 목록
-  // selfReported: 가입 테스트에서 많이 고른 생각 습관들. 많이 고른 것이 앞에 옵니다. 테스트를 안 했으면 빈 목록
+  // selfReport: 가입 테스트에서 스스로 고른 생각 습관과 약점. 테스트를 안 했으면 SelfReport.NONE
   public static String instructions(
       int careLevel,
       int maxHarshness,
       CallSessionRequest.Card card,
       BiasQuestion biasQuestion,
       List<PastCall> pastCalls,
-      List<CognitiveBias> selfReported) {
+      SelfReport selfReport) {
     boolean supportive = isSupportive(careLevel, card);
     List<String> lines = new ArrayList<>();
     lines.add("너는 고등학생에게 하루에 한 번 짧게 전화하는 공부 코치야. 한국어 반말로 말해.");
@@ -116,8 +124,11 @@ public final class CallScript {
     if (!supportive) {
       lines.add("[생각 습관]");
       lines.addAll(biasRules());
-      if (!selfReported.isEmpty()) {
-        lines.add(selfReportedLine(selfReported));
+      if (!selfReport.biases().isEmpty()) {
+        lines.add(selfReportedLine(selfReport.biases()));
+      }
+      if (!selfReport.weaknesses().isEmpty()) {
+        lines.add(weaknessLine(selfReport.weaknesses()));
       }
       lines.add("");
     }
@@ -242,6 +253,19 @@ public final class CallScript {
     return "- 학생이 가입할 때 한 생각 습관 테스트에서 많이 고른 것: "
         + String.join(", ", labels)
         + ". 학생이 스스로 고른 답이라 맞는지 확인이 필요해. 대화에서 자연스럽게 확인해 보고, 단정하지 마.";
+  }
+
+  // 학생이 스스로 꼽은 약점을 알려 주는 한 줄입니다. 탓하는 데 쓰지 말고, 언제 그런지 묻는 데만 쓰게 합니다.
+  //   [게임, 잠·늦잠]  →  "- 학생이 스스로 꼽은 약점: '게임', '잠·늦잠'. …"
+  static String weaknessLine(List<Weakness> weaknesses) {
+    List<String> labels = new ArrayList<>();
+    for (Weakness weakness : weaknesses) {
+      labels.add("'" + weakness.getLabel() + "'");
+    }
+    return "- 학생이 스스로 꼽은 약점: "
+        + String.join(", ", labels)
+        + ". 이걸로 탓하지 말고, 어떤 때 그런지 묻고 작은 방법을 같이 찾는 데만 써."
+        + " 실제 이유는 다를 수 있으니 단정하지 마.";
   }
 
   // 통화 순서에 넣는 "오늘 확인할 생각 습관" 한 단계입니다.
