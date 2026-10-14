@@ -66,12 +66,17 @@ public final class CallScript {
     return instructions(careLevel, maxHarshness, card, biasQuestion, List.of());
   }
 
-  // 학생이 가입할 때 생각 습관 테스트에서 스스로 고른 것입니다. ("생각" 쪽 자료)
-  // biases: 많이 고른 생각 습관들 (많이 고른 것부터) / weaknesses: "내가 생각하는 나의 약점" 칩들
-  // 테스트를 안 했으면 둘 다 빈 목록입니다. (SelfReport.NONE)
-  public record SelfReport(List<CognitiveBias> biases, List<Weakness> weaknesses) {
-    public static final SelfReport NONE = new SelfReport(List.of(), List.of());
+  // 학생이 생각 습관 테스트에서 스스로 고른 것과, 그것을 실제 기록과 견준 결과입니다. ("생각" 쪽 자료)
+  // biases: 많이 해당한 생각 습관들 (높은 것부터) / weaknesses: "내가 생각하는 나의 약점" 칩들
+  // gapNotes: 생각과 실제가 달랐던 점 문장들 (ThinkingGap.differenceSentences). 통화에서 하나 골라 묻게 합니다.
+  // 테스트를 안 했으면 모두 빈 목록입니다. (SelfReport.NONE)
+  public record SelfReport(
+      List<CognitiveBias> biases, List<Weakness> weaknesses, List<String> gapNotes) {
+    public static final SelfReport NONE = new SelfReport(List.of(), List.of(), List.of());
   }
+
+  // 지침에 적는 "생각과 실제가 달랐던 점" 의 최대 개수
+  static final int MAX_GAP_NOTES = 3;
 
   // 통화 한 번의 지침 전체를 만듭니다. 가입 테스트 결과는 없는 것으로 봅니다.
   public static String instructions(
@@ -129,6 +134,9 @@ public final class CallScript {
       }
       if (!selfReport.weaknesses().isEmpty()) {
         lines.add(weaknessLine(selfReport.weaknesses()));
+      }
+      if (!selfReport.gapNotes().isEmpty()) {
+        lines.addAll(gapLines(selfReport.gapNotes()));
       }
       lines.add("");
     }
@@ -266,6 +274,18 @@ public final class CallScript {
         + String.join(", ", labels)
         + ". 이걸로 탓하지 말고, 어떤 때 그런지 묻고 작은 방법을 같이 찾는 데만 써."
         + " 실제 이유는 다를 수 있으니 단정하지 마.";
+  }
+
+  // 학생이 생각한 자기 모습과 실제 기록이 달랐던 점입니다. 하나만 골라 학생이 스스로 알아차리게 묻게 합니다.
+  // 문장은 코드가 숫자로 만든 것(ThinkingGap)이라 AI 가 지어낸 숫자가 아닙니다.
+  static List<String> gapLines(List<String> gapNotes) {
+    List<String> lines = new ArrayList<>();
+    lines.add(
+        "- 학생이 생각한 자기 모습과 실제 기록이 이렇게 달랐어. 한 가지만 골라, 학생이 스스로 알아차리게 물어봐." + " 탓하지 말고 답을 먼저 말하지 마.");
+    for (String note : gapNotes.subList(0, Math.min(MAX_GAP_NOTES, gapNotes.size()))) {
+      lines.add("  - " + note);
+    }
+    return lines;
   }
 
   // 통화 순서에 넣는 "오늘 확인할 생각 습관" 한 단계입니다.

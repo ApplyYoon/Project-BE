@@ -122,6 +122,22 @@ class LoginRequiredFlowTest {
           // AI 통화 기록 (자막은 학생의 대화입니다)
           new Api("GET", "/api/v1/calls", "/api/v1/calls", null),
           new Api("GET", "/api/v1/calls/habits", "/api/v1/calls/habits", null),
+          // 생각 습관 테스트 (학생의 심리 기록입니다)
+          new Api("GET", "/api/v1/thinking-tests/latest", "/api/v1/thinking-tests/latest", null),
+          new Api("GET", "/api/v1/thinking-tests/gap", "/api/v1/thinking-tests/gap", null),
+          new Api(
+              "POST",
+              "/api/v1/thinking-tests",
+              "/api/v1/thinking-tests",
+              "{\"testVersion\":2,\"scores\":["
+                  + "{\"habit\":\"PLANNING_FALLACY\",\"average\":4.0},"
+                  + "{\"habit\":\"FUTURE_SELF\",\"average\":4.0},"
+                  + "{\"habit\":\"WHAT_THE_HELL\",\"average\":4.0},"
+                  + "{\"habit\":\"EMOTIONAL_REASONING\",\"average\":4.0},"
+                  + "{\"habit\":\"EXTERNAL_BLAME\",\"average\":4.0},"
+                  + "{\"habit\":\"ALL_OR_NOTHING\",\"average\":4.0},"
+                  + "{\"habit\":\"MORAL_LICENSING\",\"average\":4.0},"
+                  + "{\"habit\":\"OVERGENERALIZING\",\"average\":4.0}]}"),
           new Api(
               "POST",
               "/api/v1/calls/{id}/finish",
