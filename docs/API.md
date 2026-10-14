@@ -1167,6 +1167,77 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 | ---- | -------------- | ----------------------------- |
 | 401  | `UNAUTHORIZED` | 로그인하지 않음 / 토큰이 틀림 |
 
+### 생각 습관 테스트
+
+가입 직후 하는 생각 습관 테스트(FE `/onboarding/thinking`)의 결과를 저장하고, **내 생각 vs 현실**(테스트 결과 ↔ 최근 통화)을 견줍니다. 세 주소 모두 **로그인이 필요합니다.** (이슈 #35)
+
+`POST /api/v1/thinking-tests` — 테스트 결과 저장. 다시 하면 덮어쓰지 않고 **새로 쌓입니다.** (처음과 지금을 견줄 수 있게)
+
+```json
+{
+  "testVersion": 2,
+  "scores": [
+    { "habit": "PLANNING_FALLACY", "average": 6.0 },
+    { "habit": "FUTURE_SELF", "average": 5.3 }
+  ],
+  "weaknesses": ["GAME", "SLEEP"]
+}
+```
+
+| 필드 | 규칙 |
+| --- | --- |
+| `testVersion` | 필수. FE 의 테스트 모양 번호 (2 = 리커트 7점 척도) |
+| `scores` | 필수. 습관 8개를 **하나씩 정확히 8개** (위 예시는 줄임). `habit` 은 생각 습관 이름, `average` 는 1.0 ~ 7.0 |
+| `weaknesses` | 선택. 내가 꼽은 약점 칩 이름 (`GAME` `PHONE` `VIDEO` `SLEEP` `LAZY` `DELAY` `FOCUS` `FRIENDS` `TIRED` `MOOD` `PLANNING`). "기타" 글은 받지 않습니다 |
+
+- **문장별 답이 아니라 습관마다의 평균만** 받습니다. 테스트 문장이 바뀌어도 서버는 고칠 것이 없게 하려는 것입니다.
+
+**응답 201** (`GET /latest` 도 같은 모양)
+
+```json
+{
+  "id": "3",
+  "takenAt": "2026-10-15T09:00:00Z",
+  "testVersion": 2,
+  "styleName": "낙관 · 회복 · 기분 · 성장",
+  "styles": [ { "name": "계획할 때", "label": "낙관", "average": 5.7, "highLabel": "낙관", "lowLabel": "현실" } ],
+  "scores": [ { "habit": "PLANNING_FALLACY", "label": "계획 오류", "average": 6.0 } ],
+  "topHabits": ["PLANNING_FALLACY", "FUTURE_SELF"],
+  "weaknesses": [ { "key": "GAME", "label": "게임" } ]
+}
+```
+
+- **공부 스타일(4개 축):** 습관 2개씩 묶은 평균이 4.5 이상이면 높은 쪽, 3.5 이하면 낮은 쪽, 그 사이는 "균형" (계획할 때 낙관/현실 · 넘어졌을 때 멈춤/회복 · 움직이는 힘 기분/루틴 · 원인을 볼 때 고정/성장). FE 와 같은 규칙입니다. (`StudyStyle`)
+- **많이 해당하는 습관(`topHabits`):** 평균이 5 보다 높은 습관, 높은 것부터.
+
+`GET /api/v1/thinking-tests/latest` — 내 가장 최근 결과. 아직 안 했으면 **404** `"아직 생각 습관 테스트를 하지 않았어요"`
+
+`GET /api/v1/thinking-tests/gap?days=14` — **내 생각 vs 현실.** 가장 최근 테스트 결과를 최근 `days` 일(7 ~ 60, 기본 14)의 통화 기록과 견줍니다. (`ThinkingGap`)
+
+- **약점 칩 ↔ 실제로 못 채운 이유:** 게임·폰·유튜브 → 폰·SNS / 잠·늦잠·체력 → 피곤 / 게으름·미루기 → 하기 싫음 / 친구 → 약속·행사 / 계획 세우기 → 계획 과다. 집중력·기분은 짝이 없어서 `unverifiable` 로 따로 줍니다. 아픔·기타는 견주지 않습니다.
+- **테스트의 습관 ↔ 통화에서 보인 습관**도 같은 규칙으로 견줍니다.
+- 판정: `MATCHED` 꼽았고 실제로도 1번 이상 · `SMALLER` 꼽았는데 0번 · `BIGGER` 안 꼽았는데 2번 이상. 어디에도 안 맞으면 목록에 없습니다.
+- 통화가 3번보다 적으면 `enoughData: false` 이고, `sentences` 의 첫 줄이 "아직 통화가 n번뿐이라 더 지켜봐야 해" 입니다.
+- 마무리했고 위기 표현이 없던 통화만 셉니다.
+
+```json
+{
+  "days": 14, "callCount": 5, "enoughData": true,
+  "reasons": [ { "reason": "TOO_MUCH", "label": "계획 과다", "thoughtBy": [], "actualCount": 3, "verdict": "BIGGER" } ],
+  "habits": [ { "habit": "PLANNING_FALLACY", "label": "계획 오류", "thought": true, "foundCount": 2, "verdict": "MATCHED" } ],
+  "unverifiable": [ { "key": "FOCUS", "label": "집중력" } ],
+  "sentences": [ "꼽지 않았던 '계획 과다' 쪽이 실제로는 못 채운 이유로 3번 나왔어. 생각보다 큰 원인일 수 있어." ]
+}
+```
+
+| 상태 | 언제 |
+| --- | --- |
+| 400 | 요청 모양이 틀림 · 같은 습관을 두 번 보냄 · `days` 가 7 ~ 60 이 아님 |
+| 401 | 로그인하지 않음 |
+| 404 | 아직 테스트를 하지 않음 (`/latest` · `/gap`) |
+
+> **AI 통화와 이어집니다.** 통화를 걸 때 서버에 저장된 테스트가 있으면 그것을 씁니다(없으면 FE 가 보낸 `selfReportedBiases`). 통화가 3번 넘게 쌓였고 생각과 실제가 다르면, 그 문장을 지침에 넣어 AI 가 하나 골라 학생이 스스로 알아차리게 묻게 합니다.
+
 ### AI 메시지
 
 AI 가 보낸 메시지(당근·넛지·채찍·이벤트 알림·회복)를 보여 주고 읽음 표시를 합니다. **둘 다 로그인이 필요합니다.** (이슈 #30 · FE `AiMessage`)
