@@ -85,5 +85,8 @@ class PushControllerTest {
     expectRejected(
         VALID.replace("\"auth\": \"tBHItJI5svbpez7KI4CCXg\"", "\"auth\": \"\""),
         "keys.auth 를 보내 주세요");
+    // 빈 주소는 "보내 주세요" 하나로만 알려 줍니다. (모양 검사와 겹쳐서 안내가 바뀌지 않게)
+    expectRejected(
+        VALID.replace("https://fcm.googleapis.com/fcm/send/abc", ""), "구독 주소(endpoint)를 보내 주세요");
   }
 }
