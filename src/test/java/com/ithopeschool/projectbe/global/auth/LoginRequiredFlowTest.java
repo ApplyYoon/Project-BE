@@ -122,6 +122,18 @@ class LoginRequiredFlowTest {
           // AI 통화 기록 (자막은 학생의 대화입니다)
           new Api("GET", "/api/v1/calls", "/api/v1/calls", null),
           new Api("GET", "/api/v1/calls/habits", "/api/v1/calls/habits", null),
+          // 웹 푸시 (내 기기를 알림 받을 곳으로 등록합니다)
+          new Api("GET", "/api/v1/push/public-key", "/api/v1/push/public-key", null),
+          new Api(
+              "POST",
+              "/api/v1/push/subscriptions",
+              "/api/v1/push/subscriptions",
+              "{\"endpoint\":\"https://fcm.googleapis.com/x\",\"keys\":{\"p256dh\":\"BNc\",\"auth\":\"tBH\"}}"),
+          new Api(
+              "DELETE",
+              "/api/v1/push/subscriptions",
+              "/api/v1/push/subscriptions",
+              "{\"endpoint\":\"https://fcm.googleapis.com/x\"}"),
           // 생각 습관 테스트 (학생의 심리 기록입니다)
           new Api("GET", "/api/v1/thinking-tests/latest", "/api/v1/thinking-tests/latest", null),
           new Api("GET", "/api/v1/thinking-tests/gap", "/api/v1/thinking-tests/gap", null),
