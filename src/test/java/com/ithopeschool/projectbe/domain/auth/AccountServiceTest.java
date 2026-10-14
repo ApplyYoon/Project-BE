@@ -9,10 +9,14 @@ import com.ithopeschool.projectbe.domain.auth.dto.ProfileResponse;
 import com.ithopeschool.projectbe.domain.auth.dto.ProfileUpdateRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.SignupRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.WithdrawRequest;
+import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
+import com.ithopeschool.projectbe.domain.bias.Weakness;
+import com.ithopeschool.projectbe.domain.call.CallRecord;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.subject.Subject;
 import com.ithopeschool.projectbe.domain.subject.SubjectColor;
+import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
 import com.ithopeschool.projectbe.domain.user.UserRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -22,6 +26,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -343,7 +350,7 @@ class AccountServiceTest {
   }
 
   @Test
-  @DisplayName("탈퇴할 때 지우는 대상은 'userId 가 있는 모든 테이블' 이다 (지금 5개)")
+  @DisplayName("탈퇴할 때 지우는 대상은 'userId 가 있는 모든 테이블' 이다 (테이블이 늘어도 그대로)")
   void everyTableWithUserIdIsCovered() {
     // 새 테이블을 만들면 이 숫자가 늘어납니다. 그 테이블에 userId 가 있으면 탈퇴 때 자동으로 지워집니다.
     long tablesWithUserId =
@@ -354,5 +361,42 @@ class AccountServiceTest {
 
     // users 하나만 userId 가 없습니다.
     assertThat(tablesWithUserId).isEqualTo(allTables - 1);
+  }
+
+  @Test
+  @DisplayName("탈퇴하면 통화 기록·생각 습관 테스트(딸린 점수·약점 테이블까지)도 지워지고, 남의 것은 그대로다")
+  void withdrawDeletesCallsAndThinkingTests() {
+    for (Long userId : new Long[] {idOfA, idOfB}) {
+      CallRecord call = new CallRecord(userId, LocalDate.of(2026, 10, 11), NOW, null);
+      call.finish(NOW, "요약", CognitiveBias.FUTURE_SELF, "근거", null, null, "A", "B", null);
+      entityManager.persist(call);
+      Map<CognitiveBias, Double> scores = new EnumMap<>(CognitiveBias.class);
+      for (CognitiveBias bias : CognitiveBias.values()) {
+        scores.put(bias, 4.0);
+      }
+      entityManager.persist(
+          new ThinkingTest(userId, NOW, 2, scores, EnumSet.of(Weakness.GAME, Weakness.SLEEP)));
+    }
+    entityManager.flush();
+    callWith(tokenOfA);
+
+    accountService.withdraw(new WithdrawRequest(PASSWORD));
+    entityManager.flush();
+    entityManager.clear();
+
+    for (String table : new String[] {"CallRecord", "ThinkingTest"}) {
+      assertThat(countRows(table, idOfA)).as("에이의 %s", table).isZero();
+      assertThat(countRows(table, idOfB)).as("비이의 %s", table).isEqualTo(1);
+    }
+    // 딸린 테이블(점수 8줄 · 약점 2줄)도 에이 것은 남지 않고, 비이 것만 남습니다.
+    assertThat(countCollectionRows("thinking_test_scores")).isEqualTo(8);
+    assertThat(countCollectionRows("thinking_test_weaknesses")).isEqualTo(2);
+  }
+
+  // 딸린 테이블(@ElementCollection)은 엔티티가 아니라서 SQL 로 줄 수를 셉니다. (표 이름은 우리가 정한 글자)
+  private long countCollectionRows(String table) {
+    return ((Number)
+            entityManager.createNativeQuery("select count(*) from " + table).getSingleResult())
+        .longValue();
   }
 }
