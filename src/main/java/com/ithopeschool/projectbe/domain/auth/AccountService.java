@@ -120,6 +120,10 @@ public class AccountService {
   // 401 이 아니라 400 인 이유: FE 는 401 을 받으면 "로그인이 풀렸다" 고 보고 로그인 화면으로 보냅니다.
   // 비밀번호 한 번 틀렸다고 로그인까지 풀리면 안 되기 때문입니다.
   private void checkPassword(String rawPassword, Account account) {
+    // 구글로 가입한 계정은 비밀번호가 없습니다. (비밀번호 바꾸기 · 탈퇴는 아직 이메일 계정만 됩니다, 이슈 #19)
+    if (!account.hasPassword()) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "구글로 가입한 계정은 비밀번호가 없어요");
+    }
     if (!passwordHasher.matches(rawPassword, account.getPasswordHash())) {
       throw new ApiException(ErrorCode.VALIDATION_ERROR, WRONG_PASSWORD_MESSAGE);
     }

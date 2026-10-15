@@ -2,7 +2,13 @@ package com.ithopeschool.projectbe.domain.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 
+import com.ithopeschool.projectbe.domain.auth.GoogleIdTokenVerifier.GoogleProfile;
+import com.ithopeschool.projectbe.domain.auth.dto.GoogleLoginRequest;
+import com.ithopeschool.projectbe.domain.auth.dto.GoogleLoginResponse;
+import com.ithopeschool.projectbe.domain.auth.dto.GoogleSignupRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.LoginRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.LoginResponse;
 import com.ithopeschool.projectbe.domain.auth.dto.SignupRequest;
@@ -17,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,6 +47,9 @@ class AuthServiceTest {
   private final TokenHasher tokenHasher = new TokenHasher();
   // 가짜 요청입니다. 테스트에서 Authorization 헤더를 넣어 "이 토큰으로 부른 요청" 을 흉내 냅니다.
   private final MockHttpServletRequest request = new MockHttpServletRequest();
+  // 가짜 구글 확인기입니다. 테스트마다 "이 토큰이면 이 사람" 을 정해 둡니다. (진짜 구글은 GoogleIdTokenVerifierTest 에서)
+  private final GoogleIdTokenVerifier googleIdTokenVerifier = mock(GoogleIdTokenVerifier.class);
+
   private AuthService authService;
 
   @BeforeEach
@@ -55,6 +65,7 @@ class AuthServiceTest {
             passwordHasher,
             tokenHasher,
             currentUserProvider,
+            googleIdTokenVerifier,
             clock);
   }
 
@@ -289,5 +300,116 @@ class AuthServiceTest {
     assertThatThrownBy(() -> authService.me())
         .isInstanceOf(ApiException.class)
         .hasMessage("다시 로그인해 주세요");
+  }
+
+  // ---- 구글로 시작하기 (이슈 #19) ----
+
+  private static final String CREDENTIAL = "google-credential";
+
+  // 가짜 구글 확인기가 CREDENTIAL 을 이 사람으로 확인해 주게 합니다.
+  private void googleSays(String subject, String email, String name) {
+    given(googleIdTokenVerifier.isEnabled()).willReturn(true);
+    given(googleIdTokenVerifier.verify(CREDENTIAL))
+        .willReturn(Optional.of(new GoogleProfile(subject, email, name)));
+  }
+
+  private static GoogleSignupRequest googleSignupRequest() {
+    return new GoogleSignupRequest(
+        CREDENTIAL, "김티맥", "티맥이", null, null, new SignupRequest.Consents(true, true, true));
+  }
+
+  @Test
+  @DisplayName("처음 온 구글 계정이면 '가입 필요' 와 구글 이름·이메일을 돌려주고, 계정은 만들지 않는다")
+  void newGoogleAccountNeedsSignup() {
+    googleSays("google-1", "tmax@gmail.com", "김티맥");
+
+    GoogleLoginResponse response = authService.googleLogin(new GoogleLoginRequest(CREDENTIAL));
+
+    assertThat(response.status()).isEqualTo(GoogleLoginResponse.SIGNUP_REQUIRED);
+    assertThat(response.name()).isEqualTo("김티맥");
+    assertThat(response.email()).isEqualTo("tmax@gmail.com");
+    assertThat(response.token()).isNull();
+    assertThat(accountRepository.count()).isZero();
+    assertThat(userRepository.count()).isZero();
+  }
+
+  @Test
+  @DisplayName("구글로 가입하면 비밀번호 없는 계정이 생기고 바로 로그인 토큰을 받는다. 다음부터는 바로 로그인된다")
+  void googleSignupThenLogin() {
+    googleSays("google-1", "Tmax@Gmail.com", "김티맥");
+
+    LoginResponse signedUp = authService.googleSignup(googleSignupRequest());
+
+    Account account = accountRepository.findByGoogleSubject("google-1").orElseThrow();
+    assertThat(account.getEmail()).isEqualTo("tmax@gmail.com");
+    assertThat(account.hasPassword()).isFalse();
+    assertThat(account.isDiaryAnalysisAgreed()).isTrue();
+    assertThat(account.getAgreedAt()).isEqualTo(NOW);
+    assertThat(signedUp.user().name()).isEqualTo("티맥이");
+    assertThat(loginTokenRepository.findByTokenHash(tokenHasher.hash(signedUp.token())))
+        .isPresent();
+
+    GoogleLoginResponse again = authService.googleLogin(new GoogleLoginRequest(CREDENTIAL));
+    assertThat(again.status()).isEqualTo(GoogleLoginResponse.LOGGED_IN);
+    assertThat(again.user().id()).isEqualTo(signedUp.user().id());
+    assertThat(again.token()).isNotEqualTo(signedUp.token());
+  }
+
+  @Test
+  @DisplayName("같은 구글 계정으로 두 번 가입하면 409 이다")
+  void sameGoogleAccountCannotSignUpTwice() {
+    googleSays("google-1", "tmax@gmail.com", "김티맥");
+    authService.googleSignup(googleSignupRequest());
+
+    assertThatThrownBy(() -> authService.googleSignup(googleSignupRequest()))
+        .isInstanceOf(ApiException.class)
+        .extracting(e -> ((ApiException) e).getErrorCode())
+        .isEqualTo(ErrorCode.CONFLICT);
+  }
+
+  @Test
+  @DisplayName("구글 이메일로 이미 이메일 가입을 했으면 합치지 않고 409 로 '이메일로 로그인' 을 안내한다")
+  void emailAccountWithSameEmailIsNotMerged() {
+    authService.signup(signupRequest("tmax@gmail.com"));
+    googleSays("google-1", "TMAX@gmail.com", "김티맥");
+
+    assertThatThrownBy(() -> authService.googleLogin(new GoogleLoginRequest(CREDENTIAL)))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("이메일로 로그인")
+        .extracting(e -> ((ApiException) e).getErrorCode())
+        .isEqualTo(ErrorCode.CONFLICT);
+    assertThatThrownBy(() -> authService.googleSignup(googleSignupRequest()))
+        .isInstanceOf(ApiException.class)
+        .extracting(e -> ((ApiException) e).getErrorCode())
+        .isEqualTo(ErrorCode.CONFLICT);
+  }
+
+  @Test
+  @DisplayName("구글로 가입한 계정은 이메일·비밀번호로 로그인할 수 없다 (401)")
+  void googleAccountCannotUsePasswordLogin() {
+    googleSays("google-1", "tmax@gmail.com", "김티맥");
+    authService.googleSignup(googleSignupRequest());
+
+    assertThatThrownBy(() -> authService.login(new LoginRequest("tmax@gmail.com", "study2026")))
+        .isInstanceOf(ApiException.class)
+        .extracting(e -> ((ApiException) e).getErrorCode())
+        .isEqualTo(ErrorCode.UNAUTHORIZED);
+  }
+
+  @Test
+  @DisplayName("구글 확인에 실패하면 400, 서버에 구글 로그인이 꺼져 있으면 503 이다")
+  void googleFailures() {
+    given(googleIdTokenVerifier.isEnabled()).willReturn(true);
+    given(googleIdTokenVerifier.verify(CREDENTIAL)).willReturn(Optional.empty());
+    assertThatThrownBy(() -> authService.googleLogin(new GoogleLoginRequest(CREDENTIAL)))
+        .isInstanceOf(ApiException.class)
+        .extracting(e -> ((ApiException) e).getErrorCode())
+        .isEqualTo(ErrorCode.VALIDATION_ERROR);
+
+    given(googleIdTokenVerifier.isEnabled()).willReturn(false);
+    assertThatThrownBy(() -> authService.googleLogin(new GoogleLoginRequest(CREDENTIAL)))
+        .isInstanceOf(ApiException.class)
+        .extracting(e -> ((ApiException) e).getErrorCode())
+        .isEqualTo(ErrorCode.SERVICE_UNAVAILABLE);
   }
 }
