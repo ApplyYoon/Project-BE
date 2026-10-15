@@ -78,6 +78,7 @@ class AccountServiceTest {
             passwordHasher,
             tokenHasher,
             currentUserProvider,
+            new GoogleIdTokenVerifier(""),
             clock);
     accountService =
         new AccountService(

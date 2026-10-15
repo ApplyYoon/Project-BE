@@ -11,7 +11,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// 계정 테이블. 한 줄 = 이메일로 가입한 계정 하나. (로그인에 쓰는 정보 + 가입할 때 받은 정보)
+// 계정 테이블. 한 줄 = 가입한 계정 하나. (로그인에 쓰는 정보 + 가입할 때 받은 정보)
+// 이메일·비밀번호로 가입한 계정과 구글로 가입한 계정(이슈 #19)이 같은 테이블에 있습니다.
 // 화면에 보이는 별명은 users 테이블에 있고, 이 테이블과는 userId 로 이어집니다. 사용자 한 명에 계정은 하나입니다.
 //
 // ⚠️ 비밀번호는 그대로 저장하지 않습니다. PasswordHasher 가 되돌릴 수 없게 바꾼 값(passwordHash)만 저장합니다.
@@ -36,8 +37,14 @@ public class Account {
   private String email;
 
   // 비밀번호를 되돌릴 수 없게 바꾼 값. PasswordHasher 가 만듭니다. (진짜 비밀번호는 어디에도 저장하지 않습니다)
-  @Column(nullable = false, length = 200)
+  // 구글로 가입한 계정은 비밀번호가 없어서 비어 있습니다(null).
+  @Column(length = 200)
   private String passwordHash;
+
+  // 구글로 가입한 계정이면, 구글이 정해 준 이 사람의 고유 번호(sub)입니다. 이메일은 바뀔 수 있어서 이 번호로 찾습니다.
+  // 이메일로 가입한 계정은 비어 있습니다(null).
+  @Column(unique = true, length = 64)
+  private String googleSubject;
 
   // 실명. (화면에 보이는 별명은 users.nickname 입니다)
   @Column(nullable = false, length = 20)
@@ -76,6 +83,28 @@ public class Account {
     this.schoolName = schoolName;
     this.diaryAnalysisAgreed = diaryAnalysisAgreed;
     this.agreedAt = agreedAt;
+  }
+
+  // 구글로 가입한 계정을 만듭니다. 비밀번호 대신 구글 고유 번호를 저장합니다. (이슈 #19)
+  public static Account google(
+      Long userId,
+      String googleSubject,
+      String email,
+      String name,
+      String schoolCode,
+      String schoolName,
+      boolean diaryAnalysisAgreed,
+      Instant agreedAt) {
+    Account account =
+        new Account(
+            userId, email, null, name, schoolCode, schoolName, diaryAnalysisAgreed, agreedAt);
+    account.googleSubject = googleSubject;
+    return account;
+  }
+
+  // 비밀번호가 있는 계정인지. 구글로 가입한 계정은 false 입니다.
+  public boolean hasPassword() {
+    return passwordHash != null;
   }
 
   // 내 정보를 고칩니다. 이메일은 로그인에 쓰는 값이라 여기서 바꾸지 않습니다.

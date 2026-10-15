@@ -1,5 +1,8 @@
 package com.ithopeschool.projectbe.domain.auth;
 
+import com.ithopeschool.projectbe.domain.auth.dto.GoogleLoginRequest;
+import com.ithopeschool.projectbe.domain.auth.dto.GoogleLoginResponse;
+import com.ithopeschool.projectbe.domain.auth.dto.GoogleSignupRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.LoginRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.LoginResponse;
 import com.ithopeschool.projectbe.domain.auth.dto.SignupRequest;
@@ -43,6 +46,21 @@ public class AuthController {
   @PostMapping("/login")
   public LoginResponse login(@Valid @RequestBody LoginRequest request) {
     return authService.login(request);
+  }
+
+  @Operation(summary = "구글로 시작하기 (가입한 구글 계정이면 로그인 토큰, 처음이면 가입 필요)")
+  @SecurityRequirements
+  @PostMapping("/google")
+  public GoogleLoginResponse googleLogin(@Valid @RequestBody GoogleLoginRequest request) {
+    return authService.googleLogin(request);
+  }
+
+  @Operation(summary = "구글로 가입하기 (약관 동의를 받아 가입하고 바로 로그인 토큰을 돌려줌)")
+  @SecurityRequirements
+  @PostMapping("/google/signup")
+  @ResponseStatus(HttpStatus.CREATED)
+  public LoginResponse googleSignup(@Valid @RequestBody GoogleSignupRequest request) {
+    return authService.googleSignup(request);
   }
 
   // 로그인이 필요한 주소입니다. Swagger 에서는 오른쪽 위 Authorize 에 토큰을 넣고 부릅니다.
