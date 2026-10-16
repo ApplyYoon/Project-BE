@@ -2,6 +2,7 @@ package com.ithopeschool.projectbe.domain.summary;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.summary.DaySummary.DayPlan;
 import com.ithopeschool.projectbe.domain.summary.DaySummary.DaySession;
 import java.time.Instant;
@@ -225,5 +226,50 @@ class DaySummaryTest {
 
     assertThat(summary.studyMinutes()).isEqualTo(60);
     assertThat(summary.achievementRate()).isNull();
+  }
+
+  // ─── 노는 계획 · 노는 기록 (규칙 10) ───
+
+  @Test
+  void playPlansAndPlaySessionsAreLeftOut() {
+    // 공부 계획 60분 + 노는 계획 30분, 공부 기록 45분 + 노는 기록 30분
+    // → 순공 45, 달성률 45 ÷ 60 = 75 (노는 30분이 들어가면 75 ÷ 90 = 83 으로 틀리게 나옵니다)
+    List<DayPlan> plans =
+        List.of(new DayPlan(OCT_5, 60, PlanKind.STUDY), new DayPlan(OCT_5, 30, PlanKind.PLAY));
+    List<DaySession> sessions =
+        List.of(
+            new DaySession(at(5, 10, 0), at(5, 10, 45), 0, 1, PlanKind.STUDY),
+            new DaySession(at(5, 20, 0), at(5, 20, 30), 0, 2, PlanKind.PLAY));
+
+    assertThat(DaySummary.of(OCT_5, plans, sessions))
+        .isEqualTo(new DaySummary(45, 75, at(5, 10, 0), 45, 1));
+  }
+
+  @Test
+  void playSessionDoesNotBecomeFirstStart() {
+    // 아침에 논 기록이 먼저 있어도, 첫 시작 시각은 공부를 처음 시작한 시각입니다.
+    List<DaySession> sessions =
+        List.of(
+            new DaySession(at(5, 8, 0), at(5, 9, 0), 0, 0, PlanKind.PLAY),
+            new DaySession(at(5, 10, 0), at(5, 11, 0), 0, 0, PlanKind.STUDY));
+
+    assertThat(DaySummary.of(OCT_5, List.of(), sessions).firstStartAt()).isEqualTo(at(5, 10, 0));
+  }
+
+  @Test
+  void onlyPlayPlansMeansCannotCalculate() {
+    // 노는 계획만 있는 날은 공부 목표가 0분이라 "계산 불가"(null) 입니다. 0% 가 아닙니다.
+    List<DayPlan> plans = List.of(new DayPlan(OCT_5, 30, PlanKind.PLAY));
+
+    assertThat(DaySummary.of(OCT_5, plans, List.of()).achievementRate()).isNull();
+  }
+
+  @Test
+  void missingKindCountsAsStudy() {
+    // 종류가 비어 있으면(null) 공부로 봅니다. (QuickCheckIn 과 같은 규칙)
+    List<DayPlan> plans = List.of(new DayPlan(OCT_5, 60, null));
+    List<DaySession> sessions = List.of(new DaySession(at(5, 10, 0), at(5, 10, 30), 0, 0, null));
+
+    assertThat(DaySummary.of(OCT_5, plans, sessions).achievementRate()).isEqualTo(50);
   }
 }

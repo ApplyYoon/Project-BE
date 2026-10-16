@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.summary;
 
 import com.ithopeschool.projectbe.domain.plan.AchievementRate;
+import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.session.StudyTime;
 import com.ithopeschool.projectbe.global.time.DayRule;
 import java.time.Instant;
@@ -21,6 +22,8 @@ import java.util.List;
 //   7. 끝 시각이 시작 시각보다 빠른 잘못된 기록은 길이를 0분으로 칩니다.
 //   8. 일시정지 횟수는 그날 시작한 기록들의 횟수를 모두 더합니다. 음수 같은 이상한 값은 0번으로 칩니다.
 //   9. 일시정지해 있던 시간은 순공에서 뺍니다. 음수이거나 (끝 − 시작)보다 큰 이상한 값은 빼지 않습니다.
+//  10. 노는 계획과 노는 기록(PLAY)은 공부가 아니라서 어떤 지표에도 넣지 않습니다. (Project#12)
+//      순공시간 · 달성률의 목표 시간 · 첫 시작 시각 · 평균 기록 길이 · 일시정지 횟수 모두에서 빠집니다.
 //
 // 예시 (입력 → 결과)
 //   계획도 기록도 없는 날               →  순공 0, 달성률 null, 첫 시작 null, 평균 0, 일시정지 0
@@ -29,6 +32,8 @@ import java.util.List;
 //     →  순공 190, 달성률 79 (190 ÷ 240 = 79.1…), 첫 시작 10:00, 평균 95, 일시정지 3
 //   계획 240분인데 239분 공부            →  달성률 99  (100 은 다 채웠을 때만 나옵니다)
 //   10월 5일 03:30 ~ 04:30              →  60분 전부가 10월 4일 기록. 10월 5일은 0분
+//   공부 계획 60분 + 노는 계획 30분, 공부 기록 45분 + 노는 기록 30분
+//     →  순공 45, 달성률 75 (45 ÷ 60. 노는 30분은 위아래 모두에서 빠짐)
 //
 // FE 의 getDaySummary (src/lib/daySummary.ts) 와 같은 규칙입니다.
 // 한쪽을 고치면 다른 쪽도 같이 고쳐야 화면과 서버의 숫자가 어긋나지 않습니다.
@@ -49,20 +54,35 @@ public record DaySummary(
 
   // 공부 계획 하나에서 계산에 쓰는 값만 모은 것입니다.
   // date: 계획한 날짜 / targetMinutes: 목표 공부 시간(분)
-  public record DayPlan(LocalDate date, int targetMinutes) {}
+  // kind: 공부 계획인지 노는 계획인지. 비어 있으면(null) 공부 계획으로 봅니다
+  public record DayPlan(LocalDate date, int targetMinutes, PlanKind kind) {
+
+    // 종류를 안 넘기면 공부 계획입니다. (노는 계획이 생기기 전에 만든 코드가 그대로 돌아가게)
+    public DayPlan(LocalDate date, int targetMinutes) {
+      this(date, targetMinutes, PlanKind.STUDY);
+    }
+  }
 
   // 공부 기록 하나에서 계산에 쓰는 값만 모은 것입니다.
   // startedAt: 시작한 시각 / endedAt: 끝낸 시각
   // pausedMillis: 그 사이에 일시정지해 있던 시간의 합(밀리초). 일시정지한 적이 없으면 0
   // pauseCount: 일시정지를 누른 횟수
-  // (공부 기록 테이블이 아직 바뀌는 중이라, 엔티티가 아니라 이 계산에 필요한 네 값만 받습니다)
-  public record DaySession(Instant startedAt, Instant endedAt, long pausedMillis, int pauseCount) {}
+  // kind: 공부 기록인지 노는 기록인지. 비어 있으면(null) 공부 기록으로 봅니다
+  // (공부 기록 테이블이 아직 바뀌는 중이라, 엔티티가 아니라 이 계산에 필요한 값만 받습니다)
+  public record DaySession(
+      Instant startedAt, Instant endedAt, long pausedMillis, int pauseCount, PlanKind kind) {
+
+    // 종류를 안 넘기면 공부 기록입니다.
+    public DaySession(Instant startedAt, Instant endedAt, long pausedMillis, int pauseCount) {
+      this(startedAt, endedAt, pausedMillis, pauseCount, PlanKind.STUDY);
+    }
+  }
 
   // date 하루의 기본 지표를 계산합니다.
   //
   // date: 계산할 날짜
   // plans, sessions: 여러 날짜가 섞여 있어도 됩니다. 이 함수가 date 에 해당하는 것만 골라서 계산합니다.
-  //   노는 계획과 노는 기록은 공부가 아니라서, 부르는 쪽에서 빼고 넘깁니다. (FE 는 함수 안에서 걸러냅니다)
+  //   노는 계획과 노는 기록이 섞여 있어도 됩니다. 이 함수가 빼고 계산합니다. (규칙 10, FE 와 같음)
   public static DaySummary of(LocalDate date, List<DayPlan> plans, List<DaySession> sessions) {
     // 그날 시작한 기록의 길이를 모두 더하고, 가장 이른 시작 시각을 찾습니다. (규칙 1, 2)
     long totalMillis = 0;
@@ -71,6 +91,10 @@ public record DaySummary(
     int pauseCount = 0;
     for (DaySession session : sessions) {
       if (!DayRule.dateOf(session.startedAt()).equals(date)) {
+        continue;
+      }
+      // 노는 기록은 공부가 아니라서 건너뜁니다. (규칙 10)
+      if (session.kind() == PlanKind.PLAY) {
         continue;
       }
       sessionCount++;
@@ -96,10 +120,10 @@ public record DaySummary(
             ? 0
             : (int) Math.round((double) totalMillis / sessionCount / MILLIS_PER_MINUTE);
 
-    // 그날 계획의 목표 시간을 모두 더합니다.
+    // 그날 공부 계획의 목표 시간을 모두 더합니다. 노는 계획의 시간은 넣지 않습니다. (규칙 10)
     int targetMinutes = 0;
     for (DayPlan plan : plans) {
-      if (plan.date().equals(date)) {
+      if (plan.date().equals(date) && plan.kind() != PlanKind.PLAY) {
         targetMinutes += plan.targetMinutes();
       }
     }
