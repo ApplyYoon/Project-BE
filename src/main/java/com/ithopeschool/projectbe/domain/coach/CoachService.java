@@ -3,6 +3,8 @@ package com.ithopeschool.projectbe.domain.coach;
 import com.ithopeschool.projectbe.domain.coach.dto.CoachCommentRequest;
 import com.ithopeschool.projectbe.domain.coach.dto.CoachParagraphResponse;
 import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
+import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import java.util.List;
 import java.util.Optional;
@@ -16,7 +18,7 @@ import org.springframework.stereotype.Service;
 //   1. 로그인한 사람인지 확인한다          (아니면 401)
 //   2. AI 를 쓸 수 있는 서버인지 본다      (내 컴퓨터에서는 꺼져 있습니다 → 문단 없음)
 //   3. 같은 숫자로 받아 둔 문단이 있는지 본다 (있으면 그 문단. GPT 를 부르지 않고 한도도 쓰지 않습니다)
-//   4. 오늘 부른 횟수가 한도 안인지 본다   (넘었으면 문단 없음)
+//   4. 오늘 부른 횟수가 한도 안인지 본다   (넘었으면 문단 없음. GptUsageGuard 가 DB 에 기록하며 셉니다, 이슈 #33)
 //   5. 숫자만 주고 문단을 써 달라고 한다
 //   6. 받은 문단을 검사한다                (지어낸 숫자·깎아내리는 말이 있으면 문단 없음)
 //   7. 통과한 문단을 기억해 둔다           (CoachParagraphStore)
@@ -34,7 +36,8 @@ public class CoachService {
 
   private final CurrentUserProvider currentUserProvider;
   private final CoachAiClient coachAiClient;
-  private final CoachDailyLimit coachDailyLimit;
+  // GPT 글 호출 하루 한도를 보고, 부른 것을 기록합니다. (이슈 #33)
+  private final GptUsageGuard gptUsageGuard;
   private final CoachParagraphStore coachParagraphStore;
 
   // 주간 리포트의 코치 한마디
@@ -99,7 +102,8 @@ public class CoachService {
       return new CoachParagraphResponse(saved.get());
     }
 
-    if (!coachDailyLimit.tryUse(userId)) {
+    // 한도를 넘었으면 에러(429) 대신 "문단 없음" 을 돌려줍니다. FE 가 기본 문장을 보여 줘서 화면이 멈추지 않습니다.
+    if (!gptUsageGuard.tryUseText(userId, GptUsageKind.COACH)) {
       return CoachParagraphResponse.none();
     }
 

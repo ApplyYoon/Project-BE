@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ithopeschool.projectbe.domain.auth.dto.ProfileResponse;
 import com.ithopeschool.projectbe.domain.auth.dto.ProfileUpdateRequest;
+import com.ithopeschool.projectbe.domain.auth.dto.WithdrawRequest;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
@@ -230,14 +231,25 @@ class AccountControllerTest {
   }
 
   @Test
-  @DisplayName("탈퇴는 비밀번호를 보내야 하고, 성공하면 204")
+  @DisplayName("탈퇴는 비밀번호나 구글 확인 정보 중 하나를 보내야 하고, 성공하면 204")
   void withdraw() throws Exception {
     expectRejected(postJson("/api/v1/auth/withdraw", "{\"password\":\"\"}"), "비밀번호를 입력해 주세요");
     expectRejected(postJson("/api/v1/auth/withdraw", "{}"), "비밀번호를 입력해 주세요");
+    expectRejected(
+        postJson("/api/v1/auth/withdraw", "{\"password\":\"  \",\"credential\":\"\"}"),
+        "비밀번호를 입력해 주세요");
 
     postJson("/api/v1/auth/withdraw", "{\"password\":\"study2026\"}")
         .andExpect(status().isNoContent())
         .andExpect(content().string(""));
-    verify(accountService).withdraw(any());
+    verify(accountService).withdraw(new WithdrawRequest("study2026", null));
+  }
+
+  @Test
+  @DisplayName("구글 계정은 구글 확인 정보(credential)로 탈퇴를 부른다 (어느 계정인지는 Service 가 본다)")
+  void withdrawWithGoogleCredential() throws Exception {
+    postJson("/api/v1/auth/withdraw", "{\"credential\":\"eyJhbGciOi\"}")
+        .andExpect(status().isNoContent());
+    verify(accountService).withdraw(new WithdrawRequest(null, "eyJhbGciOi"));
   }
 }

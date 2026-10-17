@@ -2,7 +2,11 @@ package com.ithopeschool.projectbe.domain.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 
+import com.ithopeschool.projectbe.domain.auth.GoogleIdTokenVerifier.GoogleProfile;
+import com.ithopeschool.projectbe.domain.auth.dto.GoogleSignupRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.LoginRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.PasswordChangeRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.ProfileResponse;
@@ -12,6 +16,10 @@ import com.ithopeschool.projectbe.domain.auth.dto.WithdrawRequest;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallRecord;
+import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
+import com.ithopeschool.projectbe.domain.onboarding.Grade;
+import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
+import com.ithopeschool.projectbe.domain.onboarding.SubjectLevel;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.subject.Subject;
@@ -28,7 +36,9 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +62,8 @@ class AccountServiceTest {
   // 테스트가 빨리 끝나게 되풀이 횟수는 가장 작은 값으로 둡니다.
   private final PasswordHasher passwordHasher = new PasswordHasher(PasswordHasher.MIN_ITERATIONS);
   private final TokenHasher tokenHasher = new TokenHasher();
+  // 구글 확인은 진짜 구글에 묻지 않고 가짜로 둡니다. (구글 계정 탈퇴 테스트에서 답을 정해 줍니다)
+  private final GoogleIdTokenVerifier googleIdTokenVerifier = mock(GoogleIdTokenVerifier.class);
   // 가짜 요청입니다. Authorization 헤더를 바꿔 끼워서 "누가 부른 요청인지" 를 흉내 냅니다.
   private MockHttpServletRequest request;
   private AuthService authService;
@@ -78,7 +90,7 @@ class AccountServiceTest {
             passwordHasher,
             tokenHasher,
             currentUserProvider,
-            new GoogleIdTokenVerifier(""),
+            googleIdTokenVerifier,
             clock);
     accountService =
         new AccountService(
@@ -87,6 +99,7 @@ class AccountServiceTest {
             accountRepository,
             loginTokenRepository,
             passwordHasher,
+            googleIdTokenVerifier,
             entityManager);
 
     idOfA = Long.valueOf(authService.signup(signupRequest("a@starflow.com", "에이")).id());
@@ -160,7 +173,7 @@ class AccountServiceTest {
         message);
     assertError(() -> accountService.logout(), ErrorCode.UNAUTHORIZED, message);
     assertError(
-        () -> accountService.withdraw(new WithdrawRequest(PASSWORD)),
+        () -> accountService.withdraw(new WithdrawRequest(PASSWORD, null)),
         ErrorCode.UNAUTHORIZED,
         message);
     // 아무것도 바뀌지 않았습니다.
@@ -302,7 +315,7 @@ class AccountServiceTest {
     callWith(tokenOfA);
 
     assertError(
-        () -> accountService.withdraw(new WithdrawRequest("wrong2026")),
+        () -> accountService.withdraw(new WithdrawRequest("wrong2026", null)),
         ErrorCode.VALIDATION_ERROR,
         "비밀번호가 맞지 않아요");
 
@@ -312,12 +325,116 @@ class AccountServiceTest {
   }
 
   @Test
+  @DisplayName("이메일 계정이 비밀번호 없이 구글 확인 정보만 보내면 탈퇴되지 않는다 (400)")
+  void emailAccountNeedsPasswordNotGoogle() {
+    callWith(tokenOfA);
+
+    assertError(
+        () -> accountService.withdraw(new WithdrawRequest(null, GOOGLE_CREDENTIAL)),
+        ErrorCode.VALIDATION_ERROR,
+        "비밀번호를 입력해 주세요");
+    assertThat(userRepository.existsById(idOfA)).isTrue();
+  }
+
+  // ---- 구글로 가입한 사람의 탈퇴 (이슈 #69) ----
+
+  private static final String GOOGLE_CREDENTIAL = "google-id-token-of-c";
+  private static final String GOOGLE_SUBJECT = "google-subject-c";
+
+  // 구글로 가입한 사람 씨를 만들고, 씨의 로그인 토큰으로 부른 것처럼 합니다. 씨의 사용자 번호를 돌려줍니다.
+  private Long googleUserLoggedIn() {
+    given(googleIdTokenVerifier.isEnabled()).willReturn(true);
+    given(googleIdTokenVerifier.verify(GOOGLE_CREDENTIAL))
+        .willReturn(Optional.of(new GoogleProfile(GOOGLE_SUBJECT, "c@gmail.com", "김씨")));
+    String token =
+        authService
+            .googleSignup(
+                new GoogleSignupRequest(
+                    GOOGLE_CREDENTIAL,
+                    "김씨",
+                    "씨씨",
+                    null,
+                    null,
+                    new SignupRequest.Consents(true, true, false)))
+            .token();
+    callWith(token);
+    return accountRepository.findByGoogleSubject(GOOGLE_SUBJECT).orElseThrow().getUserId();
+  }
+
+  @Test
+  @DisplayName("구글 계정은 구글 로그인을 한 번 더 해서 받은 확인 정보로 탈퇴하고, 계정(구글 연결)까지 지워진다")
+  void googleAccountWithdraws() {
+    Long idOfC = googleUserLoggedIn();
+
+    accountService.withdraw(new WithdrawRequest(null, GOOGLE_CREDENTIAL));
+    entityManager.flush();
+    entityManager.clear();
+
+    assertThat(userRepository.existsById(idOfC)).isFalse();
+    assertThat(accountRepository.findByGoogleSubject(GOOGLE_SUBJECT)).isEmpty();
+    // 남의 것은 그대로
+    assertThat(userRepository.existsById(idOfA)).isTrue();
+  }
+
+  @Test
+  @DisplayName("구글 계정이 확인 정보 없이(비밀번호만) 보내면 400 이고 아무것도 지워지지 않는다")
+  void googleAccountNeedsCredential() {
+    Long idOfC = googleUserLoggedIn();
+
+    assertError(
+        () -> accountService.withdraw(new WithdrawRequest(PASSWORD, null)),
+        ErrorCode.VALIDATION_ERROR,
+        "구글 확인 정보를 보내 주세요");
+    assertThat(userRepository.existsById(idOfC)).isTrue();
+  }
+
+  @Test
+  @DisplayName("다른 사람의 구글 계정으로 확인하면 400 이고 아무것도 지워지지 않는다")
+  void otherGoogleAccountCannotWithdraw() {
+    Long idOfC = googleUserLoggedIn();
+    given(googleIdTokenVerifier.verify("someone-elses-token"))
+        .willReturn(Optional.of(new GoogleProfile("other-subject", "x@gmail.com", "남")));
+
+    assertError(
+        () -> accountService.withdraw(new WithdrawRequest(null, "someone-elses-token")),
+        ErrorCode.VALIDATION_ERROR,
+        "가입할 때 쓴 구글 계정으로 확인해 주세요");
+    assertThat(userRepository.existsById(idOfC)).isTrue();
+  }
+
+  @Test
+  @DisplayName("가짜이거나 시간이 지난 구글 확인 정보면 400 이고 아무것도 지워지지 않는다")
+  void invalidGoogleCredential() {
+    Long idOfC = googleUserLoggedIn();
+    given(googleIdTokenVerifier.verify("expired-token")).willReturn(Optional.empty());
+
+    assertError(
+        () -> accountService.withdraw(new WithdrawRequest(null, "expired-token")),
+        ErrorCode.VALIDATION_ERROR,
+        "구글 확인에 실패했어요. 다시 Google로 확인해 주세요");
+    assertThat(userRepository.existsById(idOfC)).isTrue();
+  }
+
+  @Test
+  @DisplayName("서버에 구글 로그인이 꺼져 있으면 503 이고 아무것도 지워지지 않는다")
+  void googleOff() {
+    Long idOfC = googleUserLoggedIn();
+    given(googleIdTokenVerifier.isEnabled()).willReturn(false);
+
+    assertError(
+        () -> accountService.withdraw(new WithdrawRequest(null, GOOGLE_CREDENTIAL)),
+        ErrorCode.SERVICE_UNAVAILABLE,
+        "구글 로그인이 아직 켜져 있지 않아요");
+    assertThat(userRepository.existsById(idOfC)).isTrue();
+  }
+
+  @Test
   @DisplayName("탈퇴하면 사용자·계정·토큰·과목·계획·공부 기록이 모두 지워지고, 남의 것은 그대로다")
   void withdrawDeletesEverythingOfMine() {
     giveBothSomeRecords();
     callWith(tokenOfA);
 
-    accountService.withdraw(new WithdrawRequest(PASSWORD));
+    accountService.withdraw(new WithdrawRequest(PASSWORD, null));
     entityManager.flush();
     entityManager.clear();
 
@@ -334,7 +451,7 @@ class AccountServiceTest {
   @DisplayName("탈퇴한 뒤에는 그 토큰과 이메일·비밀번호가 통하지 않고, 같은 이메일로 다시 가입할 수 있다")
   void afterWithdraw() {
     callWith(tokenOfA);
-    accountService.withdraw(new WithdrawRequest(PASSWORD));
+    accountService.withdraw(new WithdrawRequest(PASSWORD, null));
     entityManager.flush();
     entityManager.clear();
 
@@ -381,7 +498,7 @@ class AccountServiceTest {
     entityManager.flush();
     callWith(tokenOfA);
 
-    accountService.withdraw(new WithdrawRequest(PASSWORD));
+    accountService.withdraw(new WithdrawRequest(PASSWORD, null));
     entityManager.flush();
     entityManager.clear();
 
@@ -392,6 +509,115 @@ class AccountServiceTest {
     // 딸린 테이블(점수 8줄 · 약점 2줄)도 에이 것은 남지 않고, 비이 것만 남습니다.
     assertThat(countCollectionRows("thinking_test_scores")).isEqualTo(8);
     assertThat(countCollectionRows("thinking_test_weaknesses")).isEqualTo(2);
+  }
+
+  // ---- 실제 DB 의 모든 테이블 확인 (이슈 #69 "모든 테이블에서 그 사용자의 행이 사라지는 테스트") ----
+
+  // user_id 칸이 없는데도 탈퇴 때 지워지는 "딸린 테이블" 과, 그 줄이 가리키는 부모 테이블 · 부모를 가리키는 칸입니다.
+  // 부모 줄(예: thinking_tests 의 한 줄)이 지워지면 같이 지워집니다.
+  // ⚠️ user_id 가 없는 새 테이블을 만들면 아래 테스트가 실패합니다. 탈퇴 때 지워지는지 확인한 뒤 여기에 한 줄 더해 주세요.
+  private static final Map<String, String[]> CHILD_TABLES =
+      Map.of(
+          "THINKING_TEST_SCORES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"},
+          "THINKING_TEST_WEAKNESSES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"},
+          // 온보딩 설문(onboarding_answers)에 매달린 "계획이 무너진 때" 와 "과목별 수준" (이슈 #21)
+          "ONBOARDING_ANSWER_FAILURE_CAUSES",
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
+          "ONBOARDING_ANSWER_SUBJECT_LEVELS",
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"});
+
+  @Test
+  @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
+  void everyTableInTheDbIsEmptiedForTheUser() {
+    giveBothSomeRecords();
+    for (Long userId : new Long[] {idOfA, idOfB}) {
+      Map<CognitiveBias, Double> scores = new EnumMap<>(CognitiveBias.class);
+      for (CognitiveBias bias : CognitiveBias.values()) {
+        scores.put(bias, 4.0);
+      }
+      entityManager.persist(new ThinkingTest(userId, NOW, 2, scores, EnumSet.of(Weakness.GAME)));
+      // 딸린 테이블(무너진 때 · 과목별 수준)에도 줄이 있어야, 아래 "부모 없이 남은 줄" 검사가 빈 테이블을 훑고 지나가지 않습니다.
+      OnboardingAnswer.Values answer = new OnboardingAnswer.Values();
+      answer.grade = Grade.HIGH_2;
+      answer.targetExam = "수능";
+      answer.targetExamDate = LocalDate.of(2027, 11, 18);
+      answer.dailyAvailableMinutes = 180;
+      answer.pastFailureCauses = EnumSet.of(FailureCause.WEEKEND);
+      answer.subjectLevels = List.of(new SubjectLevel(1L, 2, null, 4));
+      entityManager.persist(new OnboardingAnswer(userId, NOW, answer));
+    }
+    entityManager.flush();
+    callWith(tokenOfA);
+
+    accountService.withdraw(new WithdrawRequest(PASSWORD, null));
+    entityManager.flush();
+    entityManager.clear();
+
+    // information_schema 는 DB 가 자기 테이블 정보를 적어 두는 곳입니다. 엔티티 목록이 아니라 "실제로 만들어진 테이블" 을 봅니다.
+    List<String> tables =
+        nativeList(
+            "select table_name from information_schema.tables where table_schema = 'PUBLIC'");
+    assertThat(tables).contains("USERS", "ACCOUNTS", "SUBJECTS", "THINKING_TEST_SCORES");
+
+    for (String table : tables) {
+      if (table.equals("USERS")) {
+        assertThat(nativeCount("select count(*) from users where id = :userId", idOfA))
+            .as("users 의 에이 줄")
+            .isZero();
+      } else if (hasUserIdColumn(table)) {
+        // 표 이름은 DB 가 알려 준 글자라 바깥에서 들어온 값이 아닙니다. 사용자 번호는 파라미터로 넘깁니다.
+        assertThat(nativeCount("select count(*) from " + table + " where user_id = :userId", idOfA))
+            .as("%s 에 남은 에이의 줄", table)
+            .isZero();
+      } else if (CHILD_TABLES.containsKey(table)) {
+        String parent = CHILD_TABLES.get(table)[0];
+        String parentIdColumn = CHILD_TABLES.get(table)[1];
+        // 부모 줄이 없는데 남은 딸린 줄(고아)이 없어야 합니다.
+        long orphans =
+            ((Number)
+                    entityManager
+                        .createNativeQuery(
+                            "select count(*) from "
+                                + table
+                                + " c where not exists (select 1 from "
+                                + parent
+                                + " p where p.id = c."
+                                + parentIdColumn
+                                + ")")
+                        .getSingleResult())
+                .longValue();
+        assertThat(orphans).as("%s 에 부모 없이 남은 줄", table).isZero();
+      } else {
+        throw new AssertionError(
+            "테이블 "
+                + table
+                + " 에 user_id 가 없어서 탈퇴 때 지워지는지 알 수 없어요. "
+                + "user_id 를 넣거나, 딸린 테이블이면 CHILD_TABLES 에 더해 주세요.");
+      }
+    }
+    // 남의 것은 그대로입니다.
+    assertThat(nativeCount("select count(*) from subjects where user_id = :userId", idOfB))
+        .isEqualTo(1);
+  }
+
+  private boolean hasUserIdColumn(String table) {
+    return !nativeList(
+            "select column_name from information_schema.columns where table_schema = 'PUBLIC'"
+                + " and table_name = '"
+                + table
+                + "' and column_name = 'USER_ID'")
+        .isEmpty();
+  }
+
+  @SuppressWarnings("unchecked")
+  private List<String> nativeList(String sql) {
+    return entityManager.createNativeQuery(sql).getResultList();
+  }
+
+  private long nativeCount(String sql, Long userId) {
+    return ((Number)
+            entityManager.createNativeQuery(sql).setParameter("userId", userId).getSingleResult())
+        .longValue();
   }
 
   // 딸린 테이블(@ElementCollection)은 엔티티가 아니라서 SQL 로 줄 수를 셉니다. (표 이름은 우리가 정한 글자)

@@ -143,6 +143,20 @@ class LoginRequiredFlowTest {
               "/api/v1/study-sessions/by-plan",
               "/api/v1/study-sessions/by-plan?date=2026-10-12",
               null),
+          // 하루 신호 (수면·걸음은 건강 데이터입니다)
+          new Api(
+              "POST",
+              "/api/v1/daily-signals",
+              "/api/v1/daily-signals",
+              "{\"date\":\"2026-10-12\"}"),
+          // 체크인 (기분·약속은 개인적인 내용입니다)
+          new Api(
+              "PUT",
+              "/api/v1/checkins/{date}",
+              "/api/v1/checkins/2026-10-12",
+              "{\"source\":\"manual\"}"),
+          new Api(
+              "GET", "/api/v1/checkins", "/api/v1/checkins?from=2026-10-01&to=2026-10-07", null),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),

@@ -23,6 +23,7 @@ erDiagram
     users ||--o{ push_subscriptions : "user_id"
     users ||--o{ onboarding_answers : "user_id"
     users ||--o| initial_plans : "user_id"
+    users ||--o{ daily_signals : "user_id"
     thinking_tests ||--o{ thinking_test_scores : "thinking_test_id"
     thinking_tests ||--o{ thinking_test_weaknesses : "thinking_test_id"
     onboarding_answers ||--o{ onboarding_answer_failure_causes : "onboarding_answer_id"
@@ -37,6 +38,9 @@ erDiagram
     users ||--o| care_settings : "user_id"
     users ||--o{ focus_lock_apps : "user_id"
     users ||--o{ setting_changes : "user_id"
+    users ||--o{ gpt_usages : "user_id"
+    call_records ||--o| gpt_usages : "call_record_id"
+    users ||--o{ checkins : "user_id"
 
     users {
         bigint id PK "사용자를 구분하는 고유 번호"
@@ -181,6 +185,16 @@ erDiagram
         int daily_minutes "하루에 공부하기로 한 시간(분) (60, 120, 180, 240, 300 중 하나)"
         int days_per_week "일주일에 며칠 하기로 했는지 (3, 5, 6, 7 중 하나)"
     }
+    daily_signals {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 데이터의 주인"
+        date signal_date "어느 날의 데이터인지 (같은 사람 안에서 날짜 중복 불가)"
+        int sleep_minutes "실제로 잔 시간(분), 모르면 비어 있음"
+        timestamptz slept_at "잠든 시각, 모르면 비어 있음"
+        timestamptz woke_at "일어난 시각, 모르면 비어 있음"
+        int steps "하루 걸음 수, 모르면 비어 있음"
+        boolean sns_over_thirty_minutes "SNS 를 30분 넘게 썼는지, 모르면 비어 있음"
+    }
     exams {
         bigint id PK "시험을 구분하는 고유 번호"
         bigint user_id FK "이 시험의 주인"
@@ -222,6 +236,29 @@ erDiagram
         varchar old_value "바꾸기 전 값 (글자, 1000자까지)"
         varchar new_value "바꾼 뒤 값 (글자, 1000자까지)"
     }
+    gpt_usages {
+        bigint id PK "기록 한 줄을 구분하는 고유 번호 (나중에 부른 것일수록 큼)"
+        bigint user_id FK "GPT 를 부르게 한 사람"
+        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH 중 하나)"
+        timestamptz called_at "부른 시각 (통화는 시작한 시각)"
+        bigint call_record_id FK "어느 통화인지 (통화일 때만, 그 외엔 비어 있음)"
+        int call_seconds "통화한 시간(초) (통화가 아니거나 아직 안 끝났으면 비어 있음)"
+        int cost_won "대략적인 비용(원) (통화가 아직 안 끝났으면 비어 있음)"
+    }
+    checkins {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 체크인의 주인"
+        date check_in_date "어느 날의 체크인인지 (같은 사람 안에서 날짜 중복 불가)"
+        varchar source "어디서 만든 체크인인지 (MANUAL, CALL, QUICK 중 하나)"
+        int condition "오늘 컨디션 (1 ~ 5), 안 골랐으면 비어 있음"
+        int mood "오늘 기분 (1 ~ 5), 안 골랐으면 비어 있음"
+        varchar miss_reason "어제 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, ETC 중 하나), 비어도 됨"
+        varchar miss_reason_note "기타 이유 한 줄 (50자까지, ETC 일 때만)"
+        int expected_minutes "오늘 예상 순공시간(분), 비어도 됨"
+        varchar promise_if "오늘의 약속 만약 ~하면 (100자까지), 비어도 됨"
+        varchar promise_then "오늘의 약속 ~한다 (100자까지), 비어도 됨"
+        boolean suggestion_kept "개선안을 실천했는지, 비어도 됨"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
@@ -239,6 +276,7 @@ erDiagram
 | `messages` | AI 가 사용자에게 보낸 메시지 하나가 한 줄 (종류, 내용, 보낸 시각, 읽은 시각) | #30 |
 | `call_records` | AI 통화 한 번이 한 줄 (확인하려던 생각 습관, 요약, 보인 생각 습관과 근거, 약속, 위기 표현 표시) | #28 · #29 |
 | `push_subscriptions` | 웹 푸시(앱을 닫아도 오는 알림)를 받겠다고 한 기기 하나가 한 줄 (보낼 주소, 잠금 열쇠) | #32 |
+| `daily_signals` | 한 사람의 하루치 휴대폰·수면·걸음 데이터가 한 줄 (수면 시간, 잠든·일어난 시각, 걸음 수, SNS 30분 초과). 같은 날을 다시 보내면 덮어씀. 날짜 말고는 다 비어도 됨 | #18 |
 | `thinking_tests` | 생각 습관 테스트 한 번이 한 줄 (마친 시각, 테스트 모양 번호). 다시 하면 새 줄이 쌓임 | #35 |
 | `thinking_test_scores` | 테스트 한 번의 습관 8개 평균이 한 줄씩 (`@ElementCollection`) | #35 |
 | `thinking_test_weaknesses` | 테스트 한 번에서 고른 약점 칩이 한 줄씩 (`@ElementCollection`) | #35 |
@@ -251,6 +289,8 @@ erDiagram
 | `care_settings` | 사용자 한 명의 관리 설정이 한 줄 (전화 시간, 메시지 횟수, 연락 금지, 독설 수위, 앱 잠금, 제재 한도와 바뀔 한도) | #22 |
 | `focus_lock_apps` | 한 사용자가 고른 잠금 대상 앱 하나가 한 줄. 같은 사용자 안에서 같은 앱은 한 번만 | #22 |
 | `setting_changes` | 설정 칸 하나를 한 번 바꾼 것이 한 줄 (바꾼 시각, 칸 이름, 이전 값, 새 값) | #22 |
+| `gpt_usages` | GPT 를 한 번 부른 것이 한 줄 (종류, 부른 시각, 통화 번호·통화 시간, 대략적인 비용). 하루 한도는 이 기록을 세서 지킴 | #33 |
+| `checkins` | 한 사람의 하루치 체크인이 한 줄 (컨디션, 기분, 어제 못 채운 이유와 기타 글, 예상 순공시간, 약속 두 칸, 개선안 실천 여부, 어디서 했는지). 같은 날을 다시 보내면 덮어씀. 누구·날짜·source 말고는 다 비어도 됨 | #24 |
 
 > `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
 > 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.
@@ -293,6 +333,13 @@ erDiagram
 > - **바꾼 기록은 칸 하나를 바꿀 때마다 한 줄**입니다. 값의 모양이 제각각이라 이전 값 · 새 값은 글자로 적습니다. 설정 표는 값을 덮어써서, 옛 값은 여기에만 남습니다.
 > - 세 테이블 모두 `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
 > - 처음 값은 FE 와 같습니다 (전화 시간 21:00 은 학생이 정함). FE 의 `allowOffHoursCall`(정해진 시간 외 독촉 전화 허용)은 이슈에 없어서 담지 않았습니다.
+
+> `gpt_usages` 는 2026-10-17 에 이슈 #33 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 돕고 영어 이름만 같이 정했습니다)
+> - **GPT 를 한 번 부른 것 = 한 줄.** 하루 한도(통화 횟수 · 통화 시간 · 글 호출 횟수)는 이 기록을 세서 지킵니다. 예전에는 서버 메모리에서 세서 서버가 다시 켜지면 0 이 됐습니다.
+> - **통화 시간과 비용만 비어도 됩니다.** 코치·요약에는 통화 시간이 없고, 통화는 끝나야 시간과 비용을 알 수 있기 때문입니다.
+> - **통화 번호(`call_record_id`)** 는 "통화가 끝났을 때 어느 줄을 채울지" 알려고 더했습니다. 같은 날 통화가 여러 번이면 이것 없이는 구별할 수 없습니다.
+> - **비용은 원 단위 정수**의 어림값입니다. (읽기 쉬워서 학생이 정함) 환산 기준은 `application.yml` 의 `cost-won-*` 설정에 있습니다.
+> - 종류는 지금 GPT 를 부르는 세 곳(통화 · 통화 요약 · 코치)만 있습니다. 인사이트 · 개선안 · 일기 분석이 생기면 하나씩 더합니다.
 
 > `study_plans` 의 `start_time` · `kind` · `routine_id` 는 2026-10-12 에 이슈 #12 에서 더했습니다. (칸 이름과 뜻은 Project#12 의 표, 시작 시각을 `time` 으로 저장하는 것은 학생이 정함)
 > - 공부 계획(`STUDY`)은 `subject_id` 가 꼭 있어야 하고, 노는 계획(`PLAY`)만 비어도 됩니다. DB 에도 검사 규칙(`ck_study_plans_study_has_subject`)으로 걸어 두었습니다.

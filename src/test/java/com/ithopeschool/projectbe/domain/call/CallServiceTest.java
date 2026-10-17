@@ -16,6 +16,7 @@ import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
@@ -42,9 +43,9 @@ class CallServiceTest {
   private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
   private final CallKeyClient callKeyClient = mock(CallKeyClient.class);
   private final TokenHasher tokenHasher = new TokenHasher();
-  // 하루 한도는 2번, 통화 한 번은 최대 300초로 두고 진짜 코드를 씁니다.
-  private final CallDailyLimit callDailyLimit =
-      new CallDailyLimit(2, Clock.fixed(Instant.parse("2026-10-11T06:00:00Z"), ZoneOffset.UTC));
+  // 하루 한도는 가짜로 둡니다. 진짜로 세는 것은 GptUsageGuardTest 가 확인합니다.
+  // 기본은 "이번 통화는 300초까지 해도 된다" 입니다. (setUp)
+  private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
 
   private final CallRecordRepository callRecordRepository = mock(CallRecordRepository.class);
   private final ThinkingTestRepository thinkingTestRepository = mock(ThinkingTestRepository.class);
@@ -56,12 +57,11 @@ class CallServiceTest {
       new CallService(
           currentUserProvider,
           callKeyClient,
-          callDailyLimit,
+          gptUsageGuard,
           tokenHasher,
           callRecordRepository,
           thinkingTestRepository,
-          Clock.fixed(NOW, ZoneOffset.UTC),
-          300);
+          Clock.fixed(NOW, ZoneOffset.UTC));
 
   private static final CallSessionRequest REQUEST =
       new CallSessionRequest(
@@ -78,6 +78,8 @@ class CallServiceTest {
     given(currentUserProvider.getCurrentUserId()).willReturn(USER_ID);
     given(callKeyClient.isEnabled()).willReturn(true);
     given(callKeyClient.createKey(any(), any())).willReturn(Optional.of(KEY));
+    // 오늘 한도는 남아 있어서, 이번 통화는 최대 300초까지 해도 됩니다.
+    given(gptUsageGuard.allowedCallSeconds(any())).willReturn(300);
     // 지난 통화는 없고, 저장하면 12번 기록이 됩니다.
     given(
             callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
@@ -215,31 +217,44 @@ class CallServiceTest {
           "AI 통화가 아직 켜져 있지 않아요");
     }
     verify(callKeyClient, never()).createKey(any(), any());
-
-    // 켜진 뒤에도 한도 2번이 그대로 남아 있습니다.
-    given(callKeyClient.isEnabled()).willReturn(true);
-    callService.startSession(REQUEST);
-    callService.startSession(REQUEST);
+    // 통화가 시작되지 않았으니 GPT 호출 기록도 남기지 않습니다. (오늘 횟수를 쓰지 않음)
+    verify(gptUsageGuard, never()).recordCallStart(any(), any());
   }
 
   @Test
-  @DisplayName("하루 한도(2번)를 넘으면 429 이고, OpenAI 를 더 부르지 않는다. 다른 사람은 걸 수 있다")
+  @DisplayName("오늘 횟수나 시간을 다 썼으면(허용 0초) 429 이고, OpenAI 를 부르지 않는다. 다른 사람은 걸 수 있다")
   void tooManyCalls() {
-    callService.startSession(REQUEST);
-    callService.startSession(REQUEST);
+    given(gptUsageGuard.allowedCallSeconds(USER_ID)).willReturn(0);
 
     assertError(
         () -> callService.startSession(REQUEST),
         ErrorCode.TOO_MANY_REQUESTS,
         "오늘 통화는 다 썼어요. 내일 다시 만나요");
-    verify(callKeyClient, org.mockito.Mockito.times(2)).createKey(any(), any());
+    verify(callKeyClient, never()).createKey(any(), any());
+    verify(gptUsageGuard, never()).recordCallStart(any(), any());
 
     given(currentUserProvider.getCurrentUserId()).willReturn(8L);
     assertThat(callService.startSession(REQUEST).value()).isEqualTo("ek_abc123");
   }
 
   @Test
-  @DisplayName("OpenAI 가 임시 키를 못 주면 503 이고, 통화가 시작되지 않았으니 한도를 쓰지 않는다")
+  @DisplayName("오늘 남은 시간이 2분이면, 이번 통화의 최대 길이는 120초다")
+  void shortensTheCallToTheRemainingTime() {
+    given(gptUsageGuard.allowedCallSeconds(USER_ID)).willReturn(120);
+
+    assertThat(callService.startSession(REQUEST).maxCallSeconds()).isEqualTo(120);
+  }
+
+  @Test
+  @DisplayName("통화를 시작하면 GPT 호출 기록에 '내 번호 · 이 통화 번호' 로 통화 시작을 남긴다")
+  void recordsTheCallStart() {
+    callService.startSession(REQUEST);
+
+    verify(gptUsageGuard).recordCallStart(USER_ID, 12L);
+  }
+
+  @Test
+  @DisplayName("OpenAI 가 임시 키를 못 주면 503 이고, 통화가 시작되지 않았으니 기록도 한도도 쓰지 않는다")
   void failureDoesNotUseTheLimit() {
     given(callKeyClient.createKey(any(), any())).willReturn(Optional.empty());
     for (int i = 0; i < 5; i++) {
@@ -249,17 +264,9 @@ class CallServiceTest {
           "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
     }
 
-    // 시작하지 못한 통화는 기록도 남기지 않습니다.
+    // 시작하지 못한 통화는 통화 기록도, GPT 호출 기록도 남기지 않습니다. (그래서 오늘 횟수를 쓰지 않습니다)
     verify(callRecordRepository, never()).save(any());
-
-    // 다섯 번 실패했어도 한도 2번이 그대로 남아 있습니다.
-    given(callKeyClient.createKey(any(), any())).willReturn(Optional.of(KEY));
-    callService.startSession(REQUEST);
-    callService.startSession(REQUEST);
-    assertError(
-        () -> callService.startSession(REQUEST),
-        ErrorCode.TOO_MANY_REQUESTS,
-        "오늘 통화는 다 썼어요. 내일 다시 만나요");
+    verify(gptUsageGuard, never()).recordCallStart(any(), any());
   }
 
   // ---- 통화 기록 ----
