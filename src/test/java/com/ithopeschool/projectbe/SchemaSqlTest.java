@@ -4,6 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ithopeschool.projectbe.domain.user.User;
 import com.ithopeschool.projectbe.domain.user.UserRepository;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +39,34 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 class SchemaSqlTest {
 
   @Autowired private UserRepository userRepository;
+
+  @Test
+  @DisplayName("전체 스키마는 테이블 생성 뒤 인덱스와 외래키를 만들고 마지막에 한 번 커밋한다")
+  void schemaCreationOrder() throws IOException {
+    String sql = Files.readString(Path.of("db/schema.sql")).replaceAll("(?m)--[^\\r\\n]*", "");
+    List<String> statements =
+        Arrays.stream(sql.split(";"))
+            .map(String::strip)
+            .filter(s -> !s.isEmpty())
+            .map(s -> s.toLowerCase(Locale.ROOT))
+            .toList();
+
+    assertThat(statements.getFirst()).isEqualTo("begin");
+    assertThat(statements.getLast()).isEqualTo("commit");
+    assertThat(statements.stream().filter(s -> s.equals("begin")).count()).isEqualTo(1);
+    assertThat(statements.stream().filter(s -> s.equals("commit")).count()).isEqualTo(1);
+    boolean indexesOrConstraintsStarted = false;
+    for (String statement : statements) {
+      if (statement.startsWith("create index") || statement.startsWith("alter table")) {
+        indexesOrConstraintsStarted = true;
+      }
+      if (statement.startsWith("create table")) {
+        assertThat(indexesOrConstraintsStarted)
+            .as("인덱스·외래키보다 먼저 테이블을 만들어야 합니다: %s", statement)
+            .isFalse();
+      }
+    }
+  }
 
   @Test
   @DisplayName("schema.sql 로 만든 테이블이 엔티티와 맞아서 저장하고 다시 읽을 수 있다")

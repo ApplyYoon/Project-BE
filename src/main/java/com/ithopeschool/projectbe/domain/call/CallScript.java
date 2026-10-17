@@ -100,10 +100,40 @@ public final class CallScript {
       BiasQuestion biasQuestion,
       List<PastCall> pastCalls,
       SelfReport selfReport) {
+    return build(
+        careLevel, maxHarshness, card, biasQuestion, pastCalls, selfReport, CallChannel.VOICE);
+  }
+
+  // 상담 채팅(이슈 #238)의 지침입니다. 통화와 같은 대본이고, 맨 앞의 두 줄(전화 · 3분)만 글 채팅에 맞게 바꿉니다.
+  // 대본 안의 "통화" 라는 말은 그대로 두고, 이 채팅을 뜻한다고 알려 줍니다. (같은 규칙을 두 벌로 쓰지 않으려는 것)
+  public static String chatInstructions(
+      int careLevel,
+      int maxHarshness,
+      CallSessionRequest.Card card,
+      BiasQuestion biasQuestion,
+      List<PastCall> pastCalls,
+      SelfReport selfReport) {
+    return build(
+        careLevel, maxHarshness, card, biasQuestion, pastCalls, selfReport, CallChannel.CHAT);
+  }
+
+  private static String build(
+      int careLevel,
+      int maxHarshness,
+      CallSessionRequest.Card card,
+      BiasQuestion biasQuestion,
+      List<PastCall> pastCalls,
+      SelfReport selfReport,
+      CallChannel channel) {
     boolean supportive = isSupportive(careLevel, card);
     List<String> lines = new ArrayList<>();
-    lines.add("너는 고등학생에게 하루에 한 번 짧게 전화하는 공부 코치야. 한국어 반말로 말해.");
-    lines.add("한 번에 한두 문장만 말하고, 학생이 대답할 때까지 기다려. 통화 전체는 3분 안에 끝내.");
+    if (channel == CallChannel.CHAT) {
+      lines.add("너는 고등학생과 하루에 한 번 글로 이야기하는 공부 코치야. 한국어 반말로 써.");
+      lines.add("한 번에 두세 문장만 쓰고, 학생이 답할 때까지 기다려. 아래에서 '통화' 는 이 채팅을 뜻해." + " 열 번 안팎으로 주고받고 마무리해.");
+    } else {
+      lines.add("너는 고등학생에게 하루에 한 번 짧게 전화하는 공부 코치야. 한국어 반말로 말해.");
+      lines.add("한 번에 한두 문장만 말하고, 학생이 대답할 때까지 기다려. 통화 전체는 3분 안에 끝내.");
+    }
     lines.add("");
     lines.add("[꼭 지킬 것]");
     lines.add("- 아래 [오늘의 사실] 에 적힌 숫자만 말해. 숫자를 새로 만들거나 계산해서 바꾸지 마.");

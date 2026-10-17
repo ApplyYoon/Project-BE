@@ -34,7 +34,7 @@ public final class InitialPlan {
 
   // 루틴 초안 하나입니다. 과목마다 하나씩 만듭니다. (공부 루틴만 만듭니다)
   // weekdays: 반복할 요일 / subjectId: 과목 번호 / content: 할 일 / targetMinutes: 목표 시간(분)
-  // (루틴 테이블은 아직 없어서, 엔티티가 아니라 초안에 필요한 값만 담습니다)
+  // 아직 수락하지 않은 초안이므로 엔티티 대신 필요한 값만 담습니다.
   public record RoutineDraft(
       List<Integer> weekdays, Long subjectId, String content, int targetMinutes) {}
 

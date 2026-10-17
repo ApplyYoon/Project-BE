@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.ithopeschool.projectbe.domain.message.dto.MessageResponse;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -46,7 +47,10 @@ class MessageServiceTest {
   void setUp() {
     messageService =
         new MessageService(
-            currentUserProvider, messageRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+            currentUserProvider,
+            messageRepository,
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            org.mockito.Mockito.mock(SafetyService.class));
   }
 
   private Message messageWithId(Long id, Long userId, MessageKind kind) {

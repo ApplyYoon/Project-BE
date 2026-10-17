@@ -16,6 +16,12 @@ import com.ithopeschool.projectbe.domain.auth.dto.WithdrawRequest;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallRecord;
+import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
+import com.ithopeschool.projectbe.domain.checkin.EmotionTag;
+import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
+import com.ithopeschool.projectbe.domain.consent.ConsentService;
+import com.ithopeschool.projectbe.domain.insight.Insight;
 import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
 import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
@@ -57,6 +63,7 @@ class AccountServiceTest {
   @Autowired private UserRepository userRepository;
   @Autowired private AccountRepository accountRepository;
   @Autowired private LoginTokenRepository loginTokenRepository;
+  @Autowired private ConsentRecordRepository consentRecordRepository;
   @Autowired private EntityManager entityManager;
 
   // 테스트가 빨리 끝나게 되풀이 횟수는 가장 작은 값으로 둡니다.
@@ -81,7 +88,8 @@ class AccountServiceTest {
     request = new MockHttpServletRequest();
     Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
     CurrentUserProvider currentUserProvider =
-        new CurrentUserProvider(request, loginTokenRepository, tokenHasher, clock, "");
+        new CurrentUserProvider(
+            request, loginTokenRepository, consentRecordRepository, tokenHasher, clock, "");
     authService =
         new AuthService(
             userRepository,
@@ -91,6 +99,7 @@ class AccountServiceTest {
             tokenHasher,
             currentUserProvider,
             googleIdTokenVerifier,
+            new ConsentService(currentUserProvider, consentRecordRepository, clock),
             clock);
     accountService =
         new AccountService(
@@ -117,7 +126,7 @@ class AccountServiceTest {
         nickname,
         "7530560",
         "한국디지털미디어고등학교",
-        new SignupRequest.Consents(true, true, false));
+        new SignupRequest.Consents(true, true, false, true, "v1"));
   }
 
   // 이 토큰으로 부른 요청인 것처럼 만듭니다. null 이면 로그인하지 않은 요청입니다.
@@ -145,7 +154,7 @@ class AccountServiceTest {
     ProfileResponse mine = accountService.getProfile();
 
     assertThat(mine.email()).isEqualTo("a@starflow.com");
-    assertThat(mine.name()).isEqualTo("김티맥");
+    assertThat(mine.name()).isEqualTo("에이");
     assertThat(mine.nickname()).isEqualTo("에이");
     assertThat(mine.schoolCode()).isEqualTo("7530560");
     assertThat(mine.schoolName()).isEqualTo("한국디지털미디어고등학교");
@@ -183,6 +192,20 @@ class AccountServiceTest {
   // ---- 내 정보 고치기 ----
 
   @Test
+  @DisplayName("기존 DB 실명은 응답에서 숨기고, 프로필 수정으로 덮어쓰거나 삭제하지 않는다")
+  void legacyRealNameIsNeverReturnedOrReplaced() {
+    Account account = accountRepository.findByUserId(idOfA).orElseThrow();
+    account.updateProfile("기존실명", null, null, false);
+    callWith(tokenOfA);
+    assertThat(accountService.getProfile().name()).isEqualTo("에이");
+
+    ProfileResponse updated =
+        accountService.updateProfile(new ProfileUpdateRequest("새실명", "새별명", null, null, false));
+    assertThat(updated.name()).isEqualTo("새별명");
+    assertThat(account.getName()).isEqualTo("기존실명");
+  }
+
+  @Test
   @DisplayName("이름·닉네임·학교·일기 분석 동의를 고치면 DB 에 반영되고, 남의 정보는 그대로다")
   void updateProfileChangesOnlyMine() {
     callWith(tokenOfA);
@@ -190,7 +213,7 @@ class AccountServiceTest {
         accountService.updateProfile(
             new ProfileUpdateRequest("김하늘", "하늘이", "1234567", "별빛고등학교", true));
 
-    assertThat(updated.name()).isEqualTo("김하늘");
+    assertThat(updated.name()).isEqualTo("하늘이");
     assertThat(updated.nickname()).isEqualTo("하늘이");
     assertThat(updated.schoolName()).isEqualTo("별빛고등학교");
     assertThat(updated.diaryAnalysis()).isTrue();
@@ -203,7 +226,7 @@ class AccountServiceTest {
     assertThat(accountRepository.findByUserId(idOfA).orElseThrow().isDiaryAnalysisAgreed())
         .isTrue();
     assertThat(userRepository.findById(idOfB).orElseThrow().getNickname()).isEqualTo("비이");
-    assertThat(accountRepository.findByUserId(idOfB).orElseThrow().getName()).isEqualTo("김티맥");
+    assertThat(accountRepository.findByUserId(idOfB).orElseThrow().getName()).isNull();
   }
 
   @Test
@@ -355,7 +378,7 @@ class AccountServiceTest {
                     "씨씨",
                     null,
                     null,
-                    new SignupRequest.Consents(true, true, false)))
+                    new SignupRequest.Consents(true, true, false, true, "v1")))
             .token();
     callWith(token);
     return accountRepository.findByGoogleSubject(GOOGLE_SUBJECT).orElseThrow().getUserId();
@@ -524,7 +547,11 @@ class AccountServiceTest {
           "ONBOARDING_ANSWER_FAILURE_CAUSES",
               new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
           "ONBOARDING_ANSWER_SUBJECT_LEVELS",
-              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"});
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
+          // 체크인(checkins)에 매달린 하루 첫 태그의 감정들 (이슈 #220)
+          "CHECKIN_EMOTIONS", new String[] {"CHECKINS", "CHECKIN_ID"},
+          // 보여 준 인사이트(insights)에 매달린 근거 날짜 (이슈 #43)
+          "INSIGHT_EVIDENCE_DATES", new String[] {"INSIGHTS", "INSIGHT_ID"});
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
@@ -545,6 +572,31 @@ class AccountServiceTest {
       answer.pastFailureCauses = EnumSet.of(FailureCause.WEEKEND);
       answer.subjectLevels = List.of(new SubjectLevel(1L, 2, null, 4));
       entityManager.persist(new OnboardingAnswer(userId, NOW, answer));
+      // 감정 태그가 붙은 체크인 (딸린 테이블 checkin_emotions 에 줄이 생깁니다)
+      CheckIn checkIn =
+          new CheckIn(
+              userId,
+              LocalDate.of(2026, 10, 15),
+              CheckInSource.QUICK,
+              3,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null);
+      checkIn.replaceEmotions(EnumSet.of(EmotionTag.STUCK, EmotionTag.TIRED));
+      entityManager.persist(checkIn);
+      // 인사이트의 근거 날짜(딸린 테이블)에도 줄이 있어야 합니다.
+      entityManager.persist(
+          new Insight(
+              userId,
+              "오전에 더 오래 집중했어요",
+              "morning-vs-night",
+              false,
+              LocalDate.of(2026, 10, 17),
+              List.of(LocalDate.of(2026, 10, 3), LocalDate.of(2026, 10, 10))));
     }
     entityManager.flush();
     callWith(tokenOfA);
@@ -552,6 +604,9 @@ class AccountServiceTest {
     accountService.withdraw(new WithdrawRequest(PASSWORD, null));
     entityManager.flush();
     entityManager.clear();
+
+    // 비이의 감정 2줄만 남고, 에이의 감정은 체크인과 함께 지워집니다.
+    assertThat(countCollectionRows("checkin_emotions")).isEqualTo(2);
 
     // information_schema 는 DB 가 자기 테이블 정보를 적어 두는 곳입니다. 엔티티 목록이 아니라 "실제로 만들어진 테이블" 을 봅니다.
     List<String> tables =

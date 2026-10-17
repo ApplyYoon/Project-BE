@@ -562,4 +562,22 @@ class CallScriptTest {
     assertThat(lines.get(0)).contains("한 가지만 골라", "탓하지 말고", "답을 먼저 말하지 마");
     assertThat(lines).contains("  - 다름 1", "  - 다름 3").doesNotContain("  - 다름 4");
   }
+
+  @Test
+  void chatInstructionsAreTheSameScriptWithChatOpening() {
+    // 상담 채팅(이슈 #238)은 통화와 같은 대본이고, 맨 앞의 두 줄만 다릅니다.
+    Card card = card(190, 240, "phone", List.of(3, 3));
+    String voice = CallScript.instructions(2, 3, card, null, List.of(), CallScript.SelfReport.NONE);
+    String chat =
+        CallScript.chatInstructions(2, 3, card, null, List.of(), CallScript.SelfReport.NONE);
+
+    assertThat(voice).contains("짧게 전화하는 공부 코치").contains("3분 안에 끝내");
+    assertThat(chat)
+        .contains("글로 이야기하는 공부 코치")
+        .contains("'통화' 는 이 채팅을 뜻해")
+        .doesNotContain("전화하는")
+        .doesNotContain("3분 안에 끝내");
+    // 세 번째 줄부터는 똑같습니다.
+    assertThat(chat.lines().skip(2).toList()).isEqualTo(voice.lines().skip(2).toList());
+  }
 }

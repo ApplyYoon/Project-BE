@@ -74,6 +74,11 @@ class LoginRequiredFlowTest {
   // 로그인한 사람만 쓸 수 있는 API 들입니다. 새 API 를 만들면 여기에 한 줄을 더합니다.
   private static final List<Api> LOGIN_REQUIRED =
       List.of(
+          new Api(
+              "GET",
+              "/api/v1/study-sessions/target-recommendation",
+              "/api/v1/study-sessions/target-recommendation?subjectId=1&currentTargetMinutes=50",
+              null),
           // 내 정보 · 계정
           new Api("GET", "/api/v1/auth/me", "/api/v1/auth/me", null),
           new Api("GET", "/api/v1/auth/profile", "/api/v1/auth/profile", null),
@@ -102,6 +107,15 @@ class LoginRequiredFlowTest {
               "{\"name\":\"수학\",\"color\":\"red\"}"),
           new Api("PATCH", "/api/v1/subjects/{id}", "/api/v1/subjects/1", "{\"name\":\"수학\"}"),
           new Api("DELETE", "/api/v1/subjects/{id}", "/api/v1/subjects/1", null),
+          // 계획 루틴
+          new Api("GET", "/api/v1/routines", "/api/v1/routines", null),
+          new Api(
+              "POST",
+              "/api/v1/routines",
+              "/api/v1/routines",
+              "{\"weekdays\":[1],\"kind\":\"play\",\"content\":\"rest\",\"targetMinutes\":20}"),
+          new Api("PATCH", "/api/v1/routines/{id}", "/api/v1/routines/1", "{\"targetMinutes\":20}"),
+          new Api("DELETE", "/api/v1/routines/{id}", "/api/v1/routines/1", null),
           // 공부 계획
           new Api("GET", "/api/v1/study-plans", "/api/v1/study-plans?date=2026-10-12", null),
           new Api("POST", "/api/v1/study-plans", "/api/v1/study-plans", PLAN_BODY),
@@ -118,6 +132,17 @@ class LoginRequiredFlowTest {
               "{\"date\":\"2026-10-12\",\"text\":\"수학 문제집 2시간\"}"),
           new Api("PATCH", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", "{\"done\":true}"),
           new Api("DELETE", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", null),
+          // 잠금 해제 기록
+          new Api(
+              "POST",
+              "/api/v1/lock-events",
+              "/api/v1/lock-events",
+              "{\"occurredAt\":\"2026-10-17T10:00:00Z\",\"appName\":\"app\",\"reason\":\"reason\"}"),
+          new Api(
+              "GET",
+              "/api/v1/lock-events/stats",
+              "/api/v1/lock-events/stats?startDate=2026-10-17&endDate=2026-10-17",
+              null),
           // 관리 설정
           new Api("GET", "/api/v1/settings", "/api/v1/settings", null),
           new Api("PATCH", "/api/v1/settings", "/api/v1/settings", "{\"maxHarshness\":5}"),
@@ -173,6 +198,7 @@ class LoginRequiredFlowTest {
               "GET", "/api/v1/checkins", "/api/v1/checkins?from=2026-10-01&to=2026-10-07", null),
           new Api(
               "GET", "/api/v1/checkins/today/questions", "/api/v1/checkins/today/questions", null),
+          new Api("DELETE", "/api/v1/checkins", "/api/v1/checkins", null),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
@@ -192,6 +218,18 @@ class LoginRequiredFlowTest {
           // AI 통화 기록 (자막은 학생의 대화입니다)
           new Api("GET", "/api/v1/calls", "/api/v1/calls", null),
           new Api("GET", "/api/v1/calls/habits", "/api/v1/calls/habits", null),
+          // 상담 채팅 (이슈 #238)
+          new Api("POST", "/api/v1/chats", "/api/v1/chats", "{\"careLevel\":2,\"maxHarshness\":3}"),
+          new Api(
+              "POST",
+              "/api/v1/chats/{id}/messages",
+              "/api/v1/chats/1/messages",
+              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
+          new Api(
+              "POST",
+              "/api/v1/chats/{id}/finish",
+              "/api/v1/chats/1/finish",
+              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
           // 웹 푸시 (내 기기를 알림 받을 곳으로 등록합니다)
           new Api("GET", "/api/v1/push/public-key", "/api/v1/push/public-key", null),
           new Api(
@@ -230,6 +268,8 @@ class LoginRequiredFlowTest {
               "/api/v1/calls/{id}/finish",
               "/api/v1/calls/1/finish",
               "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
+          // 성찰일기 처방 (처방 이유가 학생의 못 채운 이유입니다)
+          new Api("GET", "/api/v1/reflections/current", "/api/v1/reflections/current", null),
           // 온보딩 설문 · 처음 계획 (학년·생활 리듬·자기 인식 같은 학생의 정보입니다)
           new Api("GET", "/api/v1/onboarding", "/api/v1/onboarding", null),
           new Api(
@@ -252,8 +292,50 @@ class LoginRequiredFlowTest {
               "/api/v1/onboarding/initial-plan",
               "/api/v1/onboarding/initial-plan",
               "{\"dailyMinutes\":180,\"daysPerWeek\":5}"),
+          // 개인정보 동의 (동의 문구가 바뀌었을 때 다시 동의하는 API. 이슈 #71)
+          new Api("GET", "/api/v1/auth/consent", "/api/v1/auth/consent", null),
+          new Api(
+              "POST",
+              "/api/v1/auth/consent",
+              "/api/v1/auth/consent",
+              "{\"terms\":true,\"privacy\":true,\"over14\":true,\"version\":\"v1\"}"),
           // 첫 가설 (설문 답으로 만든 문장이라 학생의 정보입니다)
-          new Api("GET", "/api/v1/insights/hypotheses", "/api/v1/insights/hypotheses", null));
+          new Api("GET", "/api/v1/insights/hypotheses", "/api/v1/insights/hypotheses", null),
+          new Api("GET", "/api/v1/insights/score-study", "/api/v1/insights/score-study", null),
+          // 인사이트 반응 버튼 (내 인사이트에만 반응할 수 있습니다)
+          new Api(
+              "POST",
+              "/api/v1/insights/{id}/reaction",
+              "/api/v1/insights/1/reaction",
+              "{\"response\":\"surprised\"}"),
+          new Api("GET", "/api/v1/insights/stats", "/api/v1/insights/stats", null),
+          // 실패 원인 분석 (못 채운 날과 그 이유라서 학생의 정보입니다)
+          new Api("GET", "/api/v1/stats/miss-reasons", "/api/v1/stats/miss-reasons", null),
+          // 리듬·패턴 분석 (공부한 날·시간대·시험 날이라 학생의 정보입니다)
+          new Api("GET", "/api/v1/stats/rhythm", "/api/v1/stats/rhythm", null),
+          // 카드 체크리스트 추천 (내 지난 기록을 보고 AI 를 부릅니다. 이슈 #236)
+          new Api("POST", "/api/v1/ai/checklist", "/api/v1/ai/checklist", "{\"title\":\"수학 문제집\"}"),
+          // 첫 준비 행동 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #236)
+          new Api(
+              "POST", "/api/v1/ai/first-step", "/api/v1/ai/first-step", "{\"item\":\"단어 외우기\"}"),
+          // 예상 실패 원인 선지 (내 최근 30일 실패 원인을 봅니다. 이슈 #237)
+          new Api(
+              "POST",
+              "/api/v1/ai/fail-cause-options",
+              "/api/v1/ai/fail-cause-options",
+              "{\"title\":\"수학 문제집\"}"),
+          // 시험 회고 → 다음 카드에 넣을 한 가지 (내 회고·점수를 봅니다. 이슈 #237)
+          new Api(
+              "POST",
+              "/api/v1/ai/exam-next-step",
+              "/api/v1/ai/exam-next-step",
+              "{\"examId\":\"1\"}"),
+          // 글에 이름표 붙이기 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #237)
+          new Api(
+              "POST",
+              "/api/v1/ai/classify-text",
+              "/api/v1/ai/classify-text",
+              "{\"kind\":\"memo\",\"text\":\"문자 보내기\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.
@@ -312,7 +394,7 @@ class LoginRequiredFlowTest {
           "nickname": "%s",
           "schoolCode": null,
           "schoolName": null,
-          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false }
+          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false, "over14": true, "version": "v1" }
         }
         """
             .formatted(email, PASSWORD, nickname);
