@@ -214,6 +214,21 @@ class GptUsageGuardTest {
   }
 
   @Test
+  @DisplayName("말로 계획 세우기(PLAN_PARSE)도 같은 글 호출 한도를 함께 쓴다")
+  void planParseSharesTextLimit() {
+    GptUsageGuard guard = guardAt(NOON);
+
+    assertThat(guard.tryUseText(ME, GptUsageKind.PLAN_PARSE)).isTrue();
+    assertThat(guard.tryUseText(ME, GptUsageKind.COACH)).isTrue();
+    // 계획 초안 1번 + 코치 1번 = 2번이라 오늘은 더 못 부릅니다.
+    assertThat(guard.tryUseText(ME, GptUsageKind.PLAN_PARSE)).isFalse();
+
+    assertThat(gptUsageRepository.findByUserIdOrderById(ME))
+        .extracting(GptUsage::getKind)
+        .containsExactly(GptUsageKind.PLAN_PARSE, GptUsageKind.COACH);
+  }
+
+  @Test
   @DisplayName("통화는 글 호출 한도에 세지 않는다. 글 호출 한도는 다음 날(새벽 4시) 다시 생긴다. 다른 사람은 따로다")
   void textLimitIsSeparateFromCallsAndResets() {
     GptUsageGuard guard = guardAt(NOON);
