@@ -170,7 +170,9 @@ class MessageFlowTest {
             .andExpect(jsonPath("$.length()").value(20))
             .andExpect(jsonPath("$[0].id").value(String.valueOf(sent.get(24).getId())))
             .andExpect(jsonPath("$[0].text").value("메시지 25"))
-            .andExpect(jsonPath("$[0].kind").value("recovery")) // 종류를 돌려 가며 보내서 25번째는 다섯 번째 종류
+            .andExpect(
+                jsonPath("$[0].kind")
+                    .value("carrot")) // 종류 6가지를 돌려 가며 보내서 25번째(24 % 6 = 0)는 첫 번째 종류
             .andExpect(jsonPath("$[0].sentAt").isNumber())
             .andExpect(jsonPath("$[0].read").value(false))
             .andExpect(jsonPath("$[0].readAt").value(nullValue()))
@@ -178,10 +180,10 @@ class MessageFlowTest {
             .andReturn()
             .getResponse()
             .getContentAsString();
-    // 모든 줄이 정해 둔 다섯 가지 종류 중 하나입니다.
+    // 모든 줄이 정해 둔 여섯 가지 종류 중 하나입니다.
     List<String> kinds = JsonPath.read(body, "$[*].kind");
-    assertThat(kinds).isSubsetOf("carrot", "nudge", "stick", "event", "recovery");
-    assertThat(kinds).containsAll(List.of("carrot", "nudge", "stick", "event", "recovery"));
+    assertThat(kinds).isSubsetOf("carrot", "nudge", "stick", "event", "recovery", "call");
+    assertThat(kinds).containsAll(List.of("carrot", "nudge", "stick", "event", "recovery", "call"));
   }
 
   @Test

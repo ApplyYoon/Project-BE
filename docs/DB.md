@@ -102,7 +102,7 @@ erDiagram
     messages {
         bigint id PK "메시지를 구분하는 고유 번호 (나중에 보낸 것일수록 큼)"
         bigint user_id FK "이 메시지를 받은 사람"
-        varchar kind "메시지 종류 (CARROT, NUDGE, STICK, EVENT, RECOVERY 중 하나)"
+        varchar kind "메시지 종류 (CARROT, NUDGE, STICK, EVENT, RECOVERY, CALL 중 하나)"
         varchar text "메시지 내용 (500자까지)"
         timestamptz sent_at "메시지를 보낸 시각"
         timestamptz read_at "처음 읽은 시각 (아직 안 읽었으면 비어 있음)"
