@@ -149,6 +149,12 @@ class LoginRequiredFlowTest {
               "/api/v1/daily-signals",
               "/api/v1/daily-signals",
               "{\"date\":\"2026-10-12\"}"),
+          // 회고 (시험 후 · 주간)
+          new Api(
+              "POST",
+              "/api/v1/reviews",
+              "/api/v1/reviews",
+              "{\"type\":\"weekly\",\"weekStart\":\"2026-10-12\",\"answers\":[\"a\",\"\",\"\"]}"),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
