@@ -2,6 +2,8 @@ package com.ithopeschool.projectbe.domain.ai;
 
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
@@ -27,6 +29,7 @@ public class AiController {
   private final ChecklistService checklistService;
   private final FirstStepService firstStepService;
   private final FailCauseService failCauseService;
+  private final ExamNextStepService examNextStepService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -49,5 +52,13 @@ public class AiController {
   @PostMapping("/fail-cause-options")
   public FailCauseResponse failCauseOptions(@Valid @RequestBody FailCauseRequest request) {
     return failCauseService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "시험 회고 → 다음 카드에 넣을 한 가지 (저장된 회고·점수를 봄 · 과목은 예상보다 가장 아쉬운 것 · 못 만들면 nextStep: null · 토큰 필요)")
+  @PostMapping("/exam-next-step")
+  public ExamNextStepResponse examNextStep(@Valid @RequestBody ExamNextStepRequest request) {
+    return examNextStepService.suggest(request);
   }
 }
