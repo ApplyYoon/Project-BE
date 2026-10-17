@@ -10,6 +10,7 @@ import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.safety.CrisisText;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -54,6 +55,7 @@ public class CallRecordService {
   // 통화 시간을 기록하고, GPT 요약을 부르기 전에 하루 한도를 봅니다. (이슈 #33)
   private final GptUsageGuard gptUsageGuard;
   private final Clock clock;
+  private final SafetyService safetyService;
 
   // 기록 화면에 보여 주는 지난 통화의 기간(일). 오늘을 넣어 최근 30일
   static final int RECENT_DAYS = 30;
@@ -204,6 +206,7 @@ public class CallRecordService {
 
   // 위기 표현이 감지된 통화: 내용은 남기지 않고 "감지됨" 만 남깁니다. 다음 통화는 7일 동안 위로하는 통화가 됩니다. (CallService)
   private CallFinishResponse finishWithCrisis(CallRecord record, Instant now) {
+    safetyService.activate(record.getUserId());
     record.finishWithCrisis(now);
     callRecordRepository.save(record);
     return CallFinishResponse.help(String.valueOf(record.getId()));

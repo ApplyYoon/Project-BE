@@ -29,14 +29,14 @@ public class RestDayService {
   private final Clock clock;
 
   // 그 날을 휴식으로 처리합니다.
-  // 검사 순서: 아직 오지 않은 날(400) → 이미 처리한 날(409) → 이번 달 한도(409)
+  // 검사 순서: 아직 오지 않은 날 · 7일보다 오래된 날(400) → 이미 처리한 날(409) → 이번 달 한도(409)
   @Transactional
   public RestDayResponse rest(LocalDate date) {
     Long userId = currentUserProvider.getCurrentUserId();
 
     LocalDate today = DayRule.dateOf(clock.instant());
     if (!RestDayRule.isAllowedDate(date, today)) {
-      throw new ApiException(ErrorCode.VALIDATION_ERROR, "휴식 처리는 지난 날이나 오늘만 할 수 있어요");
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "휴식 처리는 오늘부터 7일 전까지만 할 수 있어요");
     }
     if (restDayRepository.existsByUserIdAndRestDate(userId, date)) {
       throw new ApiException(ErrorCode.CONFLICT, "이미 휴식으로 처리한 날이에요");

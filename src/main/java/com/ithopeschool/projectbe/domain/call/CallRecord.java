@@ -19,6 +19,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 // AI 통화 기록 테이블. 한 줄 = AI 통화 한 번. (이슈 #28 · #29)
+// 상담 채팅(이슈 #238)도 "글로 하는 통화" 라서 같은 테이블에 한 줄씩 남깁니다. 무엇으로 했는지는 channel 로 구분합니다.
 //
 // 통화를 시작할 때 한 줄을 만들고 "이번에 어떤 생각 습관을 확인하려 했는지" 를 적습니다.
 // 통화가 끝나면 같은 줄에 요약·보인 생각 습관·약속을 채웁니다. (finish)
@@ -49,9 +50,14 @@ public class CallRecord {
   @Column(nullable = false)
   private LocalDate callDate;
 
-  // 통화를 시작한 시각 (임시 키를 받은 시각)
+  // 통화를 시작한 시각 (임시 키를 받은 시각, 채팅은 채팅을 연 시각)
   @Column(nullable = false, updatable = false)
   private Instant startedAt;
+
+  // 음성 통화(VOICE)인지 상담 채팅(CHAT)인지. 이 칸이 생기기 전의 기록은 모두 음성 통화입니다.
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 10)
+  private CallChannel channel = CallChannel.VOICE;
 
   // 이번 통화에서 확인하려던 생각 습관. 위로하는 통화이거나 확인할 것이 없는 날은 비어 있습니다.
   @Enumerated(EnumType.STRING)
@@ -103,9 +109,20 @@ public class CallRecord {
   @Column(nullable = false)
   private boolean crisisDetected;
 
-  // 통화를 시작할 때 만듭니다. askedQuestion 은 오늘 확인할 질문이고, 묻지 않는 날이면 null 입니다.
+  // 음성 통화를 시작할 때 만듭니다. askedQuestion 은 오늘 확인할 질문이고, 묻지 않는 날이면 null 입니다.
   public CallRecord(
       Long userId, LocalDate callDate, Instant startedAt, BiasQuestion askedQuestion) {
+    this(userId, callDate, startedAt, askedQuestion, CallChannel.VOICE);
+  }
+
+  // 음성 통화 또는 상담 채팅을 시작할 때 만듭니다.
+  public CallRecord(
+      Long userId,
+      LocalDate callDate,
+      Instant startedAt,
+      BiasQuestion askedQuestion,
+      CallChannel channel) {
+    this.channel = channel;
     this.userId = userId;
     this.callDate = callDate;
     this.startedAt = startedAt;

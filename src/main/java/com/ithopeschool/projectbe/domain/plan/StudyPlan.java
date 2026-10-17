@@ -70,7 +70,7 @@ public class StudyPlan {
   private PlanKind kind;
 
   // 어떤 루틴이 만든 계획인지(루틴 번호). 직접 만든 계획이면 비어 있습니다.
-  // 루틴 테이블은 아직 없어서(#85) 지금은 항상 비어 있습니다.
+  // 원본 루틴을 지워도 이 번호와 계획은 유지합니다.
   private Long routineId;
 
   // 시작 시각을 정하지 않은 공부 계획을 만듭니다. (테스트와 예전 코드가 쓰는 짧은 모양)
@@ -95,6 +95,10 @@ public class StudyPlan {
     this.done = false;
     this.startTime = startTime;
     this.kind = kind;
+  }
+
+  public void markRoutine(Long routineId) {
+    this.routineId = routineId;
   }
 
   // 할 일 내용을 바꿉니다.

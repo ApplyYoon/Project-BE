@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -16,7 +17,21 @@ import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
+import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
+import com.ithopeschool.projectbe.domain.exam.Exam;
+import com.ithopeschool.projectbe.domain.exam.ExamRepository;
+import com.ithopeschool.projectbe.domain.exam.ExamType;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.plan.PlanKind;
+import com.ithopeschool.projectbe.domain.plan.StudyPlan;
+import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
+import com.ithopeschool.projectbe.domain.risk.RiskLevel;
+import com.ithopeschool.projectbe.domain.risk.RiskService;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
+import com.ithopeschool.projectbe.domain.session.StudySession;
+import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
@@ -26,6 +41,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,9 +62,18 @@ class CallServiceTest {
   // 하루 한도는 가짜로 둡니다. 진짜로 세는 것은 GptUsageGuardTest 가 확인합니다.
   // 기본은 "이번 통화는 300초까지 해도 된다" 입니다. (setUp)
   private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
+  private final SafetyService safetyService = mock(SafetyService.class);
 
   private final CallRecordRepository callRecordRepository = mock(CallRecordRepository.class);
   private final ThinkingTestRepository thinkingTestRepository = mock(ThinkingTestRepository.class);
+  // 체크인 · 시험은 기본으로 없습니다. (가짜 Repository 는 아무것도 정하지 않으면 빈 목록을 돌려줍니다)
+  private final CheckInRepository checkInRepository = mock(CheckInRepository.class);
+  private final ExamRepository examRepository = mock(ExamRepository.class);
+  // 계획 · 공부 기록도 기본으로 없습니다. 그러면 학생 카드는 FE 가 보낸 것을 씁니다. (CallCardLoader)
+  private final StudyPlanRepository studyPlanRepository = mock(StudyPlanRepository.class);
+  private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
+  // 오늘이 위험한 날인지는 가짜로 둡니다. 진짜 계산은 RiskRuleTest · RiskServiceTest 가 확인합니다. (기본은 위험 없음)
+  private final RiskService riskService = mock(RiskService.class);
   // 지금은 2026-10-11 오후 3시(한국 시간)입니다. 오늘 날짜는 2026-10-11 입니다.
   private static final Instant NOW = Instant.parse("2026-10-11T06:00:00Z");
   private static final LocalDate TODAY = LocalDate.of(2026, 10, 11);
@@ -61,7 +86,12 @@ class CallServiceTest {
           tokenHasher,
           callRecordRepository,
           thinkingTestRepository,
-          Clock.fixed(NOW, ZoneOffset.UTC));
+          checkInRepository,
+          examRepository,
+          new CallCardLoader(studyPlanRepository, studySessionRepository, checkInRepository),
+          Clock.fixed(NOW, ZoneOffset.UTC),
+          safetyService,
+          riskService);
 
   private static final CallSessionRequest REQUEST =
       new CallSessionRequest(
@@ -78,6 +108,7 @@ class CallServiceTest {
     given(currentUserProvider.getCurrentUserId()).willReturn(USER_ID);
     given(callKeyClient.isEnabled()).willReturn(true);
     given(callKeyClient.createKey(any(), any())).willReturn(Optional.of(KEY));
+    given(riskService.levelOn(any(), any())).willReturn(RiskLevel.NONE);
     // 오늘 한도는 남아 있어서, 이번 통화는 최대 300초까지 해도 됩니다.
     given(gptUsageGuard.allowedCallSeconds(any())).willReturn(300);
     // 지난 통화는 없고, 저장하면 12번 기록이 됩니다.
@@ -374,6 +405,18 @@ class CallServiceTest {
   }
 
   @Test
+  @DisplayName("저장된 보호 조치가 켜져 있으면 최근 통화가 없어도 위로하는 통화로 한다")
+  void activeProtectionMeansSupportiveCall() {
+    given(safetyService.isActive(USER_ID)).willReturn(true);
+
+    callService.startSession(new CallSessionRequest(3, 5, REQUEST.card(), null, null));
+
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[생각 습관]");
+    assertThat(savedRecord().getAskedBias()).isNull();
+    verify(safetyService).isActive(USER_ID);
+  }
+
+  @Test
   @DisplayName("위기 표현이 7일보다 전이면 평소대로 통화한다")
   void olderCrisisDoesNotChangeTheCall() {
     CallRecord crisis =
@@ -384,6 +427,121 @@ class CallServiceTest {
     callService.startSession(REQUEST);
 
     assertThat(sentInstructions()).contains("[생각 습관]").doesNotContain("위로하고 응원하는 말만");
+  }
+
+  // daysAgo 일 전의 체크인 하나 (기분 · 약속 앞부분만)
+  private static CheckIn checkIn(int daysAgo, int mood, String promiseIf) {
+    return new CheckIn(
+        USER_ID,
+        TODAY.minusDays(daysAgo),
+        CheckInSource.MANUAL,
+        null,
+        mood,
+        null,
+        null,
+        null,
+        promiseIf,
+        promiseIf == null ? null : "물 한 잔 마신다",
+        null);
+  }
+
+  private void givenCheckIns(List<CheckIn> checkIns) {
+    given(
+            checkInRepository.findByUserIdAndCheckInDateBetweenOrderByCheckInDateAsc(
+                USER_ID, TODAY.minusDays(6), TODAY))
+        .willReturn(checkIns);
+  }
+
+  @Test
+  @DisplayName("최근 7일 체크인의 약속 글에 위기 표현이 있으면, 관리 강도와 상관없이 위로하는 통화로 한다")
+  void crisisTextInCheckInMeansSupportiveCall() {
+    givenCheckIns(List.of(checkIn(3, 3, "죽고 싶으면")));
+
+    callService.startSession(new CallSessionRequest(3, 5, REQUEST.card(), null, null));
+
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[생각 습관]");
+  }
+
+  @Test
+  @DisplayName("기분 1~2 가 오늘까지 6일 연속이면 위로하는 통화로 하고, 5일뿐이면 평소대로 한다")
+  void lowMoodForSixDaysMeansSupportiveCall() {
+    List<CheckIn> fiveDays = new ArrayList<>();
+    for (int daysAgo = 4; daysAgo >= 0; daysAgo--) {
+      fiveDays.add(checkIn(daysAgo, 2, null));
+    }
+    givenCheckIns(fiveDays);
+    callService.startSession(REQUEST);
+    assertThat(sentInstructions()).doesNotContain("위로하고 응원하는 말만");
+
+    List<CheckIn> sixDays = new ArrayList<>(fiveDays);
+    sixDays.add(0, checkIn(5, 1, null));
+    givenCheckIns(sixDays);
+    // 앞의 통화에서 보낸 지침을 지우고, 두 번째 통화의 지침만 봅니다.
+    clearInvocations(callKeyClient);
+    callService.startSession(REQUEST);
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만");
+  }
+
+  @Test
+  @DisplayName("서버에 저장한 시험이 이틀 뒤면 위로하는 통화로 한다")
+  void examNearMeansSupportiveCall() {
+    given(examRepository.findByUserIdOrderByExamDateDescIdDesc(USER_ID))
+        .willReturn(List.of(new Exam(USER_ID, "중간고사", ExamType.SCHOOL, TODAY.plusDays(2))));
+
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만");
+  }
+
+  @Test
+  @DisplayName("서버에 공부 기록이 있으면 학생 카드의 숫자를 DB 로 계산한다 (FE 가 보낸 숫자는 쓰지 않음, 나간 횟수만 FE 값)")
+  void studentCardComesFromTheDb() {
+    // 어제(10/10) 2시간 계획, 오후 3시부터 1시간 40분 공부 (한국 시간)
+    StudyPlan plan = new StudyPlan(USER_ID, 1L, TODAY.minusDays(1), "수학", 120);
+    ReflectionTestUtils.setField(plan, "id", 5L);
+    given(
+            studyPlanRepository.findByUserIdAndPlanDateBetweenOrderByPlanDateAscIdAsc(
+                any(), any(), any()))
+        .willReturn(List.of(plan));
+    Instant startedAt = Instant.parse("2026-10-10T06:00:00Z");
+    given(studySessionRepository.findStartedBetween(any(), any(), any()))
+        .willReturn(
+            List.of(
+                new StudySession(
+                    USER_ID,
+                    1L,
+                    startedAt,
+                    startedAt.plusSeconds(100 * 60),
+                    0,
+                    0,
+                    5L,
+                    120,
+                    null,
+                    PlanKind.STUDY)));
+
+    // FE 카드는 어제 100분 / 계획 240분 · 나간 횟수 6번이라고 보냈지만, 숫자는 서버 기록(100분 / 120분)을 씁니다.
+    callService.startSession(
+        new CallSessionRequest(
+            2,
+            3,
+            new Card(
+                100, 240, "phone", 3, 180, "19:00", 64, 55, 10, List.of(3, 3), 4, 6, null, null),
+            null,
+            null));
+
+    assertThat(sentInstructions())
+        .contains("어제 순공시간: 1시간 40분 (계획 2시간 의 83%)")
+        .doesNotContain("계획 4시간")
+        // 나간 횟수는 서버에 없어서 FE 카드의 값(6번)을 씁니다.
+        .contains("나갔다 온 횟수: 6번");
+  }
+
+  @Test
+  @DisplayName("서버에 계획도 공부 기록도 없으면 FE 가 보낸 학생 카드를 쓴다")
+  void usesTheFeCardWhenTheDbHasNoStudyRecords() {
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions()).contains("계획 4시간");
   }
 
   // ---- 가입 테스트 ----
@@ -491,5 +649,47 @@ class CallServiceTest {
     callService.startSession(new CallSessionRequest(2, 3, null, null, null));
 
     assertThat(sentInstructions()).doesNotContain("실제 기록이 이렇게 달랐어");
+  }
+
+  @Test
+  @DisplayName("오늘이 위험한 날이면 지침에 [오늘 예측] 을 적고, 오늘 날짜로 물어본다 (이유는 적지 않는다)")
+  void riskyDayGoesIntoTheScript() {
+    given(riskService.levelOn(USER_ID, TODAY)).willReturn(RiskLevel.HIGH);
+
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions())
+        .contains("[오늘 예측]", "위험 정도: 높음", "아쉬운 점을 지적하지 마")
+        // 이유(약한 요일 · 늦게 잠)는 외부 AI 에 넘기지 않습니다.
+        .doesNotContain("WEAK_WEEKDAY", "LATE_SLEEP", "약한 요일", "늦게 잠");
+  }
+
+  @Test
+  @DisplayName("상담 채팅도 같은 대본 만들기(prepareScript)를 써서, 위험한 날이면 [오늘 예측] 이 들어간다")
+  void riskyDayGoesIntoTheChatScriptToo() {
+    given(riskService.levelOn(USER_ID, TODAY)).willReturn(RiskLevel.WATCH);
+
+    CallService.Script script =
+        callService.prepareScript(USER_ID, REQUEST, NOW, TODAY, CallChannel.CHAT);
+
+    assertThat(script.instructions()).contains("글로 이야기하는 공부 코치", "[오늘 예측]", "위험 정도: 주의");
+  }
+
+  @Test
+  @DisplayName("위험한 날이 아니면 [오늘 예측] 을 적지 않는다")
+  void normalDayHasNoRiskSection() {
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions()).doesNotContain("[오늘 예측]");
+  }
+
+  @Test
+  @DisplayName("위로하는 통화(관리 강도 0)는 이미 부드러워서 위험한 날이어도 [오늘 예측] 을 따로 적지 않는다")
+  void supportiveCallSkipsRiskSection() {
+    given(riskService.levelOn(USER_ID, TODAY)).willReturn(RiskLevel.HIGH);
+
+    callService.startSession(new CallSessionRequest(0, 3, REQUEST.card(), null, null));
+
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[오늘 예측]");
   }
 }

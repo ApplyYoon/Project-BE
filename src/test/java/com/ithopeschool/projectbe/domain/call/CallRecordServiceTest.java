@@ -23,6 +23,7 @@ import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
 import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -52,6 +53,7 @@ class CallRecordServiceTest {
   // GPT 호출 기록 · 하루 한도는 가짜로 둡니다. 기본은 "요약을 불러도 된다" 입니다. (setUp)
   private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
 
+  private final SafetyService safetyService = mock(SafetyService.class);
   private final CallRecordService service =
       new CallRecordService(
           currentUserProvider,
@@ -59,7 +61,8 @@ class CallRecordServiceTest {
           checkInRepository,
           callReviewClient,
           gptUsageGuard,
-          Clock.fixed(NOW, ZoneOffset.UTC));
+          Clock.fixed(NOW, ZoneOffset.UTC),
+          safetyService);
 
   // 마무리 전의 12번 통화. "미래의 나 믿기" 를 확인하려던 통화입니다.
   private CallRecord call;
@@ -164,6 +167,7 @@ class CallRecordServiceTest {
     CallFinishResponse response = service.finish(CALL_ID, crisis);
 
     assertThat(response.showHelp()).isTrue();
+    verify(safetyService).activate(USER_ID);
     assertThat(response.summary()).isNull();
     assertThat(response.bias()).isNull();
     assertThat(call.isCrisisDetected()).isTrue();
@@ -196,6 +200,7 @@ class CallRecordServiceTest {
     CallFinishResponse response = service.finish(CALL_ID, TRANSCRIPT);
 
     assertThat(response.showHelp()).isTrue();
+    verify(safetyService).activate(USER_ID);
     assertThat(call.isCrisisDetected()).isTrue();
     assertThat(call.getFoundBias()).isNull();
   }
