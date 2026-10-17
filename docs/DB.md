@@ -136,6 +136,7 @@ erDiagram
         bigint user_id FK "이 통화를 한 사람"
         date call_date "통화한 날 (새벽 4시에 날짜가 바뀜)"
         timestamptz started_at "통화를 시작한 시각 (임시 키를 받은 시각)"
+        varchar channel "음성 통화(VOICE)인지 상담 채팅(CHAT)인지 (이 칸이 생기기 전 기록은 VOICE)"
         varchar asked_bias "이번 통화에서 확인하려던 생각 습관 (PLANNING_FALLACY, FUTURE_SELF, WHAT_THE_HELL, EMOTIONAL_REASONING, EXTERNAL_BLAME, ALL_OR_NOTHING, MORAL_LICENSING, OVERGENERALIZING 중 하나, 없으면 비어 있음)"
         varchar asked_question_key "고른 기본 질문의 이름 (예: PLANNING_FALLACY-1)"
         timestamptz finished_at "통화를 마무리한 시각 (마무리 전이면 비어 있음)"
@@ -276,7 +277,7 @@ erDiagram
     gpt_usages {
         bigint id PK "기록 한 줄을 구분하는 고유 번호 (나중에 부른 것일수록 큼)"
         bigint user_id FK "GPT 를 부르게 한 사람"
-        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE, CHECKLIST, ASSIST 중 하나)"
+        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE, CHAT, CHECKLIST, ASSIST 중 하나)"
         timestamptz called_at "부른 시각 (통화는 시작한 시각)"
         bigint call_record_id FK "어느 통화인지 (통화일 때만, 그 외엔 비어 있음)"
         int call_seconds "통화한 시간(초) (통화가 아니거나 아직 안 끝났으면 비어 있음)"
@@ -403,6 +404,7 @@ erDiagram
 > - **대화 원문(자막)과 녹음은 저장하지 않습니다.** 요약과 정해진 분류값만 남깁니다. 위기 표현이 감지된 통화는 내용 칸을 비우고 `crisis_detected` 만 남깁니다.
 > - 다음 통화는 최근 2주 기록을 읽어 자주 보인 생각 습관을 다시 확인하고, 지난 약속을 지켰는지 묻습니다. 최근 7일 안에 위기 표현이 있었으면 위로하는 통화로 합니다.
 > - 체크인(#24) 테이블과 겹치는 칸(못 채운 이유·약속)이 있습니다. 체크인 테이블이 생기면 합칠지 정해 주세요.
+> - 2026-10-17 에 `channel` 을 더했습니다. 상담 채팅(#238)은 "글로 하는 통화" 라서 같은 테이블에 남기고 이 칸으로만 구분합니다. 채팅도 대화 원문은 저장하지 않습니다.
 
 > `thinking_tests` 와 딸린 테이블 두 개는 2026-10-15 에 같은 기능(인지편향 잡기)에서 AI 가 만들었습니다.
 > - **문장별 답은 저장하지 않고 습관 8개의 평균만** 저장합니다. 테스트 문장은 앞으로 바뀔 수 있어서(선생님 말씀), 문장이 바뀌어도 테이블은 그대로 쓰게 하려는 것입니다.

@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 //   하루 통화 횟수         AI_CALL_DAILY_LIMIT_PER_USER     (처음 값 3번)
 //   하루 통화 시간         AI_CALL_DAILY_MINUTES_PER_USER   (처음 값 15분)
 //   통화 한 번 최대 길이   AI_CALL_MAX_SECONDS              (처음 값 300초 = 5분)
-//   하루 글 호출 횟수      AI_DAILY_LIMIT_PER_USER          (처음 값 20번, 통화 요약 + 코치 + 계획 초안을 합쳐서)
+//   하루 글 호출 횟수      AI_DAILY_LIMIT_PER_USER          (처음 값 20번, 통화 요약 + 코치 + 계획 초안 + 상담 채팅의 답을 합쳐서)
 //   하루 작은 AI 기능 횟수 AI_ASSIST_DAILY_LIMIT_PER_USER   (처음 값 40번, 체크리스트 추천 등을 합쳐서. 이슈 #237)
 //
 // "하루" 는 새벽 4시(한국 시간)에 바뀝니다. (DayRule)
@@ -31,7 +31,12 @@ public class GptUsageGuard {
 
   // 글 호출 한도(하루 20번)를 함께 쓰는 종류입니다.
   static final List<GptUsageKind> TEXT_KINDS =
-      List.of(GptUsageKind.CALL_REVIEW, GptUsageKind.COACH, GptUsageKind.PLAN_PARSE);
+      List.of(
+          GptUsageKind.CALL_REVIEW,
+          GptUsageKind.COACH,
+          GptUsageKind.PLAN_PARSE,
+          // 상담 채팅의 답 (이슈 #238). 이 목록에 없으면 채팅이 한도에 세지지 않습니다.
+          GptUsageKind.CHAT);
   // 작은 AI 기능(입력 칸을 AI 가 먼저 채우기, 이슈 #236·#237)의 종류입니다. 글 호출과 한도를 따로 셉니다. (하루 40번)
   //   카드를 만들 때마다 부르는 기능이라 자주 쓰입니다. 같이 세면 코치·통화 요약이 한도에 막힙니다.
   static final List<GptUsageKind> ASSIST_KINDS =
@@ -119,7 +124,7 @@ public class GptUsageGuard {
 
   // 글을 받는 GPT(통화 요약·코치·작은 AI 기능)를 한 번 더 불러도 되는지 보고, 되면 기록합니다. 한도를 넘었으면 false 입니다.
   // 한도는 두 묶음으로 따로 셉니다.
-  //   통화 요약 · 코치 · 계획 초안 (TEXT_KINDS)   →  합쳐서 하루 20번
+  //   통화 요약 · 코치 · 계획 초안 · 상담 채팅 (TEXT_KINDS)   →  합쳐서 하루 20번
   //   작은 AI 기능 (ASSIST_KINDS)                  →  합쳐서 하루 40번
   @Transactional
   public boolean tryUseText(Long userId, GptUsageKind kind) {
