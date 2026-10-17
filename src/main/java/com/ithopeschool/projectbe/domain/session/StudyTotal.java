@@ -50,8 +50,8 @@ public record StudyTotal(int studyMinutes, List<SubjectTotal> subjects) {
               session.getStartedAt(), session.getEndedAt(), session.getPausedMs());
       totalMillis += millis;
 
-      // 공부 기록은 과목이 꼭 있습니다. (DB 검사 규칙 ck_study_sessions_study_has_subject)
-      // 그래도 혹시 비어 있으면 전체 시간에만 넣고 과목별 목록에는 넣지 않습니다.
+      // 카드로 켠 공부 기록은 과목이 없을 수 있습니다. (#224, DB 검사 규칙 ck_study_sessions_study_has_subject_or_card)
+      // 과목이 비어 있으면 전체 시간에만 넣고 과목별 목록에는 넣지 않습니다.
       if (session.getSubjectId() != null) {
         millisBySubject.merge(session.getSubjectId(), millis, Long::sum);
       }

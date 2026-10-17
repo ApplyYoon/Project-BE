@@ -28,12 +28,18 @@ import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
 import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.SubjectLevel;
+import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.psychtest.PsychItem;
 import com.ithopeschool.projectbe.domain.psychtest.PsychTest;
 import com.ithopeschool.projectbe.domain.risk.RiskForecast;
 import com.ithopeschool.projectbe.domain.risk.RiskLevel;
 import com.ithopeschool.projectbe.domain.risk.RiskReason;
+import com.ithopeschool.projectbe.domain.session.SessionMemo;
+import com.ithopeschool.projectbe.domain.session.SessionMode;
+import com.ithopeschool.projectbe.domain.session.SessionPause;
+import com.ithopeschool.projectbe.domain.session.SessionTags.GoodReason;
+import com.ithopeschool.projectbe.domain.session.SessionTags.PauseTag;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.subject.Subject;
 import com.ithopeschool.projectbe.domain.subject.SubjectColor;
@@ -570,25 +576,34 @@ class AccountServiceTest {
   // 부모 줄(예: thinking_tests 의 한 줄)이 지워지면 같이 지워집니다.
   // ⚠️ user_id 가 없는 새 테이블을 만들면 아래 테스트가 실패합니다. 탈퇴 때 지워지는지 확인한 뒤 여기에 한 줄 더해 주세요.
   private static final Map<String, String[]> CHILD_TABLES =
-      Map.of(
-          "THINKING_TEST_SCORES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"},
-          "THINKING_TEST_WEAKNESSES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"},
+      // 딸린 테이블이 10개를 넘어서 Map.of 대신 Map.ofEntries 를 씁니다. (Map.of 는 10쌍까지만 받습니다)
+      Map.ofEntries(
+          Map.entry("THINKING_TEST_SCORES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"}),
+          Map.entry(
+              "THINKING_TEST_WEAKNESSES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"}),
           // 온보딩 설문(onboarding_answers)에 매달린 "계획이 무너진 때" 와 "과목별 수준" (이슈 #21)
-          "ONBOARDING_ANSWER_FAILURE_CAUSES",
-              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
-          "ONBOARDING_ANSWER_SUBJECT_LEVELS",
-              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
+          Map.entry(
+              "ONBOARDING_ANSWER_FAILURE_CAUSES",
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"}),
+          Map.entry(
+              "ONBOARDING_ANSWER_SUBJECT_LEVELS",
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"}),
           // 카드(cards)에 매달린 체크리스트와 예상 실패 원인 (이슈 #222)
-          "CARD_CHECKLIST_ITEMS", new String[] {"CARDS", "CARD_ID"},
-          "CARD_EXPECTED_FAIL_CAUSES", new String[] {"CARDS", "CARD_ID"},
+          Map.entry("CARD_CHECKLIST_ITEMS", new String[] {"CARDS", "CARD_ID"}),
+          Map.entry("CARD_EXPECTED_FAIL_CAUSES", new String[] {"CARDS", "CARD_ID"}),
+          // 공부 기록(study_sessions)에 매달린 일시정지 · 체크한 항목 · 잘 된 이유 · 메모 (이슈 #224)
+          Map.entry("SESSION_PAUSES", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"}),
+          Map.entry("SESSION_CHECKED_ITEMS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"}),
+          Map.entry("SESSION_GOOD_REASONS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"}),
+          Map.entry("SESSION_MEMOS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"}),
           // 체크인(checkins)에 매달린 하루 첫 태그의 감정들 (이슈 #220)
-          "CHECKIN_EMOTIONS", new String[] {"CHECKINS", "CHECKIN_ID"},
+          Map.entry("CHECKIN_EMOTIONS", new String[] {"CHECKINS", "CHECKIN_ID"}),
           // 보여 준 인사이트(insights)에 매달린 근거 날짜 (이슈 #43)
-          "INSIGHT_EVIDENCE_DATES", new String[] {"INSIGHTS", "INSIGHT_ID"},
+          Map.entry("INSIGHT_EVIDENCE_DATES", new String[] {"INSIGHTS", "INSIGHT_ID"}),
           // 위험 예측(risk_forecasts)에 매달린 "위험하다고 본 이유" (이슈 #49)
-          "RISK_FORECAST_REASONS", new String[] {"RISK_FORECASTS", "RISK_FORECAST_ID"},
+          Map.entry("RISK_FORECAST_REASONS", new String[] {"RISK_FORECASTS", "RISK_FORECAST_ID"}),
           // 심리검사(psych_tests)에 매달린 문장 14개의 답 (이슈 #219)
-          "PSYCH_TEST_ANSWERS", new String[] {"PSYCH_TESTS", "PSYCH_TEST_ID"});
+          Map.entry("PSYCH_TEST_ANSWERS", new String[] {"PSYCH_TESTS", "PSYCH_TEST_ID"}));
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
@@ -619,6 +634,33 @@ class AccountServiceTest {
               NOW);
       card.changeExpectedFailCauses(List.of("폰을 볼 것 같다"));
       entityManager.persist(card);
+      // 카드로 켠 공부 기록 하나 (딸린 테이블 네 개에 한 줄씩)
+      StudySession cardSession =
+          new StudySession(
+              userId,
+              null,
+              NOW.minusSeconds(7200),
+              NOW.minusSeconds(3600),
+              1,
+              60_000,
+              null,
+              60,
+              null,
+              PlanKind.STUDY);
+      cardSession.recordCard(card.getId(), SessionMode.NORMAL, false);
+      cardSession.recordPauses(
+          List.of(
+              new SessionPause(
+                  NOW.minusSeconds(7000), NOW.minusSeconds(6940), PauseTag.TOILET, null)));
+      cardSession.recordEndReport(
+          Map.of("i1", NOW.minusSeconds(4000)),
+          null,
+          null,
+          null,
+          null,
+          EnumSet.of(GoodReason.FOCUS));
+      cardSession.recordMemos(List.of(new SessionMemo(NOW.minusSeconds(5000), "메모")));
+      entityManager.persist(cardSession);
       // 감정 태그가 붙은 체크인 (딸린 테이블 checkin_emotions 에 줄이 생깁니다)
       CheckIn checkIn =
           new CheckIn(
