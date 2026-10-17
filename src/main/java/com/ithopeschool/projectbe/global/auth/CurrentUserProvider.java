@@ -3,6 +3,8 @@ package com.ithopeschool.projectbe.global.auth;
 import com.ithopeschool.projectbe.domain.auth.LoginToken;
 import com.ithopeschool.projectbe.domain.auth.LoginTokenRepository;
 import com.ithopeschool.projectbe.domain.auth.TokenHasher;
+import com.ithopeschool.projectbe.domain.consent.ConsentPolicy;
+import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,6 +24,14 @@ import org.springframework.stereotype.Component;
 // 다른 API 는 user_id 가 필요하면 숫자를 직접 쓰거나 요청에서 받지 말고, 반드시 getCurrentUserId() 를 부릅니다.
 // 이 메서드를 부르는 것이 곧 그 API 를 "로그인한 사람만 쓸 수 있게" 만드는 방법입니다.
 //
+// 데이터를 저장하는 요청(POST · PUT · PATCH)은 한 가지를 더 봅니다. (이슈 #71)
+//   최신 동의 문구에 동의한 사람인가? 아니면 403 CONSENT_REQUIRED 를 던집니다.
+//   보기(GET)와 지우기(DELETE)는 동의하지 않았어도 됩니다. 내 데이터를 보고 지울 수 있어야 하기 때문입니다.
+// 이 검사도 getCurrentUserId() 안에 있어서, 새 API 가 이 메서드를 부르기만 하면 저절로 따라옵니다.
+//
+// 동의 문구에 다시 동의하는 API, 로그아웃, 탈퇴는 동의하지 않은 사람도 쓸 수 있어야 해서
+// 동의 검사가 없는 getCurrentUserIdWithoutConsent() 를 씁니다. 그 밖에는 쓰지 않습니다.
+//
 // 사용 예 (Service 에서):
 //   private final CurrentUserProvider currentUserProvider;
 //   Long userId = currentUserProvider.getCurrentUserId();
@@ -38,6 +48,8 @@ public class CurrentUserProvider {
   // 지금 처리하고 있는 요청입니다. Spring 이 요청마다 알맞은 것으로 바꿔 끼워 줍니다.
   private final HttpServletRequest request;
   private final LoginTokenRepository loginTokenRepository;
+  // 동의 기록. 데이터를 저장하는 요청에서 "최신 문구에 동의했는지" 볼 때 씁니다.
+  private final ConsentRecordRepository consentRecordRepository;
   private final TokenHasher tokenHasher;
   // "지금 몇 시인지" 는 시계에게 묻습니다. 테스트에서 시각을 고정할 수 있습니다. (global/config/ClockConfig)
   private final Clock clock;
@@ -47,18 +59,32 @@ public class CurrentUserProvider {
   public CurrentUserProvider(
       HttpServletRequest request,
       LoginTokenRepository loginTokenRepository,
+      ConsentRecordRepository consentRecordRepository,
       TokenHasher tokenHasher,
       Clock clock,
       @Value("${app.auth.test-token:}") String testToken) {
     this.request = request;
     this.loginTokenRepository = loginTokenRepository;
+    this.consentRecordRepository = consentRecordRepository;
     this.tokenHasher = tokenHasher;
     this.clock = clock;
     this.testToken = testToken;
   }
 
   // 지금 요청한 사용자의 번호를 돌려줍니다. 로그인하지 않은 요청이면 401 을 던집니다.
+  // 데이터를 저장하는 요청(POST · PUT · PATCH)이면, 최신 동의 문구에 동의하지 않은 사람에게는 403 을 던집니다.
   public Long getCurrentUserId() {
+    Long userId = getCurrentUserIdWithoutConsent();
+
+    if (isSaveRequest() && !isTestToken(readToken()) && !hasAgreedToCurrentText(userId)) {
+      throw new ApiException(ErrorCode.CONSENT_REQUIRED, "동의 문구에 동의한 뒤에 저장할 수 있어요");
+    }
+    return userId;
+  }
+
+  // 동의 검사 없이, 지금 요청한 사용자의 번호만 돌려줍니다. 로그인하지 않은 요청이면 401 을 던집니다.
+  // 동의하지 않은 사람도 해야 하는 일(다시 동의하기 · 로그아웃 · 탈퇴)에만 씁니다.
+  public Long getCurrentUserIdWithoutConsent() {
     String token = readToken();
     if (token == null) {
       throw new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요");
@@ -79,6 +105,22 @@ public class CurrentUserProvider {
       throw new ApiException(ErrorCode.UNAUTHORIZED, "로그인한 지 오래됐어요. 다시 로그인해 주세요");
     }
     return loginToken.getUserId();
+  }
+
+  // 데이터를 저장하는 요청인지 봅니다. POST · PUT · PATCH 가 저장하는 요청이고, GET · DELETE 등은 아닙니다.
+  private boolean isSaveRequest() {
+    String method = request.getMethod();
+    return "POST".equalsIgnoreCase(method)
+        || "PUT".equalsIgnoreCase(method)
+        || "PATCH".equalsIgnoreCase(method);
+  }
+
+  // 이 사람의 가장 최근 동의가 지금 받는 문구 버전에 대한 것인지 봅니다. 동의한 적이 없으면 false 입니다.
+  private boolean hasAgreedToCurrentText(Long userId) {
+    return consentRecordRepository
+        .findFirstByUserIdOrderByIdDesc(userId)
+        .map(record -> ConsentPolicy.isCurrent(record.getTextVersion()))
+        .orElse(false);
   }
 
   // 지금 요청에 담긴 로그인 토큰의 해시를 돌려줍니다. "바로 이 토큰" 을 지워야 하는 로그아웃 같은 곳에서 씁니다.
