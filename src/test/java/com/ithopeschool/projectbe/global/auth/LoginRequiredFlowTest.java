@@ -407,6 +407,12 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/routine-cards",
               "/api/v1/ai/routine-cards",
               "{\"goal\":\"영단어장 1회독\",\"plan\":\"폰을 다른 방에 두기\"}"),
+          // AI 자기 분석 (내 기록에서 계산한 숫자와 내 통화의 생각 습관을 봅니다. 이슈 #237)
+          new Api(
+              "POST",
+              "/api/v1/ai/analysis",
+              "/api/v1/ai/analysis",
+              "{\"facts\":[{\"key\":\"slotRate\",\"group\":\"tendency\",\"label\":\"시간대별 실행률\",\"value\":\"아침 95%\",\"basis\":\"카드 64번\"}]}"),
           // 즉석 카드 (내 과목·최근 카드 제목을 봅니다. 이슈 #237)
           new Api("POST", "/api/v1/ai/quick-card", "/api/v1/ai/quick-card", "{\"text\":\"수학 하자\"}"),
           // 말로 설정 바꾸기 (내 관리 설정을 봅니다. 바꾸지는 않습니다. 이슈 #237)
