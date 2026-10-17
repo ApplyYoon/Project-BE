@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -24,7 +25,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
-// Controller 만 띄워서 요청 모양 검사와 응답 모양을 확인합니다. 진짜 로직(ChecklistService · FirstStepService)은 가짜입니다.
+// Controller 만 띄워서 요청 모양 검사와 응답 모양을 확인합니다. 진짜 로직(…Service)은 모두 가짜입니다.
 @WebMvcTest(AiController.class)
 class AiControllerTest {
 
@@ -32,6 +33,7 @@ class AiControllerTest {
 
   @MockitoBean private ChecklistService checklistService;
   @MockitoBean private FirstStepService firstStepService;
+  @MockitoBean private FailCauseService failCauseService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -156,5 +158,53 @@ class AiControllerTest {
         "앞의 행동은 40자 이하로 보내 주세요");
     expectFirstStepRejected(
         "{\"item\":\"단어\",\"title\":\"" + "가".repeat(201) + "\"}", "카드 제목은 200자 이하로 적어 주세요");
+  }
+
+  // ---- 예상 실패 원인 선지 ----
+
+  private ResultActions failCauseOptions(String body) throws Exception {
+    return mockMvc.perform(
+        post("/api/v1/ai/fail-cause-options")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
+  }
+
+  @Test
+  @DisplayName("예상 실패 원인 선지: 보내면 200 과 선지 3개 (reason · text · inner), 못 만들면 options: null")
+  void failCauseOptionsSuggests() throws Exception {
+    given(failCauseService.suggest(any()))
+        .willReturn(
+            FailCauseResponse.of(
+                List.of(
+                    new FailCauseResponse.Option("tired", "학원 갔다 와서 졸림", false),
+                    new FailCauseResponse.Option("event", "친구 연락에 나가기", false),
+                    new FailCauseResponse.Option("phone", "문제 막힐 때 폰부터 집기", true))));
+    failCauseOptions("{\"title\":\"수학 문제집\"}")
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .json(
+                    "{\"showHelp\":false,\"options\":["
+                        + "{\"reason\":\"tired\",\"text\":\"학원 갔다 와서 졸림\",\"inner\":false},"
+                        + "{\"reason\":\"event\",\"text\":\"친구 연락에 나가기\",\"inner\":false},"
+                        + "{\"reason\":\"phone\",\"text\":\"문제 막힐 때 폰부터 집기\",\"inner\":true}]}",
+                    true));
+
+    given(failCauseService.suggest(any())).willReturn(FailCauseResponse.of(null));
+    failCauseOptions("{\"title\":\"수학 문제집\"}")
+        .andExpect(status().isOk())
+        .andExpect(content().json("{\"showHelp\":false,\"options\":null}", true));
+  }
+
+  @Test
+  @DisplayName("예상 실패 원인 선지: 제목이 비었거나 200자를 넘으면 400 이고 서비스를 부르지 않는다")
+  void failCauseOptionsRejectsBadRequests() throws Exception {
+    failCauseOptions("{\"title\":\" \"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("카드 제목을 적어 주세요"));
+    failCauseOptions("{\"title\":\"" + "가".repeat(201) + "\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("카드 제목은 200자 이하로 적어 주세요"));
+    verifyNoInteractions(failCauseService);
   }
 }

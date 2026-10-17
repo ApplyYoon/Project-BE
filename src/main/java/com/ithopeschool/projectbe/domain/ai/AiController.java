@@ -2,6 +2,8 @@ package com.ithopeschool.projectbe.domain.ai;
 
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.FailCauseRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,6 +26,7 @@ public class AiController {
 
   private final ChecklistService checklistService;
   private final FirstStepService firstStepService;
+  private final FailCauseService failCauseService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -38,5 +41,13 @@ public class AiController {
   @PostMapping("/first-step")
   public FirstStepResponse firstStep(@Valid @RequestBody FirstStepRequest request) {
     return firstStepService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "예상 실패 원인 선지: 카드 제목 → 선지 3개 (내 최근 30일 실패 원인으로 고름 · 내 행동 원인 1개 이상 · 기록이 모자라면 options: null · 토큰 필요)")
+  @PostMapping("/fail-cause-options")
+  public FailCauseResponse failCauseOptions(@Valid @RequestBody FailCauseRequest request) {
+    return failCauseService.suggest(request);
   }
 }
