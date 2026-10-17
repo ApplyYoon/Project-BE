@@ -1,7 +1,9 @@
 package com.ithopeschool.projectbe.domain.checkin.dto;
 
 import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.safety.HelpLine;
 import java.time.LocalDate;
+import java.util.List;
 
 // 체크인 하나를 FE 에 알려 주는 모양입니다. FE 의 CheckIn 타입과 같은 이름입니다.
 //   { "id": "3", "date": "2026-10-17", "source": "manual", "condition": 4, "mood": 3,
@@ -22,9 +24,49 @@ public record CheckInResponse(
     Integer expectedMinutes,
     String promiseIf,
     String promiseThen,
-    Boolean suggestionKept) {
+    Boolean suggestionKept,
+    boolean showHelp,
+    List<HelpLine> helpLines) {
+
+  @com.fasterxml.jackson.annotation.JsonProperty
+  public String helpMessage() {
+    return showHelp ? com.ithopeschool.projectbe.domain.safety.SafetyService.HELP_MESSAGE : null;
+  }
+
+  // 기존 호출자도 도움 안내가 없는 응답을 만들 수 있습니다.
+  public CheckInResponse(
+      String id,
+      LocalDate date,
+      String source,
+      Integer condition,
+      Integer mood,
+      String missReason,
+      String missReasonNote,
+      Integer expectedMinutes,
+      String promiseIf,
+      String promiseThen,
+      Boolean suggestionKept) {
+    this(
+        id,
+        date,
+        source,
+        condition,
+        mood,
+        missReason,
+        missReasonNote,
+        expectedMinutes,
+        promiseIf,
+        promiseThen,
+        suggestionKept,
+        false,
+        List.of());
+  }
 
   public static CheckInResponse from(CheckIn checkIn) {
+    return from(checkIn, false);
+  }
+
+  public static CheckInResponse from(CheckIn checkIn, boolean showHelp) {
     return new CheckInResponse(
         String.valueOf(checkIn.getId()),
         checkIn.getCheckInDate(),
@@ -36,6 +78,8 @@ public record CheckInResponse(
         checkIn.getExpectedMinutes(),
         checkIn.getPromiseIf(),
         checkIn.getPromiseThen(),
-        checkIn.getSuggestionKept());
+        checkIn.getSuggestionKept(),
+        showHelp,
+        showHelp ? HelpLine.ALL : List.of());
   }
 }

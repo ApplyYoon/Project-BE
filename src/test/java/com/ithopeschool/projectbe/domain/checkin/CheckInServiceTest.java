@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.domain.checkin.dto.CheckInResponse;
 import com.ithopeschool.projectbe.domain.checkin.dto.CheckInSaveRequest;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -37,7 +38,11 @@ class CheckInServiceTest {
   private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
   private final CheckInRepository checkInRepository = mock(CheckInRepository.class);
   private final CheckInService service =
-      new CheckInService(currentUserProvider, checkInRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+      new CheckInService(
+          currentUserProvider,
+          checkInRepository,
+          Clock.fixed(NOW, ZoneOffset.UTC),
+          mock(SafetyService.class));
 
   @BeforeEach
   void setUp() {
@@ -202,7 +207,8 @@ class CheckInServiceTest {
         new CheckInService(
             currentUserProvider,
             checkInRepository,
-            Clock.fixed(Instant.parse("2026-10-17T16:00:00Z"), ZoneOffset.UTC));
+            Clock.fixed(Instant.parse("2026-10-17T16:00:00Z"), ZoneOffset.UTC),
+            mock(SafetyService.class));
     assertThatThrownBy(() -> earlyMorning.save(TODAY.plusDays(1), onlySource("manual")))
         .hasMessage("아직 오지 않은 날짜예요");
     assertThat(earlyMorning.save(TODAY, onlySource("manual")).date()).isEqualTo(TODAY);

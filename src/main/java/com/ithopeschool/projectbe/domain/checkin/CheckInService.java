@@ -3,6 +3,7 @@ package com.ithopeschool.projectbe.domain.checkin;
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.domain.checkin.dto.CheckInResponse;
 import com.ithopeschool.projectbe.domain.checkin.dto.CheckInSaveRequest;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -10,6 +11,7 @@ import com.ithopeschool.projectbe.global.time.DayRule;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +37,7 @@ public class CheckInService {
   private final CurrentUserProvider currentUserProvider;
   private final CheckInRepository checkInRepository;
   private final Clock clock;
+  private final SafetyService safetyService;
 
   // 그날의 체크인을 저장합니다. 그날 이미 했으면 새 값으로 덮어쓰고, 없으면 새로 만듭니다.
   @Transactional
@@ -64,6 +67,11 @@ public class CheckInService {
       throw new ApiException(ErrorCode.VALIDATION_ERROR, "약속은 '만약 ~하면' 과 '~한다' 를 둘 다 적어 주세요");
     }
 
+    boolean showHelp =
+        safetyService.check(userId, Arrays.asList(missReasonNote, promiseIf, promiseThen));
+    if (showHelp) {
+      safetyService.activate(userId);
+    }
     Optional<CheckIn> found = checkInRepository.findByUserIdAndCheckInDate(userId, date);
     CheckIn checkIn;
     if (found.isPresent()) {
@@ -95,7 +103,7 @@ public class CheckInService {
                   promiseThen,
                   request.suggestionKept()));
     }
-    return CheckInResponse.from(checkIn);
+    return CheckInResponse.from(checkIn, showHelp);
   }
 
   // 내 체크인을 모두 지웁니다. 되돌릴 수 없습니다. 하나도 없어도 그대로 끝납니다. (설정의 "모든 기록 지우기", FE #321)
