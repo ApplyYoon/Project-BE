@@ -11,12 +11,15 @@ import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 // "체크인" API 의 입구입니다. 요청을 받아 CheckInService 를 부르기만 합니다. 로그인이 필요합니다. (docs/API.md "체크인")
@@ -56,6 +59,14 @@ public class CheckInController {
           @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
           LocalDate to) {
     return checkInService.getCheckIns(from, to);
+  }
+
+  // 지운 뒤에는 돌려줄 것이 없어서 204(본문 없음)입니다. 지울 것이 없어도 204 입니다.
+  @Operation(summary = "내 체크인 모두 지우기 (설정의 '모든 기록 지우기' · 되돌릴 수 없음 · 토큰 필요)")
+  @DeleteMapping
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deleteAll() {
+    checkInService.deleteAll();
   }
 
   @Operation(summary = "오늘 체크인에서 물어볼 질문 (기본은 기분 · 어제 못 채운 날만 이유 · 어제 약속이 있으면 지켰는지 · 토큰 필요)")
