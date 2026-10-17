@@ -37,10 +37,13 @@ public class StudyPlanService {
   // 계획에 붙일 과목이 "내 과목" 인지 확인할 때 씁니다.
   private final SubjectRepository subjectRepository;
 
+  private final com.ithopeschool.projectbe.domain.routine.RoutineService routineService;
+
   // 그날의 내 계획 목록. 계획이 없는 날은 빈 목록입니다.
-  @Transactional(readOnly = true)
+  @Transactional
   public List<StudyPlanResponse> getPlans(LocalDate date) {
     Long userId = currentUserProvider.getCurrentUserId();
+    routineService.fill(userId, date);
     return studyPlanRepository.findByUserIdAndPlanDateOrderById(userId, date).stream()
         .sorted(PLAN_ORDER)
         .map(StudyPlanResponse::from)

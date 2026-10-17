@@ -62,7 +62,13 @@ class CoachFlowTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(BODY))
         .andExpect(status().isOk())
-        .andExpect(content().json("{\"paragraph\":null}", true));
+        // 문단은 없어도, 보낸 숫자는 근거 숫자 목록(evidence)으로 그대로 돌아옵니다.
+        .andExpect(
+            content()
+                .json(
+                    "{\"paragraph\":null,\"evidence\":"
+                        + "[{\"label\":\"완주율\",\"value\":\"55%\",\"basis\":\"20번\"}]}",
+                    true));
   }
 
   @Test
@@ -95,7 +101,12 @@ class CoachFlowTest {
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(body))
           .andExpect(status().isOk())
-          .andExpect(content().json("{\"paragraph\":null}", true));
+          .andExpect(
+              content()
+                  .json(
+                      "{\"paragraph\":null,\"evidence\":"
+                          + "[{\"label\":\"계획 대비 실제\",\"value\":\"79%\",\"basis\":\"계획 3개\"}]}",
+                      true));
     }
   }
 }

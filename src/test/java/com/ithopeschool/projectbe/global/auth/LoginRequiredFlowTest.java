@@ -107,6 +107,15 @@ class LoginRequiredFlowTest {
               "{\"name\":\"수학\",\"color\":\"red\"}"),
           new Api("PATCH", "/api/v1/subjects/{id}", "/api/v1/subjects/1", "{\"name\":\"수학\"}"),
           new Api("DELETE", "/api/v1/subjects/{id}", "/api/v1/subjects/1", null),
+          // 계획 루틴
+          new Api("GET", "/api/v1/routines", "/api/v1/routines", null),
+          new Api(
+              "POST",
+              "/api/v1/routines",
+              "/api/v1/routines",
+              "{\"weekdays\":[1],\"kind\":\"play\",\"content\":\"rest\",\"targetMinutes\":20}"),
+          new Api("PATCH", "/api/v1/routines/{id}", "/api/v1/routines/1", "{\"targetMinutes\":20}"),
+          new Api("DELETE", "/api/v1/routines/{id}", "/api/v1/routines/1", null),
           // 공부 계획
           new Api("GET", "/api/v1/study-plans", "/api/v1/study-plans?date=2026-10-12", null),
           new Api("POST", "/api/v1/study-plans", "/api/v1/study-plans", PLAN_BODY),
@@ -178,6 +187,7 @@ class LoginRequiredFlowTest {
               "GET", "/api/v1/checkins", "/api/v1/checkins?from=2026-10-01&to=2026-10-07", null),
           new Api(
               "GET", "/api/v1/checkins/today/questions", "/api/v1/checkins/today/questions", null),
+          new Api("DELETE", "/api/v1/checkins", "/api/v1/checkins", null),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
@@ -235,6 +245,8 @@ class LoginRequiredFlowTest {
               "/api/v1/calls/{id}/finish",
               "/api/v1/calls/1/finish",
               "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
+          // 성찰일기 처방 (처방 이유가 학생의 못 채운 이유입니다)
+          new Api("GET", "/api/v1/reflections/current", "/api/v1/reflections/current", null),
           // 온보딩 설문 · 처음 계획 (학년·생활 리듬·자기 인식 같은 학생의 정보입니다)
           new Api("GET", "/api/v1/onboarding", "/api/v1/onboarding", null),
           new Api(
@@ -266,6 +278,7 @@ class LoginRequiredFlowTest {
               "{\"terms\":true,\"privacy\":true,\"over14\":true,\"version\":\"v1\"}"),
           // 첫 가설 (설문 답으로 만든 문장이라 학생의 정보입니다)
           new Api("GET", "/api/v1/insights/hypotheses", "/api/v1/insights/hypotheses", null),
+          new Api("GET", "/api/v1/insights/score-study", "/api/v1/insights/score-study", null),
           // 실패 원인 분석 (못 채운 날과 그 이유라서 학생의 정보입니다)
           new Api("GET", "/api/v1/stats/miss-reasons", "/api/v1/stats/miss-reasons", null),
           // 리듬·패턴 분석 (공부한 날·시간대·시험 날이라 학생의 정보입니다)
