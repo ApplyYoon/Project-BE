@@ -25,6 +25,10 @@ erDiagram
     thinking_tests ||--o{ thinking_test_weaknesses : "thinking_test_id"
     subjects ||--o{ study_plans : "subject_id"
     subjects ||--o{ study_sessions : "subject_id"
+    users ||--o{ exams : "user_id"
+    users ||--o{ exam_scores : "user_id"
+    exams ||--o{ exam_scores : "exam_id"
+    subjects ||--o{ exam_scores : "subject_id"
 
     users {
         bigint id PK "사용자를 구분하는 고유 번호"
@@ -125,6 +129,21 @@ erDiagram
         bigint thinking_test_id FK "어느 테스트의 약점인지"
         varchar weakness "내가 꼽은 약점 칩 (GAME, PHONE, VIDEO, SLEEP, LAZY, DELAY, FOCUS, FRIENDS, TIRED, MOOD, PLANNING 중 하나)"
     }
+    exams {
+        bigint id PK "시험을 구분하는 고유 번호"
+        bigint user_id FK "이 시험의 주인"
+        varchar name "시험 이름 (50자까지)"
+        varchar type "시험 종류 (MOCK, SCHOOL, QUIZ, ETC 중 하나)"
+        date exam_date "시험 날짜"
+    }
+    exam_scores {
+        bigint id PK "점수 한 줄을 구분하는 고유 번호"
+        bigint user_id FK "이 점수의 주인"
+        bigint exam_id FK "어느 시험의 점수인지"
+        bigint subject_id FK "어느 과목의 점수인지 (같은 시험에 같은 과목은 한 번만)"
+        int expected_score "시험 전에 적은 예상 점수 (0 ~ 100)"
+        int actual_score "시험 후에 적은 실제 점수 (0 ~ 100, 아직 안 적었으면 비어 있음)"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
@@ -145,6 +164,8 @@ erDiagram
 | `thinking_tests` | 생각 습관 테스트 한 번이 한 줄 (마친 시각, 테스트 모양 번호). 다시 하면 새 줄이 쌓임 | #35 |
 | `thinking_test_scores` | 테스트 한 번의 습관 8개 평균이 한 줄씩 (`@ElementCollection`) | #35 |
 | `thinking_test_weaknesses` | 테스트 한 번에서 고른 약점 칩이 한 줄씩 (`@ElementCollection`) | #35 |
+| `exams` | 시험 하나가 한 줄 (이름, 종류, 날짜). 과목별 점수는 `exam_scores` 에 따로 적음 | #16 |
+| `exam_scores` | 시험 하나의 과목 하나의 점수가 한 줄 (예상 점수, 실제 점수). 같은 시험에 같은 과목은 한 번만 | #16 |
 
 > `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
 > 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.
@@ -163,6 +184,14 @@ erDiagram
 > - **문장별 답은 저장하지 않고 습관 8개의 평균만** 저장합니다. 테스트 문장은 앞으로 바뀔 수 있어서(선생님 말씀), 문장이 바뀌어도 테이블은 그대로 쓰게 하려는 것입니다.
 > - 한 테스트에 점수 8개 · 약점 여러 개라서 **딸린 테이블(`@ElementCollection`)** 에 담았습니다. 엔티티는 `ThinkingTest` 하나이고, JPA 가 두 테이블을 알아서 같이 읽고 씁니다. 그래서 딸린 테이블에는 `id` 가 없습니다.
 > - "기타" 에 직접 쓴 약점 글은 서버로 받지 않아서 저장하지 않습니다.
+
+> `exams` 와 `exam_scores` 는 2026-10-17 에 이슈 #16 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 도왔고, 칸 이름의 영어 표기만 같이 정했습니다)
+> - **시험 하나 = 한 줄, 과목별 점수 = 딸린 테이블.** 과목은 사용자마다 달라서(`subjects`) 시험 표에 `국어 예상` 같은 칸을 미리 만들 수 없고, 시험마다 과목 수도 다르기 때문입니다. (모의고사 3과목, 쪽지시험 1과목)
+> - **두 테이블 모두 `user_id` 가 있습니다.** 그래서 탈퇴하면(`AccountService.withdraw`) 코드를 고치지 않아도 시험과 점수가 같이 지워집니다.
+> - 실제 점수(`actual_score`)만 비어도 됩니다. 시험 전에는 아직 모르기 때문입니다. 나머지 칸은 꼭 있어야 합니다.
+> - 점수는 **0 ~ 100 의 정수**입니다. 같은 시험에 같은 과목은 한 번만(`uk_exam_scores_exam_id_subject_id`) 적을 수 있습니다. 이 둘은 DB 에도 규칙(unique · check)으로 걸어 두었습니다.
+> - 시험 종류(`type`)는 이슈에는 3개(모의고사·내신·쪽지시험)였지만 FE 의 `ExamType` 과 화면(#80)에 **기타(`ETC`)** 가 있어서 4개로 정했습니다.
+> - 시험 후 회고(`reflection`)는 #17 에서 만듭니다. 아직 칸이 없습니다.
 
 > `study_plans` 의 `start_time` · `kind` · `routine_id` 는 2026-10-12 에 이슈 #12 에서 더했습니다. (칸 이름과 뜻은 Project#12 의 표, 시작 시각을 `time` 으로 저장하는 것은 학생이 정함)
 > - 공부 계획(`STUDY`)은 `subject_id` 가 꼭 있어야 하고, 노는 계획(`PLAY`)만 비어도 됩니다. DB 에도 검사 규칙(`ck_study_plans_study_has_subject`)으로 걸어 두었습니다.
