@@ -29,7 +29,7 @@ public final class RoutineFill {
 
   // 루틴 하나에서 이 계산에 쓰는 값만 모은 것입니다.
   // id: 루틴 번호 / weekdays: 반복하는 요일들. 0 = 일요일, 1 = 월요일 … 6 = 토요일
-  // (루틴 테이블은 아직 없고 설계는 학생이 합니다. 그래서 엔티티가 아니라 필요한 두 값만 받습니다)
+  // 저장 여부와 분리해서 계산하도록 루틴 엔티티에서 필요한 두 값만 받습니다.
   public record RoutineDays(Long id, List<Integer> weekdays) {}
 
   // 값만 계산하는 도구라서 객체를 만들 일이 없습니다.

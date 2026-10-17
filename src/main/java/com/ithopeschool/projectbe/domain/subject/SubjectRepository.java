@@ -8,6 +8,8 @@ import org.springframework.data.repository.query.Param;
 
 // subjects 테이블의 창구입니다. 모든 메서드에 userId 가 들어 있어서, 다른 사람의 과목이 섞이지 않습니다.
 public interface SubjectRepository extends JpaRepository<Subject, Long> {
+  @Query("select count(r) > 0 from Routine r where r.userId = :userId and r.subjectId = :subjectId")
+  boolean hasRoutines(@Param("userId") Long userId, @Param("subjectId") Long subjectId);
 
   // 내 과목을 만든 순서(번호 순서)대로 모두 찾습니다. 없으면 빈 목록입니다.
   List<Subject> findByUserIdOrderById(Long userId);

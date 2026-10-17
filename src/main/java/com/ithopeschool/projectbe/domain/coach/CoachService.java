@@ -91,7 +91,7 @@ public class CoachService {
     Long userId = currentUserProvider.getCurrentUserId();
 
     if (!coachAiClient.isEnabled()) {
-      return CoachParagraphResponse.none();
+      return CoachParagraphResponse.none(numbers);
     }
 
     // 같은 숫자·같은 한도로 받아 둔 문단이 있으면 그대로 돌려줍니다. GPT 를 부르지 않아서 하루 한도도 쓰지 않습니다.
@@ -99,12 +99,12 @@ public class CoachService {
     String signature = numbers + "|" + maxCareLevel + "|" + maxHarshness;
     Optional<String> saved = coachParagraphStore.find(userId, kind, periodKey, signature);
     if (saved.isPresent()) {
-      return new CoachParagraphResponse(saved.get());
+      return new CoachParagraphResponse(saved.get(), numbers);
     }
 
     // 한도를 넘었으면 에러(429) 대신 "문단 없음" 을 돌려줍니다. FE 가 기본 문장을 보여 줘서 화면이 멈추지 않습니다.
     if (!gptUsageGuard.tryUseText(userId, GptUsageKind.COACH)) {
-      return CoachParagraphResponse.none();
+      return CoachParagraphResponse.none(numbers);
     }
 
     Optional<String> paragraph =
@@ -113,10 +113,10 @@ public class CoachService {
             CoachPrompt.input(kind, numbers));
 
     if (paragraph.isEmpty() || !CoachParagraphCheck.isSafe(paragraph.get(), numbers)) {
-      return CoachParagraphResponse.none();
+      return CoachParagraphResponse.none(numbers);
     }
     // 검사를 통과한 문단만 기억합니다. 버린 문단은 기억하지 않아서, 다음에 다시 물어봅니다.
     coachParagraphStore.save(userId, kind, periodKey, signature, paragraph.get());
-    return new CoachParagraphResponse(paragraph.get());
+    return new CoachParagraphResponse(paragraph.get(), numbers);
   }
 }

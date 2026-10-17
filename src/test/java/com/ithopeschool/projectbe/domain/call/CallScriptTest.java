@@ -564,6 +564,24 @@ class CallScriptTest {
     assertThat(lines).contains("  - 다름 1", "  - 다름 3").doesNotContain("  - 다름 4");
   }
 
+  @Test
+  void chatInstructionsAreTheSameScriptWithChatOpening() {
+    // 상담 채팅(이슈 #238)은 통화와 같은 대본이고, 맨 앞의 두 줄만 다릅니다.
+    Card card = card(190, 240, "phone", List.of(3, 3));
+    String voice = CallScript.instructions(2, 3, card, null, List.of(), CallScript.SelfReport.NONE);
+    String chat =
+        CallScript.chatInstructions(2, 3, card, null, List.of(), CallScript.SelfReport.NONE);
+
+    assertThat(voice).contains("짧게 전화하는 공부 코치").contains("3분 안에 끝내");
+    assertThat(chat)
+        .contains("글로 이야기하는 공부 코치")
+        .contains("'통화' 는 이 채팅을 뜻해")
+        .doesNotContain("전화하는")
+        .doesNotContain("3분 안에 끝내");
+    // 세 번째 줄부터는 똑같습니다.
+    assertThat(chat.lines().skip(2).toList()).isEqualTo(voice.lines().skip(2).toList());
+  }
+
   // ─── 오늘 예측 (위험한 날, 이슈 #49) ───
 
   private static String withRisk(int careLevel, RiskLevel riskLevel) {
@@ -583,6 +601,24 @@ class CallScriptTest {
     assertThat(high.indexOf("[오늘 예측]")).isLessThan(high.indexOf("[통화 순서]"));
     // 이유는 모른다고 하고 추측하지 못하게 합니다. (잠든 시각 같은 건강 데이터는 넘기지 않습니다)
     assertThat(high).contains("이유는 네가 모르는 정보", "단정하거나 겁주지 마", "목표를 더 올리라고 밀지 마");
+  }
+
+  @Test
+  @DisplayName("상담 채팅도 같은 대본이라, 위험한 날이면 [오늘 예측] 이 들어가고 위험 수준을 안 넘기면 예전과 똑같다")
+  void chatInstructionsAlsoGetTheRisk() {
+    Card card = card(190, 240, "phone", List.of(3, 3));
+    String normal =
+        CallScript.chatInstructions(2, 3, card, null, List.of(), CallScript.SelfReport.NONE);
+    String risky =
+        CallScript.chatInstructions(
+            2, 3, card, null, List.of(), CallScript.SelfReport.NONE, RiskLevel.HIGH);
+
+    assertThat(normal).doesNotContain("[오늘 예측]");
+    assertThat(risky).contains("글로 이야기하는 공부 코치", "[오늘 예측]", "위험 정도: 높음");
+    assertThat(
+            CallScript.chatInstructions(
+                2, 3, card, null, List.of(), CallScript.SelfReport.NONE, RiskLevel.NONE))
+        .isEqualTo(normal);
   }
 
   @Test
