@@ -33,6 +33,19 @@ BE 를 인터넷에 올려서 FE(Vercel) 가 부를 수 있게 하는 방법입�
 
 ## 2. 배포하기
 
+### CI/CD 자동 연결
+
+- GitHub Actions 설정은 저장소 루트의 `.github/workflows/ci.yml` 입니다. PR 생성/수정과 `main` push 에서만 포맷 검사·테스트·빌드를 실행합니다. `develop` push 는 실행하지 않습니다.
+- Java 21 / Ubuntu 작업 하나를 사용하고, Gradle 의존성·배포판·빌드 결과를 캐시합니다. 같은 PR 에 새 커밋을 올리면 이전 실행을 취소하며, 한 실행은 최대 15분입니다.
+- 같은 저장소의 PR 은 해당 PR 범위에 캐시를 저장하고 재사용합니다. 다른 PR 과 공유되지는 않습니다. 외부 fork PR 은 캐시를 읽기만 합니다.
+- `render.yaml` 의 `autoDeployTrigger: checksPass` 는 `main` 커밋의 CI 완료 후 Render 가 자동으로 Docker 빌드·배포하도록 설정합니다. 별도 Deploy Hook, Render API 키, Actions 배포 작업은 필요하지 않습니다.
+- 기존 서비스가 Blueprint 로 관리된다면 이 설정이 있는 `main` 의 Blueprint 를 동기화합니다. 대시보드에서 직접 만든 서비스라면 **Settings → Branch = main**, **Auto-Deploy → After CI Checks Pass** 를 설정합니다. 파일 수정만으로 기존 서비스 설정이 바뀌지는 않습니다.
+- 먼저 백엔드 코드와 이 워크플로우가 `main` 에 있어야 합니다. `main` 이 초기 커밋뿐이면 배포 브랜치를 바로 전환하지 말고, 팀의 릴리스 절차로 코드를 반영한 뒤 전환합니다.
+- 확인 순서: PR 의 `CI / check` 성공 → `main` 반영 후 해당 커밋의 CI 성공 → Render Events/Deploys 에 같은 커밋 배포 성공 확인. PR 성공만으로 운영 배포되지는 않습니다.
+- CI 실패 또는 체크가 없는 커밋은 자동 배포되지 않습니다. 테스트는 H2 기반 `local` 프로필을 사용하며 운영 DB 비밀값은 GitHub 에 추가하지 않습니다.
+
+공식 문서: [Render CI 연동](https://render.com/docs/deploys#integrating-with-ci), [Gradle Actions 캐시](https://github.com/gradle/actions/blob/v4/docs/setup-gradle.md).
+
 ### 2-1. Render 가입
 
 1. https://render.com 에서 **GitHub 계정으로 가입**합니다.
