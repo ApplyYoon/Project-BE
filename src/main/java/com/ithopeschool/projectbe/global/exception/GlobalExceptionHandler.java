@@ -61,8 +61,8 @@ public class GlobalExceptionHandler {
           .body(ApiErrorResponse.of(code, code.getDefaultMessage()));
     }
 
-    // 예상 못 한 에러입니다. 원인은 서버 로그에만 남기고, 응답에는 내부 정보를 넣지 않습니다.
-    log.error("처리하지 못한 에러가 났습니다", exception);
+    // 예외 메시지·원인에는 SQL 입력, 일기 원문, 접속 주소가 들어갈 수 있어 종류만 남깁니다.
+    log.error("처리하지 못한 에러가 났습니다: {}", exception.getClass().getSimpleName());
     return respond(ErrorCode.INTERNAL_ERROR);
   }
 

@@ -13,10 +13,13 @@ class RestDayRuleTest {
   private static final LocalDate OCT_12 = LocalDate.of(2026, 10, 12);
 
   @Test
-  @DisplayName("지난 날과 오늘만 휴식으로 처리할 수 있다 (내일은 안 됨)")
+  @DisplayName("오늘부터 6일 전까지만 휴식으로 처리할 수 있다 (내일 · 8일째는 안 됨)")
   void allowedDates() {
+    assertThat(RestDayRule.BACK_DAYS).isEqualTo(7);
     assertThat(RestDayRule.isAllowedDate(OCT_12, OCT_12)).isTrue();
-    assertThat(RestDayRule.isAllowedDate(OCT_12.minusDays(20), OCT_12)).isTrue();
+    assertThat(RestDayRule.isAllowedDate(OCT_12.minusDays(6), OCT_12)).isTrue();
+    assertThat(RestDayRule.isAllowedDate(OCT_12.minusDays(7), OCT_12)).isFalse();
+    assertThat(RestDayRule.isAllowedDate(OCT_12.minusDays(20), OCT_12)).isFalse();
     assertThat(RestDayRule.isAllowedDate(OCT_12.plusDays(1), OCT_12)).isFalse();
   }
 
