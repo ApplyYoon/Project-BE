@@ -1293,7 +1293,8 @@ Authorization: Bearer 로그인할 때 받은 토큰
   "expectedMinutes": 120,
   "promiseIf": "폰을 보고 싶으면",
   "promiseThen": "물 한 잔 마신다",
-  "suggestionKept": true
+  "suggestionKept": true,
+  "emotions": ["STUCK", "TIRED"]
 }
 ```
 
@@ -1307,11 +1308,14 @@ Authorization: Bearer 로그인할 때 받은 토큰
 | `expectedMinutes` | 선택. 오늘 예상 순공시간(분), 0 ~ 1440 |
 | `promiseIf` · `promiseThen` | 선택. 오늘의 약속 "만약 ~하면" · "~한다", 각각 100자까지. **둘 다 적거나 둘 다 비웁니다** |
 | `suggestionKept` | 선택. 개선안을 실천했는지 (`true`/`false`) |
+| `emotions` | 선택. 하루 첫 태그의 감정 태그 **여러 개**. `STUCK`(막막함) · `ANXIOUS`(불안함) · `TIRED`(피곤함) · `ANNOYED`(짜증남) · `CALM`(평온함) · `MOTIVATED`(의욕 있음) 중에서 6개까지. 같은 것을 두 번 보내면 하나로 봅니다 (이슈 #220) |
 
 - **`source` 말고는 전부 비워도(안 보내도) 됩니다.** 비어 있는 값은 "0" 이 아니라 **"모름"** 입니다.
 - **덮어쓰기는 전부 바꾸기입니다.** 다시 보낼 때 안 보낸 칸은 비워집니다. 그날 아는 값은 매번 다 보내 주세요.
   (예: 아침에 `quick` 으로 기분만 보내고, 저녁에 자세히 체크인을 하면 `manual` 로 모든 칸을 다시 보냅니다)
 - 빈 글자(`""`)나 띄어쓰기만 보낸 글 칸은 안 보낸 것으로 봅니다.
+- **감정 태그만 다릅니다.** `emotions` 를 보내면 그날의 감정을 전부 바꾸고(`[]` 은 비우기), **아예 안 보내면 그대로 둡니다.** 감정 태그를 모르는 화면(자세히 체크인 등)이 다시 보내도 그날 고른 감정이 지워지지 않게 하려는 것입니다. 응답의 `emotions` 는 늘 배열이고(안 골랐으면 `[]`), 위 표의 순서로 나옵니다.
+- **컨디션과 기분은 다른 칸입니다.** 하루 첫 태그(컨디션 + 감정)만 했으면 `mood` 는 비어 있습니다. (이슈 #220. 예전 1탭 체크인은 기분을 컨디션에 복사했습니다)
 - 날짜는 오늘(새벽 4시 기준)보다 뒤면 안 됩니다. 새벽 1시에 하는 체크인은 **전날** 날짜로 보냅니다.
 
 **응답 200** (새로 만들 때도, 덮어쓸 때도) — 보낸 값에 `id` 와 `date` 가 붙습니다.
@@ -1328,7 +1332,8 @@ Authorization: Bearer 로그인할 때 받은 토큰
   "expectedMinutes": 120,
   "promiseIf": "폰을 보고 싶으면",
   "promiseThen": "물 한 잔 마신다",
-  "suggestionKept": true
+  "suggestionKept": true,
+  "emotions": ["STUCK", "TIRED"]
 }
 ```
 
@@ -1342,6 +1347,7 @@ Authorization: Bearer 로그인할 때 받은 토큰
 | 400 | `VALIDATION_ERROR` | `source` 가 없음 | `"어디서 한 체크인인지(source) 보내 주세요"` |
 | 400 | `VALIDATION_ERROR` | `source` · `missReason` 이 정해진 값이 아님 | `"source 는 manual, call, quick 중에서 골라 주세요"` |
 | 400 | `VALIDATION_ERROR` | 숫자가 범위 밖 / 글이 너무 김 | `"기분은 1 ~ 5 중에서 골라 주세요"` |
+| 400 | `VALIDATION_ERROR` | 감정 태그가 정해진 값이 아님 / 7개 이상 | `"감정 태그는 6개까지 고를 수 있어요"` |
 | 400 | `VALIDATION_ERROR` | `etc` 가 아닌데 `missReasonNote` 를 보냄 | `"이유 글은 '기타(etc)' 를 골랐을 때만 적을 수 있어요"` |
 | 400 | `VALIDATION_ERROR` | 약속을 반쪽만 보냄 | `"약속은 '만약 ~하면' 과 '~한다' 를 둘 다 적어 주세요"` |
 | 400 | `VALIDATION_ERROR` | 날짜 모양이 틀림 / 오지 않은 날짜 / 조회 기간이 뒤집힘·31일 넘음 | `"아직 오지 않은 날짜예요"` |

@@ -19,6 +19,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,16 +55,17 @@ class CheckInServiceTest {
 
   // source 말고는 다 비어 있는 요청
   private static CheckInSaveRequest onlySource(String source) {
-    return new CheckInSaveRequest(source, null, null, null, null, null, null, null, null);
+    return new CheckInSaveRequest(source, null, null, null, null, null, null, null, null, null);
   }
 
   private static CheckInSaveRequest withReason(String missReason, String note) {
-    return new CheckInSaveRequest("manual", null, null, missReason, note, null, null, null, null);
+    return new CheckInSaveRequest(
+        "manual", null, null, missReason, note, null, null, null, null, null);
   }
 
   private static CheckInSaveRequest withPromise(String promiseIf, String promiseThen) {
     return new CheckInSaveRequest(
-        "manual", null, null, null, null, null, promiseIf, promiseThen, null);
+        "manual", null, null, null, null, null, promiseIf, promiseThen, null, null);
   }
 
   private void expectRejected(LocalDate date, CheckInSaveRequest request, String message) {
@@ -84,7 +86,7 @@ class CheckInServiceTest {
         service.save(
             TODAY,
             new CheckInSaveRequest(
-                "manual", 4, 3, "tooMuch", null, 120, "폰을 보고 싶으면", "물 한 잔 마신다", true));
+                "manual", 4, 3, "tooMuch", null, 120, "폰을 보고 싶으면", "물 한 잔 마신다", true, null));
 
     assertThat(response.id()).isEqualTo("3");
     assertThat(response.date()).isEqualTo(TODAY);
@@ -120,7 +122,8 @@ class CheckInServiceTest {
 
     CheckInResponse response =
         service.save(
-            TODAY, new CheckInSaveRequest("manual", null, 5, null, null, null, null, null, null));
+            TODAY,
+            new CheckInSaveRequest("manual", null, 5, null, null, null, null, null, null, null));
 
     verify(checkInRepository, never()).save(any());
     assertThat(response.id()).isEqualTo("3");
@@ -238,5 +241,55 @@ class CheckInServiceTest {
     assertThatThrownBy(
             () -> service.getCheckIns(LocalDate.parse("1969-12-31"), LocalDate.parse("1970-01-01")))
         .hasMessage("날짜는 1970-01-01 부터 9999-12-31 사이로 보내 주세요");
+  }
+
+  // 감정 태그만 다르고 나머지는 비어 있는 요청 (이슈 #220)
+  private static CheckInSaveRequest withEmotions(List<String> emotions) {
+    return new CheckInSaveRequest("quick", 3, null, null, null, null, null, null, null, emotions);
+  }
+
+  @Test
+  @DisplayName("감정 태그를 여러 개 저장하고, 같은 것을 두 번 보내면 하나로 본다. 응답은 정해진 순서다")
+  void savesEmotions() {
+    CheckInResponse response =
+        service.save(TODAY, withEmotions(List.of("TIRED", "STUCK", "TIRED")));
+
+    assertThat(response.emotions()).containsExactly("STUCK", "TIRED");
+    assertThat(response.condition()).isEqualTo(3);
+    // 컨디션만 보냈으면 기분은 비어 있습니다. (기분에 복사하지 않습니다)
+    assertThat(response.mood()).isNull();
+  }
+
+  @Test
+  @DisplayName("다시 보내면 감정도 전부 바뀌고, 빈 배열은 비우기, 아예 안 보내면 그대로 둔다")
+  void overwritesEmotions() {
+    CheckIn existing =
+        new CheckIn(
+            USER_ID, TODAY, CheckInSource.QUICK, 3, null, null, null, null, null, null, null);
+    existing.replaceEmotions(EnumSet.of(EmotionTag.ANXIOUS, EmotionTag.STUCK));
+    given(checkInRepository.findByUserIdAndCheckInDate(USER_ID, TODAY))
+        .willReturn(Optional.of(existing));
+
+    assertThat(service.save(TODAY, withEmotions(List.of("CALM"))).emotions())
+        .containsExactly("CALM");
+    // 감정 태그를 모르는 화면이 다시 보낸 경우 (emotions 없음) → 그대로
+    assertThat(service.save(TODAY, withEmotions(null)).emotions()).containsExactly("CALM");
+    // 빈 배열 → 비우기
+    assertThat(service.save(TODAY, withEmotions(List.of())).emotions()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("정해진 6가지가 아닌 감정 태그가 있으면 400")
+  void rejectsUnknownEmotion() {
+    expectRejected(
+        TODAY,
+        withEmotions(List.of("STUCK", "HAPPY")),
+        "감정 태그는 STUCK, ANXIOUS, TIRED, ANNOYED, CALM, MOTIVATED 중에서 골라 주세요");
+  }
+
+  @Test
+  @DisplayName("처음 저장할 때 감정 태그를 안 보내면 빈 배열이다")
+  void newCheckInWithoutEmotionsHasNone() {
+    assertThat(service.save(TODAY, withEmotions(null)).emotions()).isEmpty();
   }
 }

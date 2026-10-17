@@ -10,8 +10,10 @@ import com.ithopeschool.projectbe.global.time.DayRule;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +51,7 @@ public class CheckInService {
 
     CheckInSource source = parseSource(request.source());
     MissReason missReason = parseMissReason(request.missReason());
+    Set<EmotionTag> emotions = parseEmotions(request.emotions());
 
     // 빈 글자("")나 띄어쓰기만 보낸 칸은 안 보낸 것(null)으로 봅니다.
     String missReasonNote = blankToNull(request.missReasonNote());
@@ -79,21 +82,29 @@ public class CheckInService {
           promiseIf,
           promiseThen,
           request.suggestionKept());
+      // 감정 태그를 아예 안 보냈으면(null) 그대로 둡니다. 감정 태그를 모르는 화면(자세히 체크인 등)이
+      // 다시 보내도 그날 고른 감정이 지워지지 않게 하려는 것입니다. 비우려면 빈 배열 [] 을 보냅니다.
+      if (emotions != null) {
+        checkIn.replaceEmotions(emotions);
+      }
     } else {
       checkIn =
-          checkInRepository.save(
-              new CheckIn(
-                  userId,
-                  date,
-                  source,
-                  request.condition(),
-                  request.mood(),
-                  missReason,
-                  missReasonNote,
-                  request.expectedMinutes(),
-                  promiseIf,
-                  promiseThen,
-                  request.suggestionKept()));
+          new CheckIn(
+              userId,
+              date,
+              source,
+              request.condition(),
+              request.mood(),
+              missReason,
+              missReasonNote,
+              request.expectedMinutes(),
+              promiseIf,
+              promiseThen,
+              request.suggestionKept());
+      if (emotions != null) {
+        checkIn.replaceEmotions(emotions);
+      }
+      checkIn = checkInRepository.save(checkIn);
     }
     return CheckInResponse.from(checkIn);
   }
@@ -152,6 +163,26 @@ public class CheckInService {
           "못 채운 이유는 tired, event, phone, tooMuch, unwilling, sick, etc 중에서 골라 주세요");
     }
     return reason;
+  }
+
+  // 감정 태그들을 바꿉니다. 같은 것을 두 번 보내면 하나로 봅니다. (이슈 #220)
+  // 안 보냈으면(null) null 을 돌려줍니다. ("그대로 두기". 빈 배열 [] 은 "비우기" 라서 다릅니다)
+  // 정해진 6가지가 아닌 글자가 하나라도 있으면 400 입니다.
+  private Set<EmotionTag> parseEmotions(List<String> values) {
+    if (values == null) {
+      return null;
+    }
+    Set<EmotionTag> emotions = EnumSet.noneOf(EmotionTag.class);
+    for (String value : values) {
+      EmotionTag tag = EmotionTag.fromName(value);
+      if (tag == null) {
+        throw new ApiException(
+            ErrorCode.VALIDATION_ERROR,
+            "감정 태그는 STUCK, ANXIOUS, TIRED, ANNOYED, CALM, MOTIVATED 중에서 골라 주세요");
+      }
+      emotions.add(tag);
+    }
+    return emotions;
   }
 
   private static String blankToNull(String value) {

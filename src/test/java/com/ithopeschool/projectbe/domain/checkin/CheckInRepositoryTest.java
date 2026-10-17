@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -101,5 +102,22 @@ class CheckInRepositoryTest {
     assertThat(found)
         .extracting(CheckIn::getCheckInDate)
         .containsExactly(LocalDate.parse("2026-10-13"), LocalDate.parse("2026-10-15"));
+  }
+
+  @Test
+  @DisplayName("감정 태그가 딸린 테이블에 저장되고 그대로 꺼내진다. 태그가 없던 옛 체크인은 빈 목록이다")
+  void savesAndLoadsEmotions() {
+    CheckIn withTags = save(1L, "2026-10-16", 3);
+    withTags.replaceEmotions(EnumSet.of(EmotionTag.MOTIVATED, EmotionTag.CALM));
+    checkInRepository.saveAndFlush(withTags);
+    save(1L, "2026-10-15", 4);
+
+    List<CheckIn> found =
+        checkInRepository.findByUserIdAndCheckInDateBetweenOrderByCheckInDateAsc(
+            1L, LocalDate.parse("2026-10-01"), LocalDate.parse("2026-10-31"));
+
+    assertThat(found.get(0).getEmotions()).isEmpty();
+    assertThat(found.get(1).getEmotions())
+        .containsExactlyInAnyOrder(EmotionTag.CALM, EmotionTag.MOTIVATED);
   }
 }
