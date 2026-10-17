@@ -146,6 +146,9 @@ MCP 는 Claude 가 GitHub 같은 서비스를 **직접 다루게** 해주는 연
 
 배포 서비스가 정해지면 그 MCP 도 여기에 추가합니다.
 
+> **Neon MCP 는 `.mcp.json` 에 넣지 않습니다.** DB 에 SQL 을 실행할 수 있는 연결이라, 멘토만 자기 컴퓨터에 따로 연결합니다.
+> 연결 방법은 README "Neon MCP", Claude 가 해도 되는 일은 CLAUDE.md 3장 "원격 DB(Neon)" 에 있습니다.
+
 ### 연결 확인
 
 ```
