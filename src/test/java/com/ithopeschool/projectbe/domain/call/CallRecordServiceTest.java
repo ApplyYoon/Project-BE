@@ -17,6 +17,8 @@ import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest.Line;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallRecordResponse;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -41,12 +43,15 @@ class CallRecordServiceTest {
   private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
   private final CallRecordRepository callRecordRepository = mock(CallRecordRepository.class);
   private final CallReviewClient callReviewClient = mock(CallReviewClient.class);
+  // GPT 호출 기록 · 하루 한도는 가짜로 둡니다. 기본은 "요약을 불러도 된다" 입니다. (setUp)
+  private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
 
   private final CallRecordService service =
       new CallRecordService(
           currentUserProvider,
           callRecordRepository,
           callReviewClient,
+          gptUsageGuard,
           Clock.fixed(NOW, ZoneOffset.UTC));
 
   // 마무리 전의 12번 통화. "미래의 나 믿기" 를 확인하려던 통화입니다.
@@ -89,6 +94,8 @@ class CallRecordServiceTest {
     given(callReviewClient.isEnabled()).willReturn(true);
     given(callReviewClient.review(anyString(), anyString(), any()))
         .willReturn(Optional.of(GPT_ANSWER));
+    // 오늘 GPT 글 호출 한도가 남아 있습니다.
+    given(gptUsageGuard.tryUseText(any(), any())).willReturn(true);
   }
 
   private static void assertError(Runnable action, ErrorCode code, String message) {
@@ -238,6 +245,41 @@ class CallRecordServiceTest {
         "통화를 정리하지 못했어요. 잠시 후 다시 시도해 주세요");
     assertThat(call.isFinished()).isFalse();
     verify(callRecordRepository, never()).save(any());
+  }
+
+  // ---- GPT 비용 지키기 (이슈 #33) ----
+
+  @Test
+  @DisplayName("마무리하면 이 통화의 시작~끝 시각을 GPT 호출 기록에 남기고, 요약은 '통화 요약' 종류로 한도를 본다")
+  void recordsCallTimeAndUsesTheReviewLimit() {
+    service.finish(CALL_ID, TRANSCRIPT);
+
+    // 시작은 5분 전, 끝은 지금
+    verify(gptUsageGuard).recordCallFinish(USER_ID, CALL_ID, NOW.minusSeconds(300), NOW);
+    verify(gptUsageGuard).tryUseText(USER_ID, GptUsageKind.CALL_REVIEW);
+  }
+
+  @Test
+  @DisplayName("GPT 글 호출 한도를 다 썼으면 429 이고, GPT 를 부르지 않고 기록도 마무리하지 않는다 (내일 다시 할 수 있게)")
+  void reviewLimitReached() {
+    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.CALL_REVIEW)).willReturn(false);
+
+    assertError(
+        () -> service.finish(CALL_ID, TRANSCRIPT),
+        ErrorCode.TOO_MANY_REQUESTS,
+        "오늘 AI 사용량을 다 썼어요. 내일 다시 시도해 주세요");
+    verify(callReviewClient, never()).review(anyString(), anyString(), any());
+    assertThat(call.isFinished()).isFalse();
+    // 통화 시간은 그래도 기록합니다. (통화는 이미 했으니까요)
+    verify(gptUsageGuard).recordCallFinish(USER_ID, CALL_ID, NOW.minusSeconds(300), NOW);
+  }
+
+  @Test
+  @DisplayName("위기 표현이 있거나 학생이 말을 안 해서 GPT 를 부르지 않으면, 글 호출 한도를 쓰지 않는다")
+  void noReviewNoLimit() {
+    service.finish(CALL_ID, new CallFinishRequest(List.of(new Line("ai", "안녕, 오늘 어땠어?"))));
+
+    verify(gptUsageGuard, never()).tryUseText(any(), any());
   }
 
   @Test
