@@ -8,6 +8,17 @@ description: 서버를 켜서 브라우저에서 API 응답을 확인합니다
 
 (Windows 는 `.\gradlew.bat bootRun`)
 
+개발 GPT/SNS 등 실제 개발용 값이 필요한 경우에만 [docs/SECRETS.md](../../docs/SECRETS.md)를 따릅니다.
+개인 로그인 후 개발 프로젝트 ID를 넣고 실행합니다.
+
+```text
+infisical run --env=dev --projectId=PROJECT_ID -- ./gradlew --no-daemon bootRun
+```
+
+Windows는 마지막 실행 파일을 `.\gradlew.bat`으로 바꿉니다.
+값을 출력하거나 `.env`로 내보내지 않습니다. 기본 프로필은 여전히 local/H2이며,
+운영 값을 가져오거나 개발 프로젝트에 prod 프로필을 설정하지 않습니다.
+
 이 명령은 서버가 켜져 있는 동안 **끝나지 않습니다.** 백그라운드로 실행하고,
 `Started ProjectBeApplication` 이 로그에 보이면 켜진 것입니다.
 

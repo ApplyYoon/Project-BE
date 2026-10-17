@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.care;
 
+import com.ithopeschool.projectbe.domain.risk.RiskLevel;
 import com.ithopeschool.projectbe.global.time.DayRule;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -83,6 +84,21 @@ public record GoalAdjust(Kind kind, int fromMinutes, int toMinutes) {
     }
 
     return null;
+  }
+
+  // 오늘의 위험 예측(RiskRule, 이슈 #49)까지 보고 제안을 만듭니다.
+  //
+  // 무너지기 쉬운 날(주의 · 높음)에는 목표를 올리자고 제안하지 않습니다. (null)
+  //   목표를 낮추는 제안은 그대로입니다. 이미 부담을 줄이는 쪽이라 위험한 날에 막을 이유가 없습니다.
+  // 위험이 없는 날(NONE)은 위의 propose 와 똑같습니다.
+  //
+  // riskLevel: 오늘의 위험 수준. 모르면 RiskLevel.NONE
+  public static GoalAdjust propose(
+      CareAction action, int currentMinutes, Integer recentAverageMinutes, RiskLevel riskLevel) {
+    if (riskLevel.isRisky() && action == CareAction.CARROT_RAISE) {
+      return null;
+    }
+    return propose(action, currentMinutes, recentAverageMinutes);
   }
 
   // 어제부터 최근 7일 중, 실제로 공부한 날들의 하루 평균 순공시간(분)입니다. (반올림)

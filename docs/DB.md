@@ -12,6 +12,35 @@
 
 ```mermaid
 erDiagram
+    users ||--o{ lock_events : "user_id"
+    lock_events {
+        bigint id PK "해제 기록 번호"
+        bigint user_id FK "기록의 주인"
+        timestamptz occurred_at "해제 시각"
+        varchar app_name "앱 이름"
+        varchar reason "한 줄 이유"
+    }
+    users ||--o{ routines : "user_id"
+    subjects ||--o{ routines : "subject_id"
+    users ||--o{ routine_applications : "user_id"
+    routines ||--o{ study_plans : "routine_id"
+    routines ||--o{ routine_applications : "routine_id"
+    routines {
+        bigint id PK "루틴 번호"
+        bigint user_id FK "주인"
+        varchar weekdays "반복 요일"
+        varchar kind "공부 또는 놀이"
+        bigint subject_id FK "과목"
+        varchar content "할 일"
+        int target_minutes "목표 분"
+        time start_time "시작 시각"
+    }
+    routine_applications {
+        bigint id PK "적용 기록 번호"
+        bigint user_id FK "주인"
+        bigint routine_id FK "원본 루틴 번호 (삭제 후에도 번호 유지)"
+        date plan_date "한 번 적용한 날짜"
+    }
     users ||--o{ subjects : "user_id"
     users ||--o{ study_plans : "user_id"
     users ||--o{ study_sessions : "user_id"
@@ -43,6 +72,8 @@ erDiagram
     users ||--o{ setting_changes : "user_id"
     users ||--o{ gpt_usages : "user_id"
     call_records ||--o| gpt_usages : "call_record_id"
+    users ||--o{ insights : "user_id"
+    insights ||--o{ insight_evidence_dates : "insight_id"
     users ||--o{ checkins : "user_id"
     users ||--o{ cards : "user_id"
     cards ||--o{ card_checklist_items : "card_id"
@@ -52,6 +83,10 @@ erDiagram
     study_sessions ||--o{ session_checked_items : "study_session_id"
     study_sessions ||--o{ session_good_reasons : "study_session_id"
     study_sessions ||--o{ session_memos : "study_session_id"
+    checkins ||--o{ checkin_emotions : "checkin_id"
+    users ||--o{ reflection_prescriptions : "user_id"
+    users ||--o{ risk_forecasts : "user_id"
+    risk_forecasts ||--o{ risk_forecast_reasons : "risk_forecast_id"
 
     users {
         bigint id PK "사용자를 구분하는 고유 번호"
@@ -74,7 +109,7 @@ erDiagram
         boolean done "다 했으면 true, 아직이면 false"
         time start_time "시작할 시각, 몇 시 몇 분 (안 정했으면 비어 있음)"
         varchar kind "공부 계획인지 노는 계획인지 (STUDY, PLAY 중 하나)"
-        bigint routine_id "어떤 루틴이 만든 계획인지 (직접 만들었으면 비어 있음)"
+        bigint routine_id FK "어떤 루틴이 만든 계획인지 (직접 만들었으면 비어 있음)"
     }
     study_sessions {
         bigint id PK "기록을 구분하는 고유 번호"
@@ -154,6 +189,7 @@ erDiagram
         bigint user_id FK "이 통화를 한 사람"
         date call_date "통화한 날 (새벽 4시에 날짜가 바뀜)"
         timestamptz started_at "통화를 시작한 시각 (임시 키를 받은 시각)"
+        varchar channel "음성 통화(VOICE)인지 상담 채팅(CHAT)인지 (이 칸이 생기기 전 기록은 VOICE)"
         varchar asked_bias "이번 통화에서 확인하려던 생각 습관 (PLANNING_FALLACY, FUTURE_SELF, WHAT_THE_HELL, EMOTIONAL_REASONING, EXTERNAL_BLAME, ALL_OR_NOTHING, MORAL_LICENSING, OVERGENERALIZING 중 하나, 없으면 비어 있음)"
         varchar asked_question_key "고른 기본 질문의 이름 (예: PLANNING_FALLACY-1)"
         timestamptz finished_at "통화를 마무리한 시각 (마무리 전이면 비어 있음)"
@@ -294,7 +330,7 @@ erDiagram
     gpt_usages {
         bigint id PK "기록 한 줄을 구분하는 고유 번호 (나중에 부른 것일수록 큼)"
         bigint user_id FK "GPT 를 부르게 한 사람"
-        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE 중 하나)"
+        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE, CHAT, CHECKLIST, ASSIST 중 하나)"
         timestamptz called_at "부른 시각 (통화는 시작한 시각)"
         bigint call_record_id FK "어느 통화인지 (통화일 때만, 그 외엔 비어 있음)"
         int call_seconds "통화한 시간(초) (통화가 아니거나 아직 안 끝났으면 비어 있음)"
@@ -313,6 +349,21 @@ erDiagram
         varchar promise_if "오늘의 약속 만약 ~하면 (100자까지), 비어도 됨"
         varchar promise_then "오늘의 약속 ~한다 (100자까지), 비어도 됨"
         boolean suggestion_kept "개선안을 실천했는지, 비어도 됨"
+    }
+    checkin_emotions {
+        bigint checkin_id FK "어느 체크인의 감정인지"
+        varchar emotion "하루 첫 태그에서 고른 감정 (STUCK, ANXIOUS, TIRED, ANNOYED, CALM, MOTIVATED 중 하나)"
+    }
+    reflection_prescriptions {
+        bigint id PK "처방을 구분하는 고유 번호 (나중에 내린 것일수록 큼)"
+        bigint user_id FK "처방을 받은 사람"
+        date start_date "처방 첫날 (처방을 내린 날)"
+        date end_date "처방 마지막 날 (이 날까지 포함)"
+        varchar miss_reason "처방한 이유가 된 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, ETC 중 하나)"
+        int reason_days "처방할 때 최근 7일 중 그 이유가 나온 날 수 (3 ~ 7)"
+        varchar question1 "첫 번째 질문 (100자까지)"
+        varchar question2 "두 번째 질문 (100자까지)"
+        varchar question3 "세 번째 질문 (100자까지)"
     }
     consent_records {
         bigint id PK "동의 기록을 구분하는 고유 번호 (나중에 한 동의일수록 큼)"
@@ -351,14 +402,67 @@ erDiagram
         int position "몇 번째 원인인지 (0 부터)"
         varchar cause "예상 실패 원인 글 (100자까지)"
     }
+    insights {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 인사이트의 주인"
+        varchar sentence "카드에 보여 준 한 문장 (200자까지)"
+        varchar insight_key "인사이트의 종류, 같은 발견이면 같은 값 (예: morning-vs-night)"
+        boolean hypothesis "5일 미만이라 가설로 보여 줬는지"
+        date shown_date "보여 준 날"
+        varchar reaction "누른 반응 (SURPRISED, ALREADY_KNEW, WRONG 중 하나), 누르기 전에는 비어 있음"
+    }
+    insight_evidence_dates {
+        bigint insight_id FK "어느 인사이트의 근거인지"
+        date evidence_date "근거가 된 날짜 (한 인사이트 안에서 중복 불가)"
+    }
+    risk_forecasts {
+        bigint id PK "예측 한 줄을 구분하는 고유 번호"
+        bigint user_id FK "이 예측의 주인"
+        date forecast_date "어느 날을 예측했는지 (같은 사람 안에서 날짜 중복 불가)"
+        varchar risk_level "위험 수준 (NONE, WATCH, HIGH 중 하나)"
+        int actual_achievement_rate "그날이 지난 뒤 채우는 실제 달성률 (0 ~ 100, 아직이거나 계획이 없었으면 비어 있음)"
+        boolean was_correct "예측이 맞았는지 (실제 달성률을 채울 때 같이 채움, 모르면 비어 있음)"
+    }
+    risk_forecast_reasons {
+        bigint risk_forecast_id FK "어느 예측의 이유인지"
+        varchar reason "위험하다고 본 이유 (WEAK_WEEKDAY, LATE_SLEEP 중 하나)"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
 
 ## 테이블 설명
 
+### 기능별 반영 현황 (#74)
+
+2026-10-17 `develop`의 엔티티와 아래 그림을 대조했습니다. 체크는 **그림 반영 여부**이며,
+운영 DB에 테이블이 만들어졌다는 뜻은 아닙니다. 아직 없는 테이블은 이름·컬럼을 미리 정하지 않습니다.
+
+| 기능 | 그림 반영 | 근거 / 남은 일 |
+| --- | --- | --- |
+| 사용자·과목·계획·기록 #3 | 완료 | `users`, `subjects`, `study_plans`, `study_sessions` |
+| 시험·점수 #16 | 완료 | `exams`, `exam_scores` |
+| 회고 #17 | 완료 | `reviews` |
+| 온보딩 #21 | 완료 | `onboarding_answers`와 선택 항목, `initial_plans` |
+| 관리 설정 #22 | 완료 | `care_settings`, `focus_lock_apps`, `setting_changes` |
+| 체크인 #24 | 완료 | `checkins` |
+| 통화 요약 #29 | 완료 | `call_records` |
+| AI 메시지 #30 | 완료 | `messages` |
+| 하루 요약 #34 | 대기 | 현재 `DaySummary` 계산 객체만 있고 저장 엔티티 없음 |
+| 개선안·실험 #52 | 대기 | 계산 객체만 있고 저장 엔티티 없음 |
+| 일기 #60 | 대기 | 저장 엔티티 없음 |
+| 잠금 해제 #67 | 완료 | `lock_events` 엔티티·그림·운영 SQL 반영 |
+| 동의 기록 #71 | 완료 | PR #204가 반영되어 `consent_records` 이력과 그림이 있음 |
+| 계획 루틴 #85 | 완료 | `routines`, `routine_applications` 엔티티·그림·운영 SQL 반영 |
+
+추가 테이블을 만드는 PR에서는 이 표의 상태도 함께 바꿉니다.
+미완료 기능이 있어 #74 전체를 완료 처리하지 않습니다.
+
 | 테이블 | 무엇을 담나 | 만든 이슈 |
 | ------ | ----------- | --------- |
+| routines | 요일마다 반복할 계획의 틀 | #85 |
+| routine_applications | 루틴을 날짜에 적용한 기록 (계획 삭제 후에도 유지) | #85 |
+| lock_events | 사용자별 잠금 해제 시각·앱·한 줄 이유 | #67 |
 | `users` | 서비스를 쓰는 사람 한 명이 한 줄 (별명, 가입 시각) | #3 |
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
 | `study_plans` | 하루의 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부, 시작 시각, 공부/노는 계획, 루틴) | #3 · #12 |
@@ -392,6 +496,12 @@ erDiagram
 | `cards` | 카드 한 장이 한 줄 (제목, 날짜, 반복 요일, 시작 시각, 길이, 목표, 절대/유연, 자습/인강, 예상 달성 개수와 낮춘 이유, 알림, 계획에 쓴 시간). 반복 카드도 **한 장**이고 날마다 복사하지 않음 | #222 |
 | `card_checklist_items` | 카드 하나의 체크리스트 항목이 한 줄씩 (`@ElementCollection`, 보낸 순서대로) | #222 |
 | `card_expected_fail_causes` | 카드 하나의 예상 실패 원인 글이 한 줄씩 (`@ElementCollection`, 5개까지) | #222 |
+| `checkin_emotions` | 체크인 하나에서 고른 감정 태그가 한 줄씩 (`@ElementCollection`). 안 골랐으면 줄이 없음 | #220 |
+| `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
+| `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
+| `insight_evidence_dates` | 인사이트 하나의 근거 날짜가 한 줄씩 (`@ElementCollection`). 날짜로 찾기 쉽게 날짜로 저장 | #43 · #41 |
+| `risk_forecasts` | 한 사람의 하루치 위험 예측이 한 줄 (예측한 날, 위험 수준, 그날이 지난 뒤 채우는 실제 달성률과 맞았는지). **위험 없음인 날도 한 줄**. 같은 날을 다시 예측하면 그 줄을 최신으로 고침 | #49 |
+| `risk_forecast_reasons` | 예측 하나에서 위험하다고 본 이유가 한 줄씩 (`@ElementCollection`). 위험 없음이면 줄이 없음 | #49 |
 
 > `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
 > 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.
@@ -414,6 +524,7 @@ erDiagram
 > - **대화 원문(자막)과 녹음은 저장하지 않습니다.** 요약과 정해진 분류값만 남깁니다. 위기 표현이 감지된 통화는 내용 칸을 비우고 `crisis_detected` 만 남깁니다.
 > - 다음 통화는 최근 2주 기록을 읽어 자주 보인 생각 습관을 다시 확인하고, 지난 약속을 지켰는지 묻습니다. 최근 7일 안에 위기 표현이 있었으면 위로하는 통화로 합니다.
 > - 체크인(#24) 테이블과 겹치는 칸(못 채운 이유·약속)이 있습니다. 체크인 테이블이 생기면 합칠지 정해 주세요.
+> - 2026-10-17 에 `channel` 을 더했습니다. 상담 채팅(#238)은 "글로 하는 통화" 라서 같은 테이블에 남기고 이 칸으로만 구분합니다. 채팅도 대화 원문은 저장하지 않습니다.
 
 > `thinking_tests` 와 딸린 테이블 두 개는 2026-10-15 에 같은 기능(인지편향 잡기)에서 AI 가 만들었습니다.
 > - **문장별 답은 저장하지 않고 습관 8개의 평균만** 저장합니다. 테스트 문장은 앞으로 바뀔 수 있어서(선생님 말씀), 문장이 바뀌어도 테이블은 그대로 쓰게 하려는 것입니다.
@@ -474,9 +585,31 @@ erDiagram
 > - `end_reported` 는 "종료 팝업에 답했는지" 입니다. 이것이 없으면 "체크 0개로 답함" 과 "팝업을 닫아 버림" 을 구별할 수 없습니다.
 > - 카드로 켠 공부 기록은 과목이 없어도 됩니다. 그래서 검사 규칙을 `ck_study_sessions_study_has_subject_or_card` (노는 기록이거나, 과목이나 카드가 있음)로 바꿨습니다.
 
+> `checkin_emotions` 는 2026-10-17 에 이슈 #220(최종 기획서 4.2 「홈」의 하루 첫 태그)에서 **AI 가 만든 딸린 테이블**입니다. (체크인은 선생님이 AI 에게 맡긴 범위)
+> - 하루 첫 태그 = 컨디션(1~5) + 감정 태그 여러 개. 감정은 한 체크인에 여러 개라서 `thinking_test_weaknesses` 처럼 딸린 테이블에 담았습니다. 엔티티는 `CheckIn` 하나입니다.
+> - 감정 이름은 이슈에 적힌 6개(`EmotionTag`)이고, DB 에도 이름 그대로 저장합니다.
+> - 감정 태그를 보내면 그날의 감정이 **전부 바뀝니다.** 다른 칸과 달리 **안 보내면 그대로 둡니다**(감정 태그를 모르는 화면이 다시 보내도 지워지지 않게). 체크인 줄이 지워지면(탈퇴) 같이 지워집니다.
+
+> `reflection_prescriptions` 는 2026-10-17 에 **선생님이 "FE·BE·테이블까지 AI 가 만들라" 고 맡긴 기능**(통화 기록·회고·성찰)에서 AI 가 만든 테이블입니다. (이슈 #61)
+> - **처방 한 번 = 한 줄.** 언제 처방하는지는 `ReflectionRule` 과 docs/API.md "성찰일기 처방" 에 있습니다.
+> - **질문 글을 그대로 저장합니다.** 질문 세트(`ReflectionQuestions`)를 나중에 고쳐도 이미 내린 처방의 질문이 바뀌지 않게 하려는 것입니다. 질문은 늘 3개라서 `reviews` 처럼 칸 3개에 담았습니다.
+> - **답(일기 원문)은 저장하지 않습니다.** 지금은 FE 기기에만 있습니다. 서버에 둘지는 일기 저장(#60)·암호화(#68)에서 정합니다.
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
+
+> `risk_forecasts` 와 `risk_forecast_reasons` 는 2026-10-17 에 이슈 #49 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 돕고, 아래 "칸 이름" 만 정했습니다)
+> - **한 줄 = 하루 예측 하나.** `(user_id, forecast_date)` 가 겹치지 않게 막아 두었습니다. 같은 날을 다시 예측하면 새 줄을 만들지 않고 그 줄의 위험 수준과 이유를 **최신 결과로 고칩니다.**
+> - **위험 없음(`NONE`)인 날도 한 줄을 남깁니다.** 위험하다고 한 날만 남기면 "위험 없다고 했는데 무너진 날" 을 셀 수 없어서 정확도를 알 수 없기 때문입니다.
+> - **이유는 딸린 테이블**입니다. 한 예측에 이유가 0 ~ 2개(약한 요일 · 늦게 잠)라서 `thinking_tests` 처럼 `@ElementCollection` 으로 담았습니다. 규칙이 늘어도 칸을 늘릴 필요가 없습니다.
+> - **실제 달성률과 맞았는지는 둘 다 비어도 됩니다.** 예측할 때는 결과를 아직 모르기 때문입니다. 그날이 지난 뒤 채웁니다. (학생은 처음에 "실제 달성률은 꼭 있어야 한다" 고 했다가, 그러면 예측할 때 줄을 만들 수 없어서 바꿨습니다)
+> - ⚠️ 비어 있는 이유가 둘입니다: **아직 그날이 안 지남**, 또는 **그날 계획이 없어서 달성률을 구할 수 없었음**. 둘 다 "맞았는지 알 수 없음" 이라 한 칸으로 두었습니다. 구별이 필요해지면 칸을 더해 주세요.
+> - 다시 예측해도 **실제 달성률이 이미 채워진 줄은 고치지 않고**, 고칠 때도 위험 수준과 이유만 바꿉니다. (결과를 본 뒤에 예측을 바꾸는 일을 막으려고)
+> - `user_id` 가 있어서 탈퇴하면 예측이 같이 지워집니다. 딸린 테이블은 `AccountServiceTest` 의 `CHILD_TABLES` 에 더했습니다.
+> - **칸 이름은 AI 가 정했습니다.** `forecast_date`(예측한 날), `risk_level`(위험 수준), `actual_achievement_rate`(실제 달성률), `was_correct`(맞았는지), `reason`(이유). `level` 은 DB 예약어와 겹칠 수 있어 `risk_level` 로 했습니다. 그림에서 생각한 이름과 같은지 봐 주세요.
+> - 규칙과 근거는 [docs/RISK-FORECAST.md](./RISK-FORECAST.md) 에 있습니다.
+
 > `study_plans` 의 `start_time` · `kind` · `routine_id` 는 2026-10-12 에 이슈 #12 에서 더했습니다. (칸 이름과 뜻은 Project#12 의 표, 시작 시각을 `time` 으로 저장하는 것은 학생이 정함)
 > - 공부 계획(`STUDY`)은 `subject_id` 가 꼭 있어야 하고, 노는 계획(`PLAY`)만 비어도 됩니다. DB 에도 검사 규칙(`ck_study_plans_study_has_subject`)으로 걸어 두었습니다.
-> - 루틴 테이블은 아직 없어서(#85) `routine_id` 는 지금 항상 비어 있고, 그림에 선도 없습니다.
+> - 루틴으로 만든 계획은 routine_id를 기록합니다(#85). 루틴 삭제 후에도 원본 번호와 적용 기록을 유지하므로 그림의 선은 논리적인 관계이고 DB의 삭제 제약은 아닙니다.
 
 ## 그림 읽는 법
 

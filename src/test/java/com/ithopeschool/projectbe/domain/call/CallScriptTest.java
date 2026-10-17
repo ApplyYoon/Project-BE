@@ -6,6 +6,7 @@ import com.ithopeschool.projectbe.domain.bias.BiasQuestion;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
+import com.ithopeschool.projectbe.domain.risk.RiskLevel;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -561,5 +562,77 @@ class CallScriptTest {
 
     assertThat(lines.get(0)).contains("한 가지만 골라", "탓하지 말고", "답을 먼저 말하지 마");
     assertThat(lines).contains("  - 다름 1", "  - 다름 3").doesNotContain("  - 다름 4");
+  }
+
+  @Test
+  void chatInstructionsAreTheSameScriptWithChatOpening() {
+    // 상담 채팅(이슈 #238)은 통화와 같은 대본이고, 맨 앞의 두 줄만 다릅니다.
+    Card card = card(190, 240, "phone", List.of(3, 3));
+    String voice = CallScript.instructions(2, 3, card, null, List.of(), CallScript.SelfReport.NONE);
+    String chat =
+        CallScript.chatInstructions(2, 3, card, null, List.of(), CallScript.SelfReport.NONE);
+
+    assertThat(voice).contains("짧게 전화하는 공부 코치").contains("3분 안에 끝내");
+    assertThat(chat)
+        .contains("글로 이야기하는 공부 코치")
+        .contains("'통화' 는 이 채팅을 뜻해")
+        .doesNotContain("전화하는")
+        .doesNotContain("3분 안에 끝내");
+    // 세 번째 줄부터는 똑같습니다.
+    assertThat(chat.lines().skip(2).toList()).isEqualTo(voice.lines().skip(2).toList());
+  }
+
+  // ─── 오늘 예측 (위험한 날, 이슈 #49) ───
+
+  private static String withRisk(int careLevel, RiskLevel riskLevel) {
+    return CallScript.instructions(
+        careLevel, 3, ORDINARY, null, List.of(), CallScript.SelfReport.NONE, riskLevel);
+  }
+
+  @Test
+  @DisplayName("위험한 날(주의·높음)이면 [오늘의 사실] 다음에 [오늘 예측] 이 들어가고, 위험 정도만 알린다")
+  void riskyDayAddsForecastSection() {
+    String watch = withRisk(2, RiskLevel.WATCH);
+    String high = withRisk(2, RiskLevel.HIGH);
+
+    assertThat(watch).contains("[오늘 예측]", "위험 정도: 주의", "한 가지만, 아주 부드럽게");
+    assertThat(high).contains("[오늘 예측]", "위험 정도: 높음", "아쉬운 점을 지적하지 마");
+    assertThat(high.indexOf("[오늘의 사실]")).isLessThan(high.indexOf("[오늘 예측]"));
+    assertThat(high.indexOf("[오늘 예측]")).isLessThan(high.indexOf("[통화 순서]"));
+    // 이유는 모른다고 하고 추측하지 못하게 합니다. (잠든 시각 같은 건강 데이터는 넘기지 않습니다)
+    assertThat(high).contains("이유는 네가 모르는 정보", "단정하거나 겁주지 마", "목표를 더 올리라고 밀지 마");
+  }
+
+  @Test
+  @DisplayName("상담 채팅도 같은 대본이라, 위험한 날이면 [오늘 예측] 이 들어가고 위험 수준을 안 넘기면 예전과 똑같다")
+  void chatInstructionsAlsoGetTheRisk() {
+    Card card = card(190, 240, "phone", List.of(3, 3));
+    String normal =
+        CallScript.chatInstructions(2, 3, card, null, List.of(), CallScript.SelfReport.NONE);
+    String risky =
+        CallScript.chatInstructions(
+            2, 3, card, null, List.of(), CallScript.SelfReport.NONE, RiskLevel.HIGH);
+
+    assertThat(normal).doesNotContain("[오늘 예측]");
+    assertThat(risky).contains("글로 이야기하는 공부 코치", "[오늘 예측]", "위험 정도: 높음");
+    assertThat(
+            CallScript.chatInstructions(
+                2, 3, card, null, List.of(), CallScript.SelfReport.NONE, RiskLevel.NONE))
+        .isEqualTo(normal);
+  }
+
+  @Test
+  @DisplayName("위험 없음이거나 위험 수준을 안 넘기면 지침은 예전과 똑같다")
+  void noRiskKeepsTheOldScript() {
+    String old =
+        CallScript.instructions(2, 3, ORDINARY, null, List.of(), CallScript.SelfReport.NONE);
+
+    assertThat(withRisk(2, RiskLevel.NONE)).isEqualTo(old).doesNotContain("[오늘 예측]");
+  }
+
+  @Test
+  @DisplayName("위로하는 통화(관리 강도 0)는 위험한 날이어도 지침이 그대로다 (이미 부드럽다)")
+  void supportiveCallIgnoresRisk() {
+    assertThat(withRisk(0, RiskLevel.HIGH)).isEqualTo(withRisk(0, RiskLevel.NONE));
   }
 }
