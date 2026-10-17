@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.ithopeschool.projectbe.domain.bias.BiasQuestion;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
@@ -17,6 +18,9 @@ import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest.Line;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallRecordResponse;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
+import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
@@ -31,6 +35,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 // Service 단위 테스트: GPT(CallReviewClient)와 DB(CallRecordRepository)를 가짜로 바꿔서 마무리 로직만 확인합니다.
@@ -42,6 +47,7 @@ class CallRecordServiceTest {
 
   private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
   private final CallRecordRepository callRecordRepository = mock(CallRecordRepository.class);
+  private final CheckInRepository checkInRepository = mock(CheckInRepository.class);
   private final CallReviewClient callReviewClient = mock(CallReviewClient.class);
   // GPT 호출 기록 · 하루 한도는 가짜로 둡니다. 기본은 "요약을 불러도 된다" 입니다. (setUp)
   private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
@@ -50,6 +56,7 @@ class CallRecordServiceTest {
       new CallRecordService(
           currentUserProvider,
           callRecordRepository,
+          checkInRepository,
           callReviewClient,
           gptUsageGuard,
           Clock.fixed(NOW, ZoneOffset.UTC));
@@ -163,6 +170,8 @@ class CallRecordServiceTest {
     assertThat(call.getSummary()).isNull();
     verify(callReviewClient, never()).review(anyString(), anyString(), any());
     verify(callRecordRepository).save(call);
+    // 내용을 남기지 않으므로 체크인도 만들지 않습니다
+    verifyNoInteractions(checkInRepository);
   }
 
   @Test
@@ -192,6 +201,70 @@ class CallRecordServiceTest {
   }
 
   @Test
+  @DisplayName("통화에서 나온 기분·이유·예상 순공·약속을 통화한 날의 체크인(source: call)으로 새로 남긴다")
+  void createsCheckInFromTheCall() {
+    given(checkInRepository.findByUserIdAndCheckInDate(USER_ID, LocalDate.of(2026, 10, 14)))
+        .willReturn(Optional.empty());
+
+    service.finish(CALL_ID, TRANSCRIPT);
+
+    ArgumentCaptor<CheckIn> saved = ArgumentCaptor.forClass(CheckIn.class);
+    verify(checkInRepository).save(saved.capture());
+    CheckIn checkIn = saved.getValue();
+    assertThat(checkIn.getUserId()).isEqualTo(USER_ID);
+    assertThat(checkIn.getCheckInDate()).isEqualTo(LocalDate.of(2026, 10, 14));
+    assertThat(checkIn.getSource()).isEqualTo(CheckInSource.CALL);
+    assertThat(checkIn.getMood()).isEqualTo(3);
+    assertThat(checkIn.getMissReason()).isEqualTo(MissReason.PHONE);
+    assertThat(checkIn.getExpectedMinutes()).isEqualTo(90);
+    assertThat(checkIn.getPromiseIf()).isEqualTo("학원에서 오면");
+    assertThat(checkIn.getPromiseThen()).isEqualTo("폰을 서랍에 넣기");
+  }
+
+  @Test
+  @DisplayName("그날 직접 한 체크인이 있으면 학생이 고른 값은 두고 빈 칸만 채워 저장한다")
+  void fillsBlanksOfTheExistingCheckIn() {
+    CheckIn manual =
+        new CheckIn(
+            USER_ID,
+            LocalDate.of(2026, 10, 14),
+            CheckInSource.MANUAL,
+            4,
+            5,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    given(checkInRepository.findByUserIdAndCheckInDate(USER_ID, LocalDate.of(2026, 10, 14)))
+        .willReturn(Optional.of(manual));
+
+    service.finish(CALL_ID, TRANSCRIPT);
+
+    verify(checkInRepository).save(manual);
+    assertThat(manual.getSource()).isEqualTo(CheckInSource.MANUAL);
+    // 학생이 고른 기분 5 는 통화의 3 으로 바뀌지 않습니다
+    assertThat(manual.getMood()).isEqualTo(5);
+    assertThat(manual.getMissReason()).isEqualTo(MissReason.PHONE);
+    assertThat(manual.getExpectedMinutes()).isEqualTo(90);
+  }
+
+  @Test
+  @DisplayName("GPT 가 위기 표현이라고 한 통화는 기분·이유가 정리돼 있어도 체크인을 만들지 않는다")
+  void gptCrisisMakesNoCheckIn() {
+    given(callReviewClient.review(anyString(), anyString(), any()))
+        .willReturn(
+            Optional.of(
+                new CallReview.Raw(
+                    true, "요약", null, null, null, "phone", "학원에서 오면", "폰을 서랍에 넣기", null, 1, 60)));
+
+    service.finish(CALL_ID, TRANSCRIPT);
+
+    verifyNoInteractions(checkInRepository);
+  }
+
+  @Test
   @DisplayName("학생이 한마디도 안 했으면 GPT 를 부르지 않고 빈 기록으로 마무리한다")
   void silentCallIsFinishedWithoutGpt() {
     CallFinishRequest silent =
@@ -203,6 +276,8 @@ class CallRecordServiceTest {
     assertThat(response.showHelp()).isFalse();
     assertThat(response.summary()).isNull();
     verify(callReviewClient, never()).review(anyString(), anyString(), any());
+    // 옮길 값이 없어서 체크인을 만들지 않습니다
+    verifyNoInteractions(checkInRepository);
   }
 
   @Test
