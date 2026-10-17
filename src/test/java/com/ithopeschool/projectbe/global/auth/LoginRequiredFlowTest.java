@@ -110,6 +110,9 @@ class LoginRequiredFlowTest {
               "{\"plans\":[" + PLAN_BODY + "]}"),
           new Api("PATCH", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", "{\"done\":true}"),
           new Api("DELETE", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", null),
+          // 관리 설정
+          new Api("GET", "/api/v1/settings", "/api/v1/settings", null),
+          new Api("PATCH", "/api/v1/settings", "/api/v1/settings", "{\"maxHarshness\":5}"),
           // 시험 점수
           new Api("GET", "/api/v1/exams", "/api/v1/exams", null),
           new Api("POST", "/api/v1/exams", "/api/v1/exams", EXAM_BODY),
