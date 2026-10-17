@@ -117,6 +117,52 @@ class StudyPlanControllerTest {
     verifyNoInteractions(studyPlanService);
   }
 
+  @Test
+  @DisplayName("from · to 를 함께 보내면 기간 목록을 돌려준다 (#250)")
+  void getPlansBetween() throws Exception {
+    given(studyPlanService.getPlansBetween(OCT_5, OCT_5.plusDays(1)))
+        .willReturn(
+            List.of(
+                new StudyPlanResponse("7", OCT_5, "3", "수학", 60, false, null, "study", null),
+                new StudyPlanResponse(
+                    "8", OCT_5.plusDays(1), "3", "영어", 30, true, "19:00", "study", null)));
+
+    mockMvc
+        .perform(get("/api/v1/study-plans").param("from", "2026-10-05").param("to", "2026-10-06"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(2))
+        .andExpect(jsonPath("$[0].date").value("2026-10-05"))
+        .andExpect(jsonPath("$[1].date").value("2026-10-06"))
+        .andExpect(jsonPath("$[1].startTime").value("19:00"));
+  }
+
+  @ParameterizedTest(name = "{0} 이면 400")
+  @ValueSource(
+      strings = {
+        "date=2026-10-05&from=2026-10-01&to=2026-10-05",
+        "from=2026-10-01",
+        "to=2026-10-05",
+        "from=2026/10/01&to=2026-10-05",
+        "from=2026-10-01&to=abc"
+      })
+  @DisplayName("date 와 from · to 를 섞거나, 하나만 보내거나, 모양이 틀리면 400 이고 Service 는 부르지 않는다")
+  void wrongRangeParams(String query) throws Exception {
+    mockMvc
+        .perform(get("/api/v1/study-plans?" + query))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    verifyNoInteractions(studyPlanService);
+  }
+
+  @Test
+  @DisplayName("섞어 보내면 무엇을 보내야 하는지 알려 준다")
+  void mixedParamsMessage() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/study-plans").param("date", "2026-10-05").param("from", "2026-10-01"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("date 하나, 또는 from 과 to 를 함께 보내 주세요"));
+  }
+
   @ParameterizedTest(name = "date={0} 이면 400")
   @ValueSource(strings = {"2026/10/05", "2026-10-5", "2026-13-01", "10월 5일", "", "abc"})
   @DisplayName("날짜 모양이 틀리면 400 이고, Service 는 부르지 않는다")
