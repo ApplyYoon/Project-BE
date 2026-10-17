@@ -340,13 +340,14 @@ SNS 중에서는 **구글만** 씁니다. 아래 [구글로 시작하기](#구�
 **응답 201**
 
 ```json
-{ "id": "1", "name": "티맥이" }
+{ "id": "1", "name": "티맥이", "onboarded": false }
 ```
 
 | 필드   | 무엇                                                              |
 | ------ | ----------------------------------------------------------------- |
 | `id`   | 사용자 번호. **글자**입니다 (FE 의 `AuthUser.id` 가 `string`)     |
 | `name` | 화면에 보이는 이름 (= 보낸 `nickname`). 실명·이메일은 돌려주지 않습니다 |
+| `onboarded` | **온보딩을 마쳤는지.** `true` 면 이 기기에 기록이 없어도 온보딩 화면을 띄우지 않습니다. 마침 표시는 `POST /api/v1/onboarding/completion` (아래 [온보딩](#온보딩)). 이 칸은 가입 · 로그인 · 구글 로그인 · `GET /auth/me` 응답의 `user` 에 모두 들어 있습니다 |
 
 **에러**
 
@@ -371,7 +372,7 @@ SNS 중에서는 **구글만** 씁니다. 아래 [구글로 시작하기](#구�
 ```json
 {
   "token": "WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ",
-  "user": { "id": "1", "name": "티맥이" }
+  "user": { "id": "1", "name": "티맥이", "onboarded": false }
 }
 ```
 
@@ -406,7 +407,7 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 **응답 200** — 가입·로그인 응답의 `user` 와 같은 모양
 
 ```json
-{ "id": "1", "name": "티맥이" }
+{ "id": "1", "name": "티맥이", "onboarded": false }
 ```
 
 **에러** — 아래 [로그인이 필요한 API](#로그인이-필요한-api) 의 401
@@ -428,7 +429,7 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 **응답 200** — 둘 중 하나입니다.
 
 ```json
-{ "status": "LOGGED_IN", "token": "Zx3k…", "user": { "id": "1", "name": "티맥이" } }
+{ "status": "LOGGED_IN", "token": "Zx3k…", "user": { "id": "1", "name": "티맥이", "onboarded": false } }
 ```
 
 ```json
@@ -453,7 +454,7 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 ```
 
 - 규칙은 [가입](#가입) 과 같습니다. `email` · `password` 칸이 없고, 이메일은 구글이 확인한 값을 씁니다. 실명(`name`)을 무시하는 것, 만 14세 확인(`consents.over14`)과 동의 문구 버전(`consents.version`)이 필수인 것, 가입하면 동의 기록이 남는 것도 같습니다.
-- **응답 201** — 로그인 응답과 같은 모양 `{ "token": "…", "user": { "id": "1", "name": "티맥이" } }`
+- **응답 201** — 로그인 응답과 같은 모양 `{ "token": "…", "user": { "id": "1", "name": "티맥이", "onboarded": false } }`
 
 **에러** (두 API 공통)
 
@@ -2973,7 +2974,7 @@ AI 문단이 없을 때도 **200** 이고, `paragraph` 만 `null` 입니다(`evi
 
 ### 온보딩
 
-첫 실행 설문(FE `/onboarding`)의 답과 "처음 계획"(FE `/onboarding/plan`)을 저장·조회합니다. 여섯 주소 모두 **로그인이 필요합니다.** (이슈 #21)
+첫 실행 설문(FE `/onboarding`)의 답과 "처음 계획"(FE `/onboarding/plan`)을 저장·조회하고, 온보딩을 마쳤다고 표시합니다. 일곱 주소 모두 **로그인이 필요합니다.** (이슈 #21)
 
 | 주소 | 하는 일 |
 | --- | --- |
@@ -2983,8 +2984,23 @@ AI 문단이 없을 때도 **200** 이고, `paragraph` 만 `null` 입니다(`evi
 | `GET /api/v1/onboarding/initial-plan` | 내 처음 계획 보기 |
 | `POST /api/v1/onboarding/initial-plan` | 처음 계획 세우기 (한 번만) |
 | `PUT /api/v1/onboarding/initial-plan` | 처음 계획 "다시 세우기" |
+| `POST /api/v1/onboarding/completion` | 온보딩 **마침 표시** (본문 없음 · 여러 번 불러도 같음) |
 
 > 주소가 복수형(`/onboardings`)이 아닌 이유: 한 사람에게 "지금 내 설문" 은 하나뿐이라서, 이슈에 적힌 `/onboarding` 을 그대로 썼습니다.
+
+#### 온보딩 마침 표시
+
+`POST /api/v1/onboarding/completion` — 본문 없이 보내면 "이 사람은 온보딩을 마쳤다" 를 서버에 적고, 내 정보를 돌려줍니다. (**200**, 2026-10-17 멘토 결정)
+
+```json
+{ "id": "1", "name": "티맥이", "onboarded": true }
+```
+
+- **왜 필요한가요?** FE 는 온보딩을 어디까지 했는지를 브라우저에만 적어 왔습니다. 그래서 이미 가입한 사람도 다른 기기 · 브라우저에서 로그인하면 온보딩을 처음부터 다시 했습니다. 서버가 기억해 두고 로그인 응답의 `user.onboarded` 로 알려 줍니다.
+- **FE 가 할 일:** 온보딩 마지막 화면(결과)을 보면 이 주소를 부릅니다. 로그인 · 가입 응답의 `user.onboarded` 가 `true` 면 온보딩 화면을 건너뜁니다.
+- 여러 번 불러도 **처음 마친 시각**이 그대로입니다. (`users.onboarded_at`)
+- 이 기능이 생기기 전(2026-10-18 06:00 전)에 가입한 사람은 Neon 에서 `db/migrations/08-users-onboarded.sql` 로 모두 "마쳤다" 로 채워 둡니다.
+- 401: 로그인하지 않음 / 403: 최신 동의 문구에 동의하지 않음(`CONSENT_REQUIRED`) / 404: 토큰은 있는데 사용자가 없음(탈퇴 직후 등)
 
 #### 설문 답 저장 · 일부만 고치기
 
