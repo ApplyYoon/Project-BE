@@ -126,16 +126,17 @@ public record WeeklyGoal(Kind kind, int target, int baseline) {
   }
 
   // 안전 브레이크까지 보고 이번 주 목표 후보를 만듭니다.
-  // 안전 브레이크가 켜져 있으면(위기 표현 · 시험 기간 · 기분 저하) 제안하지 않습니다. 빈 목록입니다.
+  // 안전 브레이크가 켜져 있거나(위기 표현 · 기분 저하) 시험 기간이면 제안하지 않습니다. 빈 목록입니다.
   // 힘든 주에 "지난주보다 10% 더" 를 내밀면 그것도 다그치는 말이 되기 때문입니다. 안전 브레이크는 어떤 규칙보다 먼저입니다.
   // 연락 금지 시간(quiet)은 "지금 연락해도 되는지" 일 뿐이라 여기서는 보지 않습니다.
   //
   //   완주율 55%(20번), 안전 브레이크 꺼짐               →  [완주율 65% 넘기기, 지난주만큼(55%)]
   //   완주율 55%(20번), 채찍 멈춤이나 회복 모드가 켜짐    →  []
+  //   완주율 55%(20번), 시험 기간                       →  []   (시험 주에 "더" 를 내밀지 않습니다)
   //
   // ⚠️ FE 의 제안 함수에는 아직 이 규칙이 없습니다. 이슈 #88 의 완료 조건을 따른 것입니다.
   public static List<WeeklyGoal> candidates(WeekFacts lastWeek, SafetyBrake brake) {
-    if (brake.stopWhip() || brake.recoveryMode()) {
+    if (brake.stopWhip() || brake.recoveryMode() || brake.examPeriod()) {
       return List.of();
     }
     return candidates(lastWeek);

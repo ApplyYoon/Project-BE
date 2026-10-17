@@ -6,8 +6,9 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
-// "시험 기간" 검사기입니다. (이슈 #58, 기획서 v2 5장 「안전 브레이크」)
-// 시험 직전 3일부터 직후 2일까지는 가장 예민한 때라서, 이 기간에는 채찍을 낮춥니다.
+// "시험 기간" 검사기입니다. (이슈 #58 · #232, 최종 기획서 「4.5 안전 브레이크」)
+// 시험 직전 3일부터 직후 2일까지는 가장 예민한 때라서, 이 기간에는 관리 강도가 2(넛지)를 넘지 않습니다.
+// 회복 모드(0)로 내리지는 않습니다. 시험 공부는 계속 챙기되, 채찍(3~4단계)만 쓰지 않습니다.
 //
 //   오늘이 시험 3일 전  →  true
 //   오늘이 시험 당일    →  true
@@ -25,9 +26,12 @@ public final class ExamPeriod {
   // 시험 며칠 뒤까지 시험 기간으로 보는지
   public static final int DAYS_AFTER = 2;
 
+  // 시험 기간의 관리 강도 상한 (2 = 넛지). FE 의 EXAM_STAGE_CAP (src/lib/careStage.ts) 과 같습니다. (이슈 #232)
+  // 예전(2026-10-11)에는 시험 기간을 안전 브레이크로 보고 0(회복)으로 내렸지만, 최종 기획서에서 상한 2 로 바뀌었습니다.
+  public static final int CARE_LEVEL_CAP = 2;
+
   // 시험 기간이라 관리 강도를 낮췄을 때, 학생에게 "왜" 를 알려 주는 한 줄입니다. (이슈 #58 "낮춘 이유를 말할 문장")
-  // 시험 기간은 안전 브레이크라서 관리 강도가 0(회복)이 됩니다. (CareLevel.of, 2026-10-11 FE·BE 가 확정한 규칙)
-  // 그날은 CareDecision.reason 대신 이 문장을 보여 주면 됩니다. 혼내지 않고, 쉬어 가는 이유만 담담하게 말합니다.
+  // 그날은 CareDecision.reason 대신 이 문장을 보여 주면 됩니다. 혼내지 않고, 독촉을 쉬는 이유만 담담하게 말합니다.
   public static final String REASON = "시험 기간이라 독촉은 쉬어갈게. 컨디션 챙기면서 할 수 있는 만큼만 하자.";
 
   // 값만 계산하는 도구라서 객체를 만들 일이 없습니다.
@@ -50,6 +54,16 @@ public final class ExamPeriod {
       }
     }
     return false;
+  }
+
+  // 시험 기간이면 관리 강도를 2(CARE_LEVEL_CAP)까지로 낮추고, 아니면 그대로 돌려줍니다.
+  // 2 보다 낮은 단계는 올리지 않습니다.
+  //
+  //   3, 시험 기간      →  2
+  //   1, 시험 기간      →  1
+  //   3, 시험 기간 아님  →  3
+  public static int capCareLevel(int careLevel, boolean isExamPeriod) {
+    return isExamPeriod ? Math.min(careLevel, CARE_LEVEL_CAP) : careLevel;
   }
 
   // 오늘이 시험 기간이면 이유 문장(REASON)을, 아니면 null 을 돌려줍니다.

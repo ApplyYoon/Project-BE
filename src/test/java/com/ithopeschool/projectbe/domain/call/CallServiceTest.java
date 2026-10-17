@@ -483,14 +483,39 @@ class CallServiceTest {
   }
 
   @Test
-  @DisplayName("서버에 저장한 시험이 이틀 뒤면 위로하는 통화로 한다")
-  void examNearMeansSupportiveCall() {
+  @DisplayName("서버에 저장한 시험이 이틀 뒤면 채찍(3) 대신 넛지(2) 말투로 한다 — 위로만 하는 통화(0)는 아니다 (이슈 #232)")
+  void examNearCapsTheCallAtNudge() {
     given(examRepository.findByUserIdOrderByExamDateDescIdDesc(USER_ID))
         .willReturn(List.of(new Exam(USER_ID, "중간고사", ExamType.SCHOOL, TODAY.plusDays(2))));
 
-    callService.startSession(REQUEST);
+    callService.startSession(new CallSessionRequest(3, 5, REQUEST.card(), null, null));
 
-    assertThat(sentInstructions()).contains("위로하고 응원하는 말만");
+    assertThat(sentInstructions())
+        .contains("담백하게 사실만")
+        .doesNotContain("돌려 말하지 말고")
+        .doesNotContain("위로하고 응원하는 말만");
+  }
+
+  @Test
+  @DisplayName("시험 기간이어도 2 보다 낮은 단계(당근 1)는 그대로 둔다")
+  void examNearKeepsLowerLevels() {
+    given(examRepository.findByUserIdOrderByExamDateDescIdDesc(USER_ID))
+        .willReturn(List.of(new Exam(USER_ID, "중간고사", ExamType.SCHOOL, TODAY.plusDays(2))));
+
+    callService.startSession(new CallSessionRequest(1, 5, REQUEST.card(), null, null));
+
+    assertThat(sentInstructions()).contains("잘한 점을 숫자와 함께 구체적으로 칭찬해");
+  }
+
+  @Test
+  @DisplayName("시험이 4일 뒤면 아직 시험 기간이 아니라서 채찍(3) 말투 그대로다")
+  void examFarAwayKeepsTheRequestedLevel() {
+    given(examRepository.findByUserIdOrderByExamDateDescIdDesc(USER_ID))
+        .willReturn(List.of(new Exam(USER_ID, "중간고사", ExamType.SCHOOL, TODAY.plusDays(4))));
+
+    callService.startSession(new CallSessionRequest(3, 5, REQUEST.card(), null, null));
+
+    assertThat(sentInstructions()).contains("돌려 말하지 말고");
   }
 
   @Test

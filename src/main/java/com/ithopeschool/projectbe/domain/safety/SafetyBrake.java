@@ -6,33 +6,37 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 
-// 어떤 설정보다 먼저 적용되는 안전 규칙 4가지를 한 번에 판정합니다. (이슈 #56, 기획서 v2 5장 「안전 브레이크」)
+// 어떤 설정보다 먼저 적용되는 안전 규칙 4가지를 한 번에 판정합니다. (이슈 #56, 최종 기획서 「4.5 안전 브레이크」)
 // 사용자 대부분이 미성년자라서, 아래 결과는 관리 강도·알림 설정보다 항상 우선합니다.
 //
 //   규칙                      검사기                    켜지는 것
 //   1) 위기 표현               CrisisText (이슈 #56)     stopWhip · recoveryMode · showHelp
-//   2) 시험 직전 3일~직후 2일   ExamPeriod (이슈 #58)     recoveryMode
+//   2) 시험 직전 3일~직후 2일   ExamPeriod (이슈 #58)     examPeriod  (회복 모드가 아니라 관리 강도 상한 2, 이슈 #232)
 //   3) 기분 저하 6일 연속       LowMoodStreak (이슈 #59)  recoveryMode · showHelp
 //   4) 연락 금지 시간           QuietHours (이슈 #57)     quiet
 //
 //   글에 "죽고 싶다" 가 있음           →  stopWhip · recoveryMode · showHelp 모두 true
-//   시험 이틀 전 (글·기분은 괜찮음)     →  recoveryMode 만 true  (도움 안내는 띄우지 않습니다)
+//   시험 이틀 전 (글·기분은 괜찮음)     →  examPeriod 만 true  (회복 모드도, 도움 안내도 아닙니다)
 //   기분 1~2 가 오늘까지 6일 연속      →  recoveryMode · showHelp 가 true, stopWhip 은 false
 //   밤 11시 30분 (금지 23:00~07:00)   →  quiet 가 true  (위의 셋과는 따로 정해집니다)
 //
-// 관리 강도 계산(CareLevel.of)의 isSafetyBrakeOn 에는 stopWhip || recoveryMode 를 넘깁니다.
+// 관리 강도 계산(CareLevel.of)의 isSafetyBrakeOn 에는 stopWhip || recoveryMode 를 넘기고,
+// 시험 기간이면 그 결과를 2 까지로 낮춥니다. (ExamPeriod.capCareLevel)
 //
 //   SafetyBrake brake = SafetyBrake.check(now, texts, moods, examDates);
 //   boolean isSafetyBrakeOn = brake.stopWhip() || brake.recoveryMode();
+//   int level = ExamPeriod.capCareLevel(CareLevel.of(…, isSafetyBrakeOn), brake.examPeriod());
 //
 // FE 의 getSafetyBrakeResult (src/lib/safetyBrake.ts) 와 같은 규칙입니다.
 // 한쪽을 고치면 다른 쪽도 같이 고쳐야 화면과 서버의 판단이 어긋나지 않습니다.
 //
 // stopWhip: 모든 채찍을 즉시 멈춰야 하면 true (위기 표현을 감지했을 때만)
-// recoveryMode: 채찍 대신 회복 모드로 가야 하면 true (위기 표현·시험 기간·기분 저하 중 하나라도)
+// recoveryMode: 채찍 대신 회복 모드로 가야 하면 true (위기 표현·기분 저하 중 하나라도)
+// examPeriod: 시험 직전 3일 ~ 직후 2일이면 true. 관리 강도는 2(넛지)를 넘지 않고, 채찍 메시지(3~4단계)는 보내지 않습니다.
 // showHelp: 도움 연결 안내(HelpLine)를 보여줘야 하면 true (위기 표현·기분 저하)
 // quiet: 지금은 메시지·전화를 하면 안 되면 true (연락 금지 시간)
-public record SafetyBrake(boolean stopWhip, boolean recoveryMode, boolean showHelp, boolean quiet) {
+public record SafetyBrake(
+    boolean stopWhip, boolean recoveryMode, boolean examPeriod, boolean showHelp, boolean quiet) {
 
   // 기본 연락 금지 시간(23:00~07:00)으로 판정합니다.
   public static SafetyBrake check(
@@ -61,7 +65,8 @@ public record SafetyBrake(boolean stopWhip, boolean recoveryMode, boolean showHe
 
     return new SafetyBrake(
         isCrisisDetected,
-        isCrisisDetected || isExamNear || isMoodLow,
+        isCrisisDetected || isMoodLow,
+        isExamNear,
         isCrisisDetected || isMoodLow,
         QuietHours.isQuiet(now, quietStart, quietEnd));
   }
