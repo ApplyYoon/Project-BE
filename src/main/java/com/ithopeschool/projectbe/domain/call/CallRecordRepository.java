@@ -13,6 +13,10 @@ public interface CallRecordRepository extends JpaRepository<CallRecord, Long> {
   List<CallRecord> findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
       Long userId, LocalDate from);
 
+  // 내 통화 중 from ~ to (두 날짜 모두 포함) 의 것을 시작 순서로 찾습니다. 없으면 빈 목록입니다.
+  List<CallRecord> findByUserIdAndCallDateBetweenOrderByStartedAtAscIdAsc(
+      Long userId, LocalDate from, LocalDate to);
+
   // 내 통화 중에서 번호로 하나 찾습니다. 없는 번호이거나 남의 통화면 빈 Optional 입니다.
   Optional<CallRecord> findByIdAndUserId(Long id, Long userId);
 }

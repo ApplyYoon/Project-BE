@@ -35,16 +35,6 @@ public record ThinkingGapResponse(
       String habit, String label, boolean thought, int foundCount, String verdict) {}
 
   public static ThinkingGapResponse from(ThinkingGap gap) {
-    List<Reason> reasons = new ArrayList<>();
-    for (ThinkingGap.ReasonGap reason : gap.reasons()) {
-      reasons.add(
-          new Reason(
-              reason.reason().name(),
-              CallSummary.missReasonLabel(reason.reason()),
-              chipsOf(reason.thoughtBy()),
-              reason.actualCount(),
-              reason.verdict().name()));
-    }
     List<Habit> habits = new ArrayList<>();
     for (ThinkingGap.HabitGap habit : gap.habits()) {
       habits.add(
@@ -59,13 +49,28 @@ public record ThinkingGapResponse(
         gap.days(),
         gap.callCount(),
         gap.enoughData(),
-        reasons,
+        reasonsOf(gap.reasons()),
         habits,
         chipsOf(gap.unverifiable()),
         gap.sentences());
   }
 
-  private static List<ThinkingTestResponse.Chip> chipsOf(List<Weakness> weaknesses) {
+  // 이유 판정들을 응답 모양으로 바꿉니다. (ExamThinkingGapResponse 도 같이 씁니다)
+  static List<Reason> reasonsOf(List<ThinkingGap.ReasonGap> gaps) {
+    List<Reason> reasons = new ArrayList<>();
+    for (ThinkingGap.ReasonGap reason : gaps) {
+      reasons.add(
+          new Reason(
+              reason.reason().name(),
+              CallSummary.missReasonLabel(reason.reason()),
+              chipsOf(reason.thoughtBy()),
+              reason.actualCount(),
+              reason.verdict().name()));
+    }
+    return reasons;
+  }
+
+  static List<ThinkingTestResponse.Chip> chipsOf(List<Weakness> weaknesses) {
     List<ThinkingTestResponse.Chip> chips = new ArrayList<>();
     for (Weakness weakness : weaknesses) {
       chips.add(new ThinkingTestResponse.Chip(weakness.name(), weakness.getLabel()));

@@ -12,6 +12,11 @@ public interface StudyPlanRepository extends JpaRepository<StudyPlan, Long> {
   // (user_id, plan_date) 색인 덕분에 계획이 많아져도 빨리 찾습니다.
   List<StudyPlan> findByUserIdAndPlanDateOrderById(Long userId, LocalDate planDate);
 
+  // from ~ to (두 날짜 모두 포함) 의 내 계획을 날짜 순서, 같은 날이면 번호 순서로 모두 찾습니다. 없으면 빈 목록입니다.
+  // 시험 전 2주의 "계획 대비 실제" 를 셀 때 씁니다. (ThinkingTestService)
+  List<StudyPlan> findByUserIdAndPlanDateBetweenOrderByPlanDateAscIdAsc(
+      Long userId, LocalDate from, LocalDate to);
+
   // 내 계획 중에서 번호로 하나 찾습니다. 없는 번호이거나 남의 계획이면 빈 Optional 입니다.
   Optional<StudyPlan> findByIdAndUserId(Long id, Long userId);
 }

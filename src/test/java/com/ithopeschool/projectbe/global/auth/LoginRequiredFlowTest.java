@@ -192,6 +192,11 @@ class LoginRequiredFlowTest {
           new Api("GET", "/api/v1/thinking-tests/latest", "/api/v1/thinking-tests/latest", null),
           new Api("GET", "/api/v1/thinking-tests/gap", "/api/v1/thinking-tests/gap", null),
           new Api(
+              "GET",
+              "/api/v1/thinking-tests/exam-gap",
+              "/api/v1/thinking-tests/exam-gap?examDate=2026-10-20",
+              null),
+          new Api(
               "POST",
               "/api/v1/thinking-tests",
               "/api/v1/thinking-tests",
