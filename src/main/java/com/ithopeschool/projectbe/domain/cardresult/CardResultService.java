@@ -8,6 +8,7 @@ import com.ithopeschool.projectbe.domain.cardday.CardDayMarkRepository;
 import com.ithopeschool.projectbe.domain.cardday.CardDayMarkType;
 import com.ithopeschool.projectbe.domain.cardresult.dto.CardDayResultResponse;
 import com.ithopeschool.projectbe.domain.cardresult.dto.PlanPatternResponse;
+import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.restday.RestDay;
 import com.ithopeschool.projectbe.domain.restday.RestDayRepository;
@@ -70,8 +71,8 @@ public class CardResultService {
   // "지금 몇 시인지" 는 시계에게 묻습니다. 테스트에서 시각을 고정할 수 있습니다.
   private final Clock clock;
 
-  // 카드 하루치 하나와 그 카드. (이 Service 안에서만 씁니다)
-  private record CardDayOfCard(Card card, CardDay day) {}
+  // 카드 하루치 하나와 그 카드, 실패로 기록할 때 고른 원인(없으면 null). (이 Service 안에서만 씁니다)
+  private record CardDayOfCard(Card card, CardDay day, MissReason missReason) {}
 
   // "어느 카드의 어느 날짜" 를 가리키는 열쇠. 같은 카드 · 같은 날짜면 같은 열쇠입니다. (record 라서 equals 가 저절로 생김)
   private record CardDateKey(Long cardId, LocalDate date) {}
@@ -138,6 +139,39 @@ public class CardResultService {
         pattern == null ? null : pattern.toValue());
   }
 
+  // from ~ to (두 날짜 모두 포함) 의 판정이 끝난 카드 하루치를 날짜 순 → 그날 카드 순서로 돌려줍니다. (이슈 #230)
+  // 재발 신호(RelapseSignalService) · 의지력처럼 다른 Service 가 부릅니다. 기간 제한은 없습니다.
+  // userId 는 부르는 쪽이 currentUserProvider.getCurrentUserId() 로 얻은 값을 넘깁니다.
+  // 아직 판정 전(result 가 null)인 날은 넣지 않습니다. (FE JudgedCardDay 와 같음)
+  @Transactional(readOnly = true)
+  public List<JudgedCardDay> getJudgedDays(Long userId, LocalDate from, LocalDate to) {
+    Instant now = clock.instant();
+    List<JudgedCardDay> judged = new ArrayList<>();
+    for (CardDayOfCard entry : loadCardDays(userId, from, to)) {
+      CardDay day = entry.day();
+      CardResult result = CardResultJudge.getCardResult(day, now);
+      if (result == null) {
+        continue;
+      }
+      Card card = entry.card();
+      judged.add(
+          new JudgedCardDay(
+              card.getId(),
+              day.date(),
+              !card.isOneOff(),
+              card.getPriority(),
+              result,
+              // 미실행은 실행률 0 (응답 CardDayResultResponse 와 같은 규칙)
+              result.isMiss() ? 0 : CardResultJudge.getRunRate(day),
+              entry.missReason(),
+              CardResultJudge.isStartedOnTime(day),
+              CardResultJudge.hasCountedSession(day)
+                  ? CardResultJudge.getChecklistRate(day)
+                  : null));
+    }
+    return judged;
+  }
+
   // ---- 도우미 ----
 
   // from ~ to 의 카드 하루치를 날짜 순 → 그날 카드 순서로 만듭니다.
@@ -200,7 +234,9 @@ public class CardResultService {
         // 휴식 날이면 그 카드의 표시와 상관없이 휴식입니다. (휴식은 모든 집계에서 빠지는 것이 먼저)
         CardResult mark = restDates.contains(date) ? CardResult.REST : toResult(markByKey.get(key));
         List<CardDay.Session> sessions = sessionsByKey.getOrDefault(key, List.of());
-        days.add(new CardDayOfCard(card, toCardDay(card, date, sessions, mark)));
+        CardDayMark cardDayMark = markByKey.get(key);
+        MissReason cause = cardDayMark == null ? null : cardDayMark.getCause();
+        days.add(new CardDayOfCard(card, toCardDay(card, date, sessions, mark), cause));
       }
     }
     return days;

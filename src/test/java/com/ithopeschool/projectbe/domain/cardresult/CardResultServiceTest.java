@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
 import com.ithopeschool.projectbe.domain.card.Card;
+import com.ithopeschool.projectbe.domain.card.CardPriority;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.card.ChecklistItem;
 import com.ithopeschool.projectbe.domain.cardday.CardDayMark;
@@ -250,6 +251,42 @@ class CardResultServiceTest {
         () -> service.getResults(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 11, 1)),
         "한 번에 31일까지만 조회할 수 있어요");
     assertThat(service.getResults(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31))).isEmpty();
+  }
+
+  @Test
+  @DisplayName("판정이 끝난 하루치: 루틴 여부 · 우선순위 · 실패 원인을 담고, 판정 전(null)인 날은 뺀다 (#230)")
+  void judgedDays() {
+    Card repeat = card(7L, LocalDate.of(2026, 10, 1), List.of(1, 3), LocalTime.of(19, 0));
+    Card absolute = card(8L, OCT_12, List.of(), LocalTime.of(9, 0));
+    absolute.changePriority(CardPriority.ABSOLUTE);
+    Card later = card(9L, OCT_12, List.of(), LocalTime.of(23, 0));
+    given(cardRepository.findCandidatesBetween(ME, OCT_12, OCT_12))
+        .willReturn(List.of(repeat, absolute, later));
+    given(
+            cardDayMarkRepository.findByUserIdAndMarkDateBetweenOrderByMarkDateAscIdAsc(
+                ME, OCT_12, OCT_12))
+        .willReturn(
+            List.of(CardDayMark.failed(ME, 8L, OCT_12, MissReason.PHONE, null, false, NOW)));
+    given(studySessionRepository.findStartedBetween(any(), any(), any()))
+        .willReturn(List.of(session(7L, kst(12, 19, 20), kst(12, 20, 20), false, "i1")));
+
+    List<JudgedCardDay> days = service.getJudgedDays(ME, OCT_12, OCT_12);
+
+    // 9:00 절대 카드(실패) → 19:00 반복 카드(지연). 23:00 카드는 아직 판정 전이라 빠집니다.
+    assertThat(days)
+        .containsExactly(
+            new JudgedCardDay(
+                8L,
+                OCT_12,
+                false,
+                CardPriority.ABSOLUTE,
+                CardResult.FAILED,
+                0,
+                MissReason.PHONE,
+                null,
+                null),
+            new JudgedCardDay(
+                7L, OCT_12, true, CardPriority.FLEXIBLE, CardResult.LATE, 1, null, false, 0.5));
   }
 
   @Test
