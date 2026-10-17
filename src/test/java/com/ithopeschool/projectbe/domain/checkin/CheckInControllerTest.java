@@ -3,7 +3,10 @@ package com.ithopeschool.projectbe.domain.checkin;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -155,5 +158,17 @@ class CheckInControllerTest {
         .willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"));
 
     save("2026-10-17", "{\"source\":\"manual\"}").andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("모두 지우기는 204(본문 없음)이고, 로그인하지 않았으면 401 이다")
+  void deletesAll() throws Exception {
+    mockMvc.perform(delete("/api/v1/checkins")).andExpect(status().isNoContent());
+    verify(checkInService).deleteAll();
+
+    willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"))
+        .given(checkInService)
+        .deleteAll();
+    mockMvc.perform(delete("/api/v1/checkins")).andExpect(status().isUnauthorized());
   }
 }
