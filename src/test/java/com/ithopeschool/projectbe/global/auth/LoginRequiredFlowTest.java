@@ -223,6 +223,7 @@ class LoginRequiredFlowTest {
               "/api/v1/study-sessions/by-plan",
               "/api/v1/study-sessions/by-plan?date=2026-10-12",
               null),
+          new Api("DELETE", "/api/v1/study-sessions", "/api/v1/study-sessions", null),
           // 하루 신호 (수면·걸음은 건강 데이터입니다)
           new Api(
               "POST",

@@ -13,6 +13,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -62,6 +63,14 @@ public class StudySessionController {
           @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
           LocalDate date) {
     return studySessionService.getPlanActuals(date);
+  }
+
+  // 지운 뒤에는 돌려줄 것이 없어서 204(본문 없음)입니다. 지울 것이 없어도 204 입니다.
+  @Operation(summary = "내 공부 기록 모두 지우기 (설정의 '모든 기록 지우기' · 노는 기록 포함 · 되돌릴 수 없음 · 토큰 필요)")
+  @DeleteMapping
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deleteAll() {
+    studySessionService.deleteAll();
   }
 
   @Operation(summary = "타이머 기록 저장 (순공 1분 이상 · 미래·겹치는 시간은 거절 · 노는 기록은 과목 없음 · 토큰 필요)")

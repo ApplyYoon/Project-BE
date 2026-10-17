@@ -188,6 +188,17 @@ public class StudySessionService {
   //
   // "하루" 는 새벽 4시에 바뀌므로(DayRule) from 날의 04:00 부터 to 다음 날의 04:00 직전까지 "시작한" 기록을 찾습니다.
   // 04:00 를 걸친 기록(03:30 ~ 04:30)은 시작한 날의 기록 하나입니다. 노는 기록도 목록에는 들어 있습니다. (kind 로 구별)
+  // 내 공부 기록을 모두 지웁니다. 되돌릴 수 없습니다. 하나도 없어도 그대로 끝납니다. (설정의 "모든 기록 지우기", FE #516)
+  //
+  // 왜 체크인처럼 한 줄 쿼리(delete from ...)로 지우지 않나요?
+  // 일시정지 · 체크한 항목 · 잘 된 이유 · 메모는 따로 저장하는 표(session_pauses 등)에 있고, 그 표가 기록을 가리킵니다.
+  // 기록을 불러와서 지우면 JPA 가 딸린 표의 줄부터 지워 줍니다. 내 번호로만 찾아서 다른 사람의 기록은 그대로입니다.
+  @Transactional
+  public void deleteAll() {
+    Long userId = currentUserProvider.getCurrentUserId();
+    studySessionRepository.deleteAll(studySessionRepository.findByUserId(userId));
+  }
+
   @Transactional(readOnly = true)
   public List<StudySessionResponse> getSessions(LocalDate from, LocalDate to) {
     Long userId = currentUserProvider.getCurrentUserId();
