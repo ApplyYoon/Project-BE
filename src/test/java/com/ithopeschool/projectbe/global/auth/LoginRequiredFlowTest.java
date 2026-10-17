@@ -231,6 +231,8 @@ class LoginRequiredFlowTest {
               "/api/v1/calls/{id}/finish",
               "/api/v1/calls/1/finish",
               "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
+          // 성찰일기 처방 (처방 이유가 학생의 못 채운 이유입니다)
+          new Api("GET", "/api/v1/reflections/current", "/api/v1/reflections/current", null),
           // 온보딩 설문 · 처음 계획 (학년·생활 리듬·자기 인식 같은 학생의 정보입니다)
           new Api("GET", "/api/v1/onboarding", "/api/v1/onboarding", null),
           new Api(
