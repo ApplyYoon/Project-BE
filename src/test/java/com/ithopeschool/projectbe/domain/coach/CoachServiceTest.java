@@ -15,6 +15,7 @@ import com.ithopeschool.projectbe.domain.coach.dto.CoachParagraphResponse;
 import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -46,9 +47,12 @@ class CoachServiceTest {
 
   // 받아 둔 문단을 기억하는 곳도 진짜 코드를 씁니다.
   private final CoachParagraphStore coachParagraphStore = new CoachParagraphStore();
+  // 서버의 위기 보호 조치 기록은 기본으로 없습니다. (가짜는 아무것도 정하지 않으면 false)
+  private final SafetyService safetyService = mock(SafetyService.class);
 
   private final CoachService coachService =
-      new CoachService(currentUserProvider, coachAiClient, gptUsageGuard, coachParagraphStore);
+      new CoachService(
+          currentUserProvider, coachAiClient, gptUsageGuard, coachParagraphStore, safetyService);
 
   private static final List<WeeklyCoachRequest.Number> NUMBERS =
       List.of(
@@ -284,6 +288,19 @@ class CoachServiceTest {
   }
 
   // ---- 안전 브레이크 ----
+
+  @Test
+  @DisplayName("FE 가 안전 브레이크를 안 보냈어도, 서버에 최근 7일 보호 조치 기록이 있으면 위로하는 말투로 묻는다")
+  void serverSafetyRecordMakesTheToneSupportive() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    given(safetyService.isActive(USER_ID)).willReturn(true);
+
+    coachService.weeklyParagraph(new WeeklyCoachRequest("2026-10-05", NUMBERS, 4, 5, null));
+
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    verify(coachAiClient).ask(instructions.capture(), any());
+    assertThat(instructions.getValue()).isEqualTo(CoachPrompt.instructions(0, 5));
+  }
 
   @Test
   @DisplayName("안전 브레이크가 켜져 있으면 한도가 몇이든 위로하는 말투 규칙으로 묻는다")
