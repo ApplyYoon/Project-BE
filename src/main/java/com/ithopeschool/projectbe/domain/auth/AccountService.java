@@ -48,7 +48,7 @@ public class AccountService {
     return ProfileResponse.of(findUser(userId), findAccount(userId));
   }
 
-  // 내 정보 고치기: 이름·닉네임·학교·일기 분석 동의를 받은 값으로 바꿉니다.
+  // 내 정보 고치기: 닉네임·학교·일기 분석 동의를 받은 값으로 바꿉니다.
   @Transactional
   public ProfileResponse updateProfile(ProfileUpdateRequest request) {
     Long userId = currentUserProvider.getCurrentUserId();
@@ -57,8 +57,9 @@ public class AccountService {
 
     // 엔티티의 값을 바꾸기만 하면, 이 메서드가 끝날 때 JPA 가 바뀐 것을 알아채고 DB 에 반영합니다. (save 를 부르지 않아도 됩니다)
     user.changeNickname(request.nickname());
+    // 기존 실명은 별도 삭제 정책이 정해질 때까지 보존하지만, 요청값으로 갱신하거나 응답에 노출하지 않습니다.
     account.updateProfile(
-        request.name(), request.schoolCode(), request.schoolName(), request.diaryAnalysis());
+        account.getName(), request.schoolCode(), request.schoolName(), request.diaryAnalysis());
     return ProfileResponse.of(user, account);
   }
 

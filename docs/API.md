@@ -313,7 +313,6 @@ SNS 중에서는 **구글만** 씁니다. 아래 [구글로 시작하기](#구�
 {
   "email": "tmax@starflow.com",
   "password": "study2026",
-  "name": "김티맥",
   "nickname": "티맥이",
   "schoolCode": "7530560",
   "schoolName": "한국디지털미디어고등학교",
@@ -325,7 +324,7 @@ SNS 중에서는 **구글만** 씁니다. 아래 [구글로 시작하기](#구�
 | -------------------------- | ----------------------------------------------------------------------- |
 | `email`                    | 필수. 이메일 모양, 100자까지. 대문자·소문자를 가리지 않습니다 (소문자로 저장) |
 | `password`                 | 필수. 8 ~ 64자, 영문과 숫자를 모두 포함                                  |
-| `name`                     | **선택.** 실명. 안 보내도 가입됩니다. 보냈다면 2 ~ 20자. (이슈 #71: 실명은 받지 않는 방향이라, FE 가 실명 입력을 없애면 이 칸도 없앱니다) |
+| `name`                     | 보내지 마세요. 예전 FE가 보내도 무시하며 새 계정에 저장하지 않습니다. (#71) |
 | `nickname`                 | 필수. 앱에서 부르는 이름. 2 ~ 10자                                      |
 | `schoolCode`, `schoolName` | 선택. 고른 고등학교의 번호와 이름. 고르지 않았으면 둘 다 `null`         |
 | `consents.terms`           | 필수 동의(서비스 이용약관). `true` 여야 합니다                          |
@@ -433,11 +432,11 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 ```
 
 ```json
-{ "status": "SIGNUP_REQUIRED", "name": "김티맥", "email": "tmax@gmail.com" }
+{ "status": "SIGNUP_REQUIRED", "name": "", "email": "tmax@gmail.com" }
 ```
 
 - `LOGGED_IN` : 이미 구글로 가입한 사람입니다. 이메일 로그인과 같은 토큰을 줍니다.
-- `SIGNUP_REQUIRED` : 처음 온 구글 계정입니다. **계정은 아직 만들지 않습니다.** (약관 동의 전에는 개인정보를 저장하지 않기) `name` · `email` 은 FE 가 가입 화면을 미리 채우는 데 씁니다. `name` 은 구글 계정에 없으면 빈 글자입니다.
+- `SIGNUP_REQUIRED` : 처음 온 구글 계정입니다. **계정은 아직 만들지 않습니다.** (약관 동의 전에는 개인정보를 저장하지 않기) `email`만 가입 화면을 미리 채우는 데 씁니다. `name`은 호환용 빈 글자이며 구글 실명은 읽거나 전달하지 않습니다.
 
 #### 구글로 가입하기
 
@@ -446,7 +445,6 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 ```json
 {
   "credential": "eyJhbGciOiJSUzI1NiIs…",
-  "name": "김티맥",
   "nickname": "티맥이",
   "schoolCode": null,
   "schoolName": null,
@@ -454,7 +452,7 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 }
 ```
 
-- 규칙은 [가입](#가입) 과 같습니다. `email` · `password` 칸이 없고, 이메일은 구글이 확인한 값을 씁니다. 실명(`name`)이 선택인 것, 만 14세 확인(`consents.over14`)과 동의 문구 버전(`consents.version`)이 필수인 것, 가입하면 동의 기록이 남는 것도 같습니다.
+- 규칙은 [가입](#가입) 과 같습니다. `email` · `password` 칸이 없고, 이메일은 구글이 확인한 값을 씁니다. 실명(`name`)을 무시하는 것, 만 14세 확인(`consents.over14`)과 동의 문구 버전(`consents.version`)이 필수인 것, 가입하면 동의 기록이 남는 것도 같습니다.
 - **응답 201** — 로그인 응답과 같은 모양 `{ "token": "…", "user": { "id": "1", "name": "티맥이" } }`
 
 **에러** (두 API 공통)
@@ -485,7 +483,7 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 ```json
 {
   "email": "tmax@starflow.com",
-  "name": "김티맥",
+  "name": "티맥이",
   "nickname": "티맥이",
   "schoolCode": "7530560",
   "schoolName": "한국디지털미디어고등학교",
@@ -497,6 +495,8 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 - 학교를 고르지 않았으면 `schoolCode` · `schoolName` 이 `null` 입니다.
 - 이메일로 가입한 계정이 없는 사용자(내 컴퓨터의 테스트 사용자)는 **404** 입니다.
 
+- 응답 `name`은 기존 화면 호환을 위한 `nickname`의 별칭입니다. 저장된 과거 실명은 반환하지 않습니다.
+
 #### 내 정보 고치기
 
 `PUT /api/v1/auth/profile` — 고칠 수 있는 값을 **한꺼번에** 보냅니다. (일부만 보내는 방식이 아닙니다)
@@ -505,7 +505,6 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 
 ```json
 {
-  "name": "김티맥",
   "nickname": "새별명",
   "schoolCode": null,
   "schoolName": null,
@@ -515,7 +514,7 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 
 | 필드                       | 규칙                                                              |
 | -------------------------- | ----------------------------------------------------------------- |
-| `name`                     | **선택.** 실명. 보냈다면 2 ~ 20자. **안 보내면 저장된 실명이 비워집니다** (일부가 아니라 전부를 보내는 요청이라서요. 이슈 #71) |
+| `name`                     | 보내지 마세요. 보내도 무시합니다. 과거 DB 값은 이 요청으로 갱신하거나 삭제하지 않습니다. (#71) |
 | `nickname`                 | 필수. 2 ~ 10자 (가입할 때와 같음)                                 |
 | `schoolCode`, `schoolName` | 선택. 학교를 지우려면 둘 다 `null`                                |
 | `diaryAnalysis`            | 필수. 선택 동의(일기·감정 기록을 분석에 쓰기)를 켜거나 끕니다     |
@@ -2448,6 +2447,88 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 | --- | --- |
 | 401 | 로그인하지 않음 |
 
+#### 리듬·패턴
+
+`GET /api/v1/stats/rhythm` — 최근 30일(어제까지)의 **며칠째 무너지고 며칠 만에 회복하는지**, **요일·시간대 효율**, **시험·약속 다음 날 효과**를 돌려줍니다. **로그인이 필요합니다.** (이슈 #37 분석 ②)
+
+"3일째에 무너지는 편이야", "주말에는 평일보다 40분 덜 해" 같은 문장의 재료입니다. 첫 가설의 `rhythm`(주말·시험 후)을 확인하는 분석이기도 합니다.
+
+```json
+{
+  "from": "2026-09-17",
+  "to": "2026-10-16",
+  "collapse": {
+    "commonDay": 3,
+    "commonDayCount": 2,
+    "events": [
+      { "date": "2026-10-03", "dayNumber": 3 },
+      { "date": "2026-10-09", "dayNumber": 3 }
+    ],
+    "hypothesis": true
+  },
+  "recovery": {
+    "averageDays": 1.5,
+    "events": [
+      { "missedFrom": "2026-10-03", "recoveredOn": "2026-10-04", "days": 1 },
+      { "missedFrom": "2026-10-09", "recoveredOn": "2026-10-11", "days": 2 }
+    ],
+    "slumpSince": null,
+    "hypothesis": true
+  },
+  "byWeekday": [
+    { "weekday": "mon", "averageStudyMinutes": 75, "averageAchievementRate": 90, "dates": ["2026-09-21", "..."], "hypothesis": false },
+    "... tue ~ sun 까지 7칸"
+  ],
+  "weekdayVsWeekend": {
+    "weekday": { "averageStudyMinutes": 70, "averageAchievementRate": 88, "dates": ["..."], "hypothesis": false },
+    "weekend": { "averageStudyMinutes": 30, "averageAchievementRate": 40, "dates": ["..."], "hypothesis": false },
+    "hypothesis": false
+  },
+  "byTimeOfDay": [
+    { "timeOfDay": "morning", "sessionCount": 0, "averageSessionMinutes": null, "pauseRate": null, "dates": [], "hypothesis": true },
+    { "timeOfDay": "afternoon", "...": "..." },
+    { "timeOfDay": "evening", "...": "..." },
+    { "timeOfDay": "night", "sessionCount": 12, "averageSessionMinutes": 40, "pauseRate": 20, "dates": ["..."], "hypothesis": false }
+  ],
+  "afterEvents": {
+    "usual": { "averageStudyMinutes": 60, "averageAchievementRate": 100, "dates": ["..."], "hypothesis": false },
+    "byEvent": [
+      { "event": "exam", "nextDays": { "averageStudyMinutes": 20, "averageAchievementRate": 33, "dates": ["2026-10-11"], "hypothesis": true }, "studyMinutesDiff": -40, "achievementRateDiff": -67, "hypothesis": true },
+      { "event": "event", "nextDays": { "averageStudyMinutes": null, "averageAchievementRate": null, "dates": [], "hypothesis": true }, "studyMinutesDiff": null, "achievementRateDiff": null, "hypothesis": true }
+    ]
+  }
+}
+```
+
+**날짜 묶음** — `byWeekday`·`weekdayVsWeekend`·`afterEvents` 의 묶음은 모두 같은 모양입니다.
+
+| 필드 | 뜻 |
+| --- | --- |
+| `averageStudyMinutes` | 평균 순공(분). 셀 날이 없으면 `null` |
+| `averageAchievementRate` | 평균 달성률(%). **계획이 있던 날만**으로 냄. 없으면 `null` |
+| `dates` | 계산에 쓴 날 (근거, 오래된 날부터) |
+| `hypothesis` | 근거가 5일 미만이면 `true` |
+
+**규칙** (`domain/stats/CollapseCycle.java` · `RhythmEfficiency.java` · `AfterEventEffect.java`)
+
+- **채운 날 / 못 채운 날**은 실패 원인과 같습니다. (100% / 100% 미만, 계획이 없던 날은 어느 쪽도 아님)
+- **"쓴 날" 만 셉니다.** 계획도 공부도 없는 날은 "앱을 안 쓴 날" 이라 뺍니다. 계획만 있고 안 한 날은 0분으로 넣습니다. ([6. 평균을 낼 때 기록 없는 날](#6-평균을-낼-때-기록-없는-날)의 효과 판정과 같음)
+- **`collapse`** — 채운 날이 이어지다 처음 못 채운 날이 연속의 몇 번째 날인지(`dayNumber`). 계획이 없던 날은 건너뛰고 셉니다. `commonDay` 는 가장 많이 나온 날(같으면 더 빠른 날). 기간 첫 계획일부터 못 채웠으면 그 앞을 몰라서 세지 않습니다. 무너진 날이 5개 미만이면 가설.
+- **`recovery`** — 처음 못 채운 날부터 다시 채운 날까지의 달력 날짜 차이(`days`). 어제까지 회복하지 못했으면 `slumpSince` 에 그 첫날이 들어갑니다. 회복이 5번 미만이면 가설.
+- **`byWeekday`** — **월요일부터** 7칸이고, 칸마다 `weekday`(`mon` ~ `sun`) 이름표가 있습니다. ⚠️ 주간 리포트의 요일별 완주율은 일요일부터라 순서가 다릅니다. 이름표로 맞춰 쓰세요.
+- **`weekdayVsWeekend`** — 월~금 vs 토·일. 둘 중 하나라도 5일 미만이면 `hypothesis: true`.
+- **`byTimeOfDay`** — 기록을 **시작한 시각**으로 나눕니다. 주간 리포트와 같은 시각입니다. `morning` 05~12시 · `afternoon` 12~18시 · `evening` 18~22시 · `night` 22~05시. 노는 기록은 뺍니다.
+  - `averageSessionMinutes`: 기록 하나의 평균 순공 / `pauseRate`: (전체 길이 − 순공) ÷ 전체 길이 × 100
+- **`afterEvents`** — 이벤트 **다음 날**과 **평소 날**(이벤트 당일·다음 날을 모두 뺀 쓴 날)을 견줍니다. `...Diff` = 다음 날 − 평소 (음수면 덜 함). 둘 중 하나라도 5일 미만이면 가설.
+  - `exam`: 시험 점수에 등록한 시험 날짜
+  - `event`: 못 채운 이유로 '약속·행사' 를 고른 날 (체크인은 하루 전, 타이머는 그날)
+  - ⚠️ "학원 늦게 끝난 날" 은 기록하는 칸이 서버에 없어서 아직 없습니다.
+- **오늘은 넣지 않습니다.** 기록이 없어도 404 가 아니라 빈 목록과 `null` 입니다.
+
+| 상태 | 언제 |
+| --- | --- |
+| 401 | 로그인하지 않음 |
+
 ### 웹 푸시
 
 앱을 닫아 둬도 휴대폰 알림 칸에 뜨는 **푸시 알림**을 받을 기기를 등록합니다. 세 주소 모두 **로그인이 필요합니다.** (이슈 #32)
@@ -2613,6 +2694,19 @@ AI 가 보낸 메시지(당근·넛지·채찍·이벤트 알림·회복)를 보
 | 500  | `INTERNAL_ERROR` | 작업을 실행하다가 실패함            |
 
 > 같은 작업을 **두 번 불러도 결과가 망가지지 않게** 만드는 것이 규칙입니다. 결과는 "새로 추가" 가 아니라 "그날 것을 덮어쓰기" 로 저장합니다.
+
+### 실명 수집 중단 전환 (#71)
+
+서버는 가입·구글 가입·프로필 요청의 과거 `name` 값을 무시하고, 요청 DTO와 Swagger에서 실명 입력을 숨깁니다.
+새 가입 계정의 `accounts.name`은 null이며 프로필 응답의 `name`은 닉네임입니다.
+구글 tokeninfo 응답에서도 실명 필드를 읽지 않으며 신규 가입 안내의 `name`은 호환용 빈 문자열입니다.
+
+기존 FE가 보내던 JSON 자체는 오류 없이 처리하여 전환 기간의 가입을 깨뜨리지 않습니다.
+FE는 실명 입력/검사/전송을 없애고 Google profile scope 등도 필요한 정보만 요청하도록 맞춰야 합니다.
+BE가 무시해도 구버전 FE가 실명을 요청 본문에 보내는 것까지 막지는 못합니다.
+
+기존 DB 실명과 컬럼은 이번 변경에서 삭제하지 않습니다. 보관·삭제 정책과 운영 DB 절차를 정해 따로 처리해야 합니다.
+기존 회원의 프로필 수정으로 과거 실명을 덮어쓰거나 지우지도 않습니다. 스키마 변경 및 운영 DB 실행은 없습니다.
 
 ## 타이머 목표 추천 (#63)
 

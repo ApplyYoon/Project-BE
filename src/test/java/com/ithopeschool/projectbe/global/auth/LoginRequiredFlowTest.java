@@ -267,7 +267,9 @@ class LoginRequiredFlowTest {
           // 첫 가설 (설문 답으로 만든 문장이라 학생의 정보입니다)
           new Api("GET", "/api/v1/insights/hypotheses", "/api/v1/insights/hypotheses", null),
           // 실패 원인 분석 (못 채운 날과 그 이유라서 학생의 정보입니다)
-          new Api("GET", "/api/v1/stats/miss-reasons", "/api/v1/stats/miss-reasons", null));
+          new Api("GET", "/api/v1/stats/miss-reasons", "/api/v1/stats/miss-reasons", null),
+          // 리듬·패턴 분석 (공부한 날·시간대·시험 날이라 학생의 정보입니다)
+          new Api("GET", "/api/v1/stats/rhythm", "/api/v1/stats/rhythm", null));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.
