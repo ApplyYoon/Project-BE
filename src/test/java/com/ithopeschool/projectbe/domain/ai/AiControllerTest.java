@@ -15,6 +15,7 @@ import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.ProfileLinesResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardResponse;
@@ -47,6 +48,7 @@ class AiControllerTest {
   @MockitoBean private RoutineCardService routineCardService;
   @MockitoBean private QuickCardService quickCardService;
   @MockitoBean private SettingsFromTextService settingsFromTextService;
+  @MockitoBean private ProfileLinesService profileLinesService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -466,5 +468,24 @@ class AiControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("부탁은 100자 이하로 적어 주세요"));
     verifyNoInteractions(settingsFromTextService);
+  }
+
+  // ---- 성향 요약 3줄 ----
+
+  @Test
+  @DisplayName("성향 요약 3줄: 본문 없이 불러 200 과 3줄, 못 만들면 lines: null")
+  void profileLines() throws Exception {
+    given(profileLinesService.suggest())
+        .willReturn(new ProfileLinesResponse(List.of("하나", "둘", "셋")));
+    mockMvc
+        .perform(post("/api/v1/ai/profile-lines"))
+        .andExpect(status().isOk())
+        .andExpect(content().json("{\"lines\":[\"하나\",\"둘\",\"셋\"]}", true));
+
+    given(profileLinesService.suggest()).willReturn(new ProfileLinesResponse(null));
+    mockMvc
+        .perform(post("/api/v1/ai/profile-lines"))
+        .andExpect(status().isOk())
+        .andExpect(content().json("{\"lines\":null}", true));
   }
 }
