@@ -553,7 +553,7 @@ class AiControllerTest {
   // ---- AI 하루 계획 ----
 
   @Test
-  @DisplayName("AI 하루 계획: 200 과 칸 길이 · 총량 · 계획 초안 · 근거, 날짜가 없으면 400")
+  @DisplayName("AI 하루 계획: 200 과 칸 길이 · 총량 · 카드 초안 · 근거, 날짜가 없으면 400")
   void dayPlan() throws Exception {
     java.time.LocalDate date = java.time.LocalDate.parse("2026-10-18");
     given(dayPlanService.suggest(any()))
@@ -562,8 +562,10 @@ class AiControllerTest {
                 date,
                 25,
                 50,
-                List.of(new DayPlanResponse.Plan(date, "1", "기출 1회분", 25, null, "study")),
-                List.of("최근 14일 공부 기록 6번의 한 번 길이 가운데값이 24분이라 25분씩 나눴어요")));
+                List.of(
+                    new DayPlanResponse.Draft(
+                        date, "16:40", 25, "수학 문제집", List.of("3단원 15문제"), "4")),
+                List.of("최근 14일 공부 기록 6번의 한 번 길이 가운데값이 24분이라 25분으로 잡았어요")));
 
     mockMvc
         .perform(
@@ -572,11 +574,13 @@ class AiControllerTest {
                 .content("{\"date\":\"2026-10-18\"}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.blockMinutes").value(25))
-        .andExpect(jsonPath("$.plans[0].subjectId").value("1"))
-        .andExpect(jsonPath("$.plans[0].kind").value("study"))
-        .andExpect(jsonPath("$.plans[0].startTime").doesNotExist())
+        .andExpect(jsonPath("$.drafts[0].startTime").value("16:40"))
+        .andExpect(jsonPath("$.drafts[0].durationMinutes").value(25))
+        .andExpect(jsonPath("$.drafts[0].title").value("수학 문제집"))
+        .andExpect(jsonPath("$.drafts[0].checklist[0]").value("3단원 15문제"))
+        .andExpect(jsonPath("$.drafts[0].goalId").value("4"))
         .andExpect(
-            jsonPath("$.evidence[0]").value("최근 14일 공부 기록 6번의 한 번 길이 가운데값이 24분이라 25분씩 나눴어요"));
+            jsonPath("$.evidence[0]").value("최근 14일 공부 기록 6번의 한 번 길이 가운데값이 24분이라 25분으로 잡았어요"));
 
     mockMvc
         .perform(post("/api/v1/ai/day-plan").contentType(MediaType.APPLICATION_JSON).content("{}"))

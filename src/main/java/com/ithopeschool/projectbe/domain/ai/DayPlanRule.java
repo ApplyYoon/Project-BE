@@ -1,95 +1,74 @@
 package com.ithopeschool.projectbe.domain.ai;
 
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-// AI 하루 계획(POST /ai/day-plan)에서 "숫자" 를 정하는 규칙입니다. 숫자는 모두 내 기록으로 코드가 정하고, AI 는 문장만 씁니다.
-// 값만 계산하는 도구라서 객체를 만들 일이 없습니다. 고를 때마다 "왜 그랬는지" 근거 문장을 같이 돌려줍니다.
-//
-// ■ 한 칸의 길이 (blockMinutesOf) — 집중을 오래 못 하는 사람은 짧게, 자주
-//   1. 최근 14일 공부 기록이 MIN_SESSIONS(5번) 이상이면, 한 번 길이(일시정지 뺀 순공)의 가운데값
-//   2. 아니면 온보딩에서 답한 "한 번에 집중할 수 있는 시간"
-//   3. 그것도 없고 심리검사의 주의 분산이 높으면 30분, 아니면 50분
-//   어느 쪽이든 5분 단위로 반올림하고 15 ~ 90분 안으로 맞춥니다.
+// AI 하루 계획(POST /ai/day-plan)에서 "숫자 · 시각" 을 정하는 규칙입니다. 모두 내 기록으로 코드가 정하고, AI 는 문장만 씁니다.
+// 값만 계산하는 도구라서 객체를 만들 일이 없습니다. 시각은 모두 "하루 시작(새벽 4시)부터 센 분" 입니다. (FE 의 toDayMinutes)
+//   04:00 → 240,  19:00 → 1140,  00:00 → 1440 (다음 날 새벽이라 하루의 끝쪽)
 //
 // ■ 하루 총량 (totalMinutesOf)
-//   1. 최근 14일 중 공부한 날이 MIN_STUDY_DAYS(3일) 이상이면, 그날들 순공 평균의 1.1배 (조금씩 늘리기)
-//   2. 아니면 온보딩의 "평일 하루 공부 가능 시간", 그것도 없으면 120분
-//   3. 최근 계획 완료율이 60% 미만이거나 심리검사의 계획 낙관이 높으면 0.8배로 줄입니다. (계획을 크게 잡는 사람을 위해)
-//   4. 10분 단위로 반올림하고 30 ~ 600분 안으로 맞춘 뒤, 그날 이미 세운 공부 계획 시간을 뺍니다.
+//   1. 최근 14일 중 공부한 날이 3일 이상이면 그날들 순공 평균의 1.1배 (조금씩 늘리기)
+//   2. 아니면 처음 설문의 "하루 공부 가능 시간", 그것도 없으면 120분
+//   3. 심리검사의 계획 낙관이 높으면 0.8배로 줄입니다. (계획을 크게 잡는 사람을 위해)
+//   4. 10분 단위로 반올림하고 30 ~ 600분 안으로 맞춘 뒤, 그날 이미 있는 카드 시간을 뺍니다.
 //
-// ■ 과목 순서 (subjectOrder)
-//   14일 안에 시험이 있는 과목이 먼저(가까운 시험부터), 그다음 최근 14일 가장 덜 한 과목부터.
-//   시험 과목은 돌아가며 넣을 때 두 번씩 넣어서 더 많이 들어갑니다. (subjectRotation)
+// ■ 공부할 수 있는 시간 (studyWindowOf) — 수면 보호 시간(최소 6시간, FE 의 getSleepWindow)과 일어난 뒤 1시간을 뺀 나머지
+// ■ 빈 시간 (freeSlotsOf) — 고정 일정(학교 · 학원)과 그날 카드의 앞뒤로 10분씩 여유를 두고 뺀 나머지
+// ■ 칸 놓기 (placeBlocks) — 빈 시간에 한 칸 길이로 채우고, 칸 사이도 10분 띄웁니다. 밤형은 늦은 시간부터 채웁니다.
+// ■ 목표 순서 (goalRotation) — D-day 가 가까운 목표부터, 14일 안이면 한 바퀴에 두 번
 public final class DayPlanRule {
 
-  static final int MIN_SESSIONS = 5;
   static final int MIN_STUDY_DAYS = 3;
-  static final int MIN_BLOCK = 15;
-  static final int MAX_BLOCK = 90;
-  static final int DEFAULT_BLOCK = 50;
-  static final int DISTRACTED_BLOCK = 30;
   static final int MIN_TOTAL = 30;
   static final int MAX_TOTAL = 600;
   static final int DEFAULT_TOTAL = 120;
   static final double GROW = 1.1;
   static final double SHRINK = 0.8;
-  static final int LOW_PLAN_RATE = 60;
-  static final int EXAM_SOON_DAYS = 14;
+  // 칸 하나의 가장 짧은 길이 (이보다 짧은 빈 시간에는 칸을 놓지 않음)
+  static final int MIN_BLOCK = 15;
+  // 일정 사이 여유 (FE 의 BUFFER_MINUTES)
+  static final int BUFFER = 10;
+  // 수면 보호는 최소 6시간 (FE 의 SLEEP_PROTECT_MIN_MINUTES)
+  static final int SLEEP_PROTECT_MIN = 6 * 60;
+  // 일어나서 이만큼은 비웁니다 (씻기 · 아침 · 등교 준비)
+  static final int AFTER_WAKE = 60;
+  // 취침 · 기상을 모를 때 (FE 와 같음): 00:00 에 자고 06:00 에 일어남
+  static final LocalTime DEFAULT_SLEEP = LocalTime.MIDNIGHT;
+  static final LocalTime DEFAULT_WAKE = LocalTime.of(6, 0);
+  // D-day 가 이 날 수 안이면 "곧" 으로 봅니다
+  static final int SOON_DAYS = 14;
   // 한 번에 만드는 칸의 최대 수
   static final int MAX_BLOCKS = 12;
 
-  // 고른 숫자와 그 근거 문장
-  public record Choice(int minutes, String evidence) {}
+  static final int DAY_START = 4 * 60;
+  static final int DAY_END = DAY_START + 24 * 60;
 
-  // 하루 총량(이미 세운 계획을 뺀 것)과 그 근거 문장들
+  // 하루 총량(이미 있는 카드를 뺀 것)과 그 근거 문장들
   public record Total(int minutes, List<String> evidence) {}
 
-  // 과목 하나의 재료. examDaysLeft: 14일 안에 있는 가장 가까운 시험까지 남은 날 (없으면 null)
-  public record SubjectInfo(Long id, String name, Integer examDaysLeft, int studiedMinutes) {}
+  // 하루 안의 시간 하나 [start, end) — 하루 시작 기준 분
+  public record Span(int start, int end) {
+    int length() {
+      return end - start;
+    }
+  }
+
+  // 놓은 칸 하나: 시작(하루 시작 기준 분)과 길이
+  public record Placed(int start, int minutes) {}
+
+  // 목표 하나의 재료. daysLeft: 그날부터 D-day 까지 남은 날 / pace: 완주형의 하루 분량 글 ("30쪽"), 점수형이면 null
+  public record GoalInfo(String id, String title, int daysLeft, String pace) {}
 
   private DayPlanRule() {}
 
-  // 한 칸의 길이와 근거
-  //   sessionMinutes: 최근 14일 공부 기록마다의 순공(분) / selfFocus: 온보딩 "한 번에 집중 가능한 시간"(없으면 null)
-  //   distractionHigh: 심리검사 주의 분산이 높은지
-  public static Choice blockMinutesOf(
-      List<Integer> sessionMinutes, Integer selfFocus, boolean distractionHigh) {
-    if (sessionMinutes.size() >= MIN_SESSIONS) {
-      int median = medianOf(sessionMinutes);
-      int block = clampBlock(median);
-      return new Choice(
-          block,
-          "최근 14일 공부 기록 "
-              + sessionMinutes.size()
-              + "번의 한 번 길이 가운데값이 "
-              + median
-              + "분이라 "
-              + block
-              + "분씩 나눴어요");
-    }
-    if (selfFocus != null) {
-      int block = clampBlock(selfFocus);
-      return new Choice(block, "처음 설문에서 한 번에 " + selfFocus + "분 집중할 수 있다고 해서 " + block + "분씩 나눴어요");
-    }
-    if (distractionHigh) {
-      return new Choice(
-          DISTRACTED_BLOCK, "심리검사에서 공부 중 흔들리는 편이라고 나와서 " + DISTRACTED_BLOCK + "분씩 짧게 나눴어요");
-    }
-    return new Choice(DEFAULT_BLOCK, "아직 공부 기록이 적어서 " + DEFAULT_BLOCK + "분씩 나눴어요");
-  }
-
-  // 하루 총량(이미 세운 계획을 뺀 것)과 근거들
-  //   dailyMinutes: 최근 14일 중 공부한 날마다의 순공(분) / selfDaily: 온보딩 "평일 하루 공부 가능 시간"(없으면 null)
-  //   planRate: 최근 14일 공부 계획 완료율(%, 계획이 없으면 null) / planOptimismHigh: 심리검사 계획 낙관이 높은지
-  //   alreadyPlanned: 그날 이미 세운 공부 계획 시간(분)
+  // 하루 총량과 근거
+  //   dailyMinutes: 최근 14일 중 공부한 날마다의 순공(분) / selfDaily: 처음 설문의 하루 공부 가능 시간(없으면 null)
+  //   planOptimismHigh: 심리검사의 계획 낙관이 높은지 / alreadyPlanned: 그날 이미 있는 카드 시간(분)
   public static Total totalMinutesOf(
-      List<Integer> dailyMinutes,
-      Integer selfDaily,
-      Integer planRate,
-      boolean planOptimismHigh,
-      int alreadyPlanned) {
+      List<Integer> dailyMinutes, Integer selfDaily, boolean planOptimismHigh, int alreadyPlanned) {
     List<String> evidence = new ArrayList<>();
     double total;
     if (dailyMinutes.size() >= MIN_STUDY_DAYS) {
@@ -107,99 +86,146 @@ public final class DayPlanRule {
       total = DEFAULT_TOTAL;
       evidence.add("아직 기록이 적어서 하루 " + DEFAULT_TOTAL + "분으로 잡았어요");
     }
-    if (planRate != null && planRate < LOW_PLAN_RATE) {
-      total *= SHRINK;
-      evidence.add("최근 계획의 " + planRate + "%만 끝내서 양을 줄였어요");
-    } else if (planOptimismHigh) {
+    if (planOptimismHigh) {
       total *= SHRINK;
       evidence.add("심리검사에서 계획을 크게 잡는 편이라고 나와서 양을 줄였어요");
     }
     int rounded = Math.max(MIN_TOTAL, Math.min(MAX_TOTAL, (int) Math.round(total / 10.0) * 10));
     if (alreadyPlanned > 0) {
-      evidence.add("그날 이미 세운 계획 " + alreadyPlanned + "분을 뺐어요");
+      evidence.add("그날 이미 있는 카드 " + alreadyPlanned + "분을 뺐어요");
     }
     return new Total(Math.max(0, rounded - alreadyPlanned), evidence);
   }
 
-  // 과목 순서: 시험이 가까운 과목 → 최근 덜 한 과목 → 번호 순
-  public static List<SubjectInfo> subjectOrder(List<SubjectInfo> subjects) {
-    List<SubjectInfo> ordered = new ArrayList<>(subjects);
-    ordered.sort(
-        Comparator.comparing(
-                (SubjectInfo s) -> s.examDaysLeft() == null ? Integer.MAX_VALUE : s.examDaysLeft())
-            .thenComparingInt(SubjectInfo::studiedMinutes)
-            .thenComparing(SubjectInfo::id));
-    return ordered;
+  // 시각을 하루 시작 기준 분으로   04:00 → 240,  00:00 → 1440,  03:59 → 1679
+  public static int dayMinutesOf(LocalTime time) {
+    int minutes = time.getHour() * 60 + time.getMinute();
+    return minutes >= DAY_START ? minutes : minutes + 24 * 60;
   }
 
-  // 칸에 넣을 과목들: 순서대로 돌아가며 넣고, 시험 과목은 한 바퀴에 두 번 넣습니다.
-  public static List<SubjectInfo> subjectRotation(List<SubjectInfo> ordered, int blockCount) {
-    List<SubjectInfo> round = new ArrayList<>();
-    for (SubjectInfo subject : ordered) {
-      round.add(subject);
-      if (subject.examDaysLeft() != null) {
-        round.add(subject);
+  // 하루 시작 기준 분을 "HH:mm" 으로   1140 → "19:00",  1500 → "01:00"
+  public static String timeTextOf(int dayMinutes) {
+    int minutes = dayMinutes % (24 * 60);
+    return String.format("%02d:%02d", minutes / 60, minutes % 60);
+  }
+
+  // 공부할 수 있는 시간 = 수면 보호 시간이 끝나고 1시간 뒤 ~ 잠드는 때. 취침 · 기상을 모르면 00:00 · 06:00 으로 봅니다.
+  // 잠이 6시간보다 짧으면 일어나는 시각을 뒤로 밀어 6시간을 지킵니다. (FE 의 getSleepWindow 와 같음)
+  //   (23:00, 07:00) → 08:00 ~ 23:00      (01:00, 05:00) → 08:00 ~ 01:00 (6시간 보호 뒤 1시간)
+  //   (null, null)   → 07:00 ~ 00:00
+  public static Span studyWindowOf(LocalTime sleep, LocalTime wake) {
+    LocalTime sleepAt = sleep == null ? DEFAULT_SLEEP : sleep;
+    LocalTime wakeAt = wake == null ? DEFAULT_WAKE : wake;
+    int sleepClock = sleepAt.getHour() * 60 + sleepAt.getMinute();
+    int wakeClock = wakeAt.getHour() * 60 + wakeAt.getMinute();
+    int length = Math.max((wakeClock - sleepClock + 24 * 60) % (24 * 60), SLEEP_PROTECT_MIN);
+    int start = dayMinutesOf(sleepAt.plusMinutes(length + AFTER_WAKE));
+    int end = dayMinutesOf(sleepAt);
+    if (end <= start) {
+      end = DAY_END; // 새벽 4시가 넘어서 자는 사람은 하루의 끝(다음 날 4시)까지로 봅니다.
+    }
+    return new Span(start, end);
+  }
+
+  // 빈 시간: window 에서 busy(고정 일정 · 그날 카드)를 앞뒤 10분 여유와 함께 뺀 나머지 (시각 순)
+  //   window 07:00 ~ 23:00, busy [학교 08:00 ~ 16:30] → [07:00 ~ 07:50], [16:40 ~ 23:00]
+  public static List<Span> freeSlotsOf(Span window, List<Span> busy) {
+    List<Span> padded = new ArrayList<>();
+    for (Span span : busy) {
+      padded.add(new Span(span.start() - BUFFER, span.end() + BUFFER));
+    }
+    padded.sort(Comparator.comparingInt(Span::start));
+
+    List<Span> free = new ArrayList<>();
+    int cursor = window.start();
+    for (Span span : padded) {
+      if (span.start() > cursor) {
+        free.add(new Span(cursor, Math.min(span.start(), window.end())));
       }
-    }
-    List<SubjectInfo> picked = new ArrayList<>();
-    for (int i = 0; i < blockCount && !round.isEmpty(); i++) {
-      picked.add(round.get(i % round.size()));
-    }
-    return picked;
-  }
-
-  // 칸마다의 시간: 한 칸 길이로 채우고, 남는 시간이 15분(MIN_BLOCK) 이상이면 짧은 칸 하나를 더합니다. 많아도 12칸.
-  //   (130, 25) → [25, 25, 25, 25, 25]          남는 5분은 버림
-  //   (30, 50)  → [30]                          총량이 한 칸보다 짧으면 짧은 칸 하나
-  //   (0, 50)   → []                            그날 이미 충분히 계획함
-  public static List<Integer> blocksOf(int totalMinutes, int blockMinutes) {
-    List<Integer> blocks = new ArrayList<>();
-    int left = totalMinutes;
-    while (left >= blockMinutes && blocks.size() < MAX_BLOCKS) {
-      blocks.add(blockMinutes);
-      left -= blockMinutes;
-    }
-    if (left >= MIN_BLOCK && blocks.size() < MAX_BLOCKS) {
-      blocks.add(left);
-    }
-    return blocks;
-  }
-
-  // 시험 과목과 덜 한 과목에 대한 근거 문장 (없으면 빈 목록)
-  public static List<String> subjectEvidence(List<SubjectInfo> ordered) {
-    List<String> lines = new ArrayList<>();
-    for (SubjectInfo subject : ordered) {
-      if (subject.examDaysLeft() != null) {
-        lines.add(subject.examDaysLeft() + "일 뒤 시험이 있는 " + subject.name() + "을(를) 먼저 · 더 많이 넣었어요");
+      cursor = Math.max(cursor, span.end());
+      if (cursor >= window.end()) {
         break;
       }
     }
-    SubjectInfo least =
-        ordered.stream()
-            .filter(s -> s.examDaysLeft() == null)
-            .min(
-                Comparator.comparingInt(SubjectInfo::studiedMinutes).thenComparing(SubjectInfo::id))
-            .orElse(null);
-    if (least != null && ordered.size() > 1) {
-      lines.add("최근 14일 가장 덜 한 " + least.name() + "(" + least.studiedMinutes() + "분)을(를) 넣었어요");
+    if (cursor < window.end()) {
+      free.add(new Span(cursor, window.end()));
     }
-    return lines;
+    free.removeIf(span -> span.length() < MIN_BLOCK);
+    return free;
   }
 
-  // 가운데값 (짝수 개면 가운데 둘의 평균, 반올림)
-  static int medianOf(List<Integer> values) {
-    List<Integer> sorted = new ArrayList<>(values);
-    sorted.sort(null);
-    int n = sorted.size();
-    if (n % 2 == 1) {
-      return sorted.get(n / 2);
+  // 빈 시간에 칸을 놓습니다. 칸마다 한 칸 길이(block), 남은 총량이 더 짧으면 그만큼. 15분보다 짧으면 놓지 않습니다.
+  // 칸 사이는 10분 띄웁니다. lateFirst(밤형)면 늦은 빈 시간의 끝에서부터 앞으로 채웁니다. 결과는 시각 순입니다.
+  //   free [16:40 ~ 23:00], block 50, total 120 → 16:40(50분) · 17:40(50분) · 18:40(20분)
+  //   같은 값에 lateFirst(밤형)                   → 20:40(20분) · 21:10(50분) · 22:10(50분)  (23:00 에서부터 거꾸로
+  // 채움)
+  public static List<Placed> placeBlocks(List<Span> free, int block, int total, boolean lateFirst) {
+    List<Placed> placed = new ArrayList<>();
+    int left = total;
+    List<Span> slots = new ArrayList<>(free);
+    if (lateFirst) {
+      slots.sort(Comparator.comparingInt(Span::end).reversed());
     }
-    return (int) Math.round((sorted.get(n / 2 - 1) + sorted.get(n / 2)) / 2.0);
+    for (Span slot : slots) {
+      int from = slot.start();
+      int to = slot.end();
+      while (left >= MIN_BLOCK && placed.size() < MAX_BLOCKS) {
+        int minutes = Math.min(Math.min(block, left), to - from);
+        if (minutes < MIN_BLOCK) {
+          break;
+        }
+        if (lateFirst) {
+          placed.add(new Placed(to - minutes, minutes));
+          to = to - minutes - BUFFER;
+        } else {
+          placed.add(new Placed(from, minutes));
+          from = from + minutes + BUFFER;
+        }
+        left -= minutes;
+      }
+    }
+    placed.sort(Comparator.comparingInt(Placed::start));
+    return placed;
   }
 
-  // 5분 단위로 반올림하고 15 ~ 90분 안으로
-  private static int clampBlock(int minutes) {
-    int rounded = (int) Math.round(minutes / 5.0) * 5;
-    return Math.max(MIN_BLOCK, Math.min(MAX_BLOCK, rounded));
+  // 칸에 넣을 목표들: D-day 가 가까운 목표부터 돌아가며 넣고, 14일 안이면 한 바퀴에 두 번 넣습니다.
+  //   [수학(D-5), 영어(D-30)] , 4칸 → 한 바퀴 [수학, 영어, 수학] → [수학, 영어, 수학, 수학]
+  // 목표가 없으면 빈 목록입니다. (칸마다 목표 없이 "최근 카드" 로 채움)
+  public static List<GoalInfo> goalRotation(List<GoalInfo> goals, int count) {
+    List<GoalInfo> ordered = new ArrayList<>(goals);
+    ordered.sort(Comparator.comparingInt(GoalInfo::daysLeft).thenComparing(GoalInfo::id));
+    List<GoalInfo> round = new ArrayList<>();
+    for (GoalInfo goal : ordered) {
+      round.add(goal);
+      if (goal.daysLeft() <= SOON_DAYS) {
+        round.add(goal);
+      }
+    }
+    List<GoalInfo> rotation = new ArrayList<>();
+    if (round.isEmpty()) {
+      return rotation;
+    }
+    // 같은 목표가 바로 이어지지 않게, 두 번 넣은 목표는 한 바퀴의 처음과 중간에 둡니다.
+    List<GoalInfo> spread = new ArrayList<>();
+    List<GoalInfo> second = new ArrayList<>();
+    for (GoalInfo goal : round) {
+      if (spread.contains(goal)) {
+        second.add(goal);
+      } else {
+        spread.add(goal);
+      }
+    }
+    spread.addAll(second);
+    for (int i = 0; i < count; i++) {
+      rotation.add(spread.get(i % spread.size()));
+    }
+    return rotation;
+  }
+
+  // 완주형 목표의 하루 분량 = 전체 분량 ÷ 남은 날 수 (올림). 그날도 하루로 셉니다. (FE 의 getDailyPace)
+  //   (300, 9) → 30      (100, 0) → 100
+  public static int dailyPaceOf(int totalAmount, int daysLeft) {
+    int days = Math.max(1, daysLeft + 1);
+    return (totalAmount + days - 1) / days;
   }
 }

@@ -2,72 +2,68 @@ package com.ithopeschool.projectbe.domain.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.ithopeschool.projectbe.domain.care.ToneGuide;
 import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-// AI 하루 계획에서 GPT 에게 주는 글과 칸마다의 답 검사를 확인합니다. GPT 를 부르지 않습니다.
+// AI 하루 계획에서 AI 에게 주는 입력 글과, 받은 답의 칸별 검사를 확인합니다.
 class DayPlanPromptTest {
 
-  private static final List<DayPlanPrompt.Block> BLOCKS =
+  private static final List<DayPlanPrompt.Text> FALLBACKS =
       List.of(
-          new DayPlanPrompt.Block("수학", 25, 2),
-          new DayPlanPrompt.Block("수학", 25, 2),
-          new DayPlanPrompt.Block("영어", 25, null));
+          new DayPlanPrompt.Text("수학 문제집", List.of("수학 문제집")),
+          new DayPlanPrompt.Text("영단어장 1회독", List.of("30쪽 하기")));
 
   @Test
-  @DisplayName("입력에는 날짜 · 칸(과목 · 시간 · 시험까지 남은 날) · 과목별 최근 계획 제목만 들어간다")
+  @DisplayName("입력에는 칸마다 시각 · 길이 · 목표 · D-day · 하루 분량과 최근 카드 제목이 들어간다 (이름 · 학교는 없음)")
   void input() {
     String input =
         DayPlanPrompt.input(
-            LocalDate.parse("2026-10-18"), BLOCKS, Map.of("수학", List.of("문제집 3단원", "오답 정리")));
+            LocalDate.of(2026, 10, 18),
+            List.of(
+                new DayPlanPrompt.Block("16:40", 25, "11월 학평 수학 3등급", 32, null),
+                new DayPlanPrompt.Block("17:15", 25, "영단어장 1회독", 8, "30쪽"),
+                new DayPlanPrompt.Block("17:50", 25, null, null, null)),
+            List.of("수학 문제집", "영어 단어"));
 
     assertThat(input)
         .isEqualTo(
             """
             날짜: 10/18
             칸 (이 순서대로 하나씩):
-            1. 수학 · 25분 · 시험까지 2일
-            2. 수학 · 25분 · 시험까지 2일
-            3. 영어 · 25분
-            최근 계획:
-            - 수학: 문제집 3단원 / 오답 정리
-            - 영어: (없음)""");
+            1. 16:40 · 25분 · 목표 「11월 학평 수학 3등급」 D-day 까지 32일
+            2. 17:15 · 25분 · 목표 「영단어장 1회독」 D-day 까지 8일 · 하루 분량 30쪽
+            3. 17:50 · 25분 · 목표 없음
+            최근 카드 제목: 수학 문제집 / 영어 단어""");
   }
 
   @Test
-  @DisplayName("질문 이름은 day_plan 이고, 지침에 개수·순서를 바꾸지 말고 칸마다 다른 할 일을 쓰라는 규칙이 있다")
-  void question() {
-    AiQuestion question = DayPlanPrompt.question(LocalDate.parse("2026-10-18"), BLOCKS, Map.of());
+  @DisplayName("칸마다 검사해서 못 쓰는 칸만 기본 글로 바꾸고, 체크리스트는 빈 · 겹치는 항목을 버리고 3개까지")
+  void checksEachCard() {
+    DayPlanPrompt.Answer answer =
+        new DayPlanPrompt.Answer(
+            List.of(
+                new DayPlanPrompt.Answer.Item(
+                    " 수학 기출 ", List.of("3단원 15문제", "3단원 15문제", " ", "오답 표시", "채점", "한 번 더")),
+                new DayPlanPrompt.Answer.Item("게으른 나의 영어", List.of("30쪽"))));
 
-    assertThat(question.name()).isEqualTo("day_plan");
-    assertThat(question.instructions())
-        .contains(ToneGuide.NO_PUT_DOWN_RULE)
-        .contains("지시가 아니야")
-        .contains("개수와 순서를 바꾸지 마")
-        .contains("칸마다 다른 할 일");
+    List<DayPlanPrompt.Text> texts = DayPlanPrompt.textsOf(answer, FALLBACKS);
+
+    assertThat(texts)
+        .containsExactly(
+            new DayPlanPrompt.Text("수학 기출", List.of("3단원 15문제", "오답 표시", "채점")), FALLBACKS.get(1));
   }
 
   @Test
-  @DisplayName("칸마다 검사해서 쓸 수 없는 칸만 기본 할 일로, 개수가 다르거나 답이 없으면 모두 기본 할 일")
-  void contents() {
-    List<String> fallbacks = List.of("문제집 3단원", "문제집 3단원", "영어 공부");
-
+  @DisplayName("답이 없거나 칸 수가 다르면 모두 기본 글이다 (AI 가 없어도 계획은 나온다)")
+  void fallbacksWhenUnusable() {
+    assertThat(DayPlanPrompt.textsOf(null, FALLBACKS)).isEqualTo(FALLBACKS);
     assertThat(
-            DayPlanPrompt.contentsOf(
-                new DayPlanPrompt.Answer(Arrays.asList(" 기출 1회분 ", "가".repeat(51), "단어 30개")),
-                fallbacks))
-        .containsExactly("기출 1회분", "문제집 3단원", "단어 30개");
-    assertThat(
-            DayPlanPrompt.contentsOf(
-                new DayPlanPrompt.Answer(Arrays.asList("한심하게 굴지 말고 풀기", null, "단어")), fallbacks))
-        .containsExactly("문제집 3단원", "문제집 3단원", "단어");
-    assertThat(DayPlanPrompt.contentsOf(new DayPlanPrompt.Answer(List.of("하나")), fallbacks))
-        .isEqualTo(fallbacks);
-    assertThat(DayPlanPrompt.contentsOf(null, fallbacks)).isEqualTo(fallbacks);
+            DayPlanPrompt.textsOf(
+                new DayPlanPrompt.Answer(
+                    List.of(new DayPlanPrompt.Answer.Item("수학", List.of("1문제")))),
+                FALLBACKS))
+        .isEqualTo(FALLBACKS);
   }
 }
