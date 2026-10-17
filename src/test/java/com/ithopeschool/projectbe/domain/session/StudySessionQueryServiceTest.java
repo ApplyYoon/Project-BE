@@ -10,6 +10,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
@@ -63,6 +64,7 @@ class StudySessionQueryServiceTest {
         studySessionRepository,
         mock(SubjectRepository.class),
         studyPlanRepository,
+        mock(CardRepository.class),
         Clock.fixed(now, ZoneOffset.UTC));
   }
 

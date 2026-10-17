@@ -95,7 +95,11 @@ class StudySessionQueryControllerTest {
         .andExpect(jsonPath("$[0].targetMinutes").value(50))
         .andExpect(jsonPath("$[0].stopReason").value("phone"))
         .andExpect(jsonPath("$[0].kind").value("study"))
-        .andExpect(jsonPath("$[0].length()").value(10))
+        // 옛 열 칸 + 카드 기준으로 넓힌 여덟 칸(#224) = 열여덟 칸
+        .andExpect(jsonPath("$[0].mode").value("normal"))
+        .andExpect(jsonPath("$[0].endedEarly").value(false))
+        .andExpect(jsonPath("$[0].cardId").isEmpty())
+        .andExpect(jsonPath("$[0].length()").value(18))
         .andExpect(jsonPath("$[0].userId").doesNotExist())
         // 노는 기록: 과목은 빈 글자, 값이 없는 칸은 빼지 않고 null
         .andExpect(jsonPath("$[1].subjectId").value(""))
@@ -103,7 +107,7 @@ class StudySessionQueryControllerTest {
         .andExpect(jsonPath("$[1].targetMinutes").isEmpty())
         .andExpect(jsonPath("$[1].stopReason").isEmpty())
         .andExpect(jsonPath("$[1].kind").value("play"))
-        .andExpect(jsonPath("$[1].length()").value(10));
+        .andExpect(jsonPath("$[1].length()").value(18));
 
     verify(studySessionService).getSessions(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 7));
   }

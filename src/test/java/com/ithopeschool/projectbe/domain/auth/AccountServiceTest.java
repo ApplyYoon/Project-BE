@@ -24,7 +24,13 @@ import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
 import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.SubjectLevel;
+import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
+import com.ithopeschool.projectbe.domain.session.SessionMemo;
+import com.ithopeschool.projectbe.domain.session.SessionMode;
+import com.ithopeschool.projectbe.domain.session.SessionPause;
+import com.ithopeschool.projectbe.domain.session.SessionTags.GoodReason;
+import com.ithopeschool.projectbe.domain.session.SessionTags.PauseTag;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.subject.Subject;
 import com.ithopeschool.projectbe.domain.subject.SubjectColor;
@@ -548,7 +554,12 @@ class AccountServiceTest {
               new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
           // 카드(cards)에 매달린 체크리스트와 예상 실패 원인 (이슈 #222)
           "CARD_CHECKLIST_ITEMS", new String[] {"CARDS", "CARD_ID"},
-          "CARD_EXPECTED_FAIL_CAUSES", new String[] {"CARDS", "CARD_ID"});
+          "CARD_EXPECTED_FAIL_CAUSES", new String[] {"CARDS", "CARD_ID"},
+          // 공부 기록(study_sessions)에 매달린 일시정지 · 체크한 항목 · 잘 된 이유 · 메모 (이슈 #224)
+          "SESSION_PAUSES", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"},
+          "SESSION_CHECKED_ITEMS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"},
+          "SESSION_GOOD_REASONS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"},
+          "SESSION_MEMOS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"});
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
@@ -579,6 +590,33 @@ class AccountServiceTest {
               NOW);
       card.changeExpectedFailCauses(List.of("폰을 볼 것 같다"));
       entityManager.persist(card);
+      // 카드로 켠 공부 기록 하나 (딸린 테이블 네 개에 한 줄씩)
+      StudySession cardSession =
+          new StudySession(
+              userId,
+              null,
+              NOW.minusSeconds(7200),
+              NOW.minusSeconds(3600),
+              1,
+              60_000,
+              null,
+              60,
+              null,
+              PlanKind.STUDY);
+      cardSession.recordCard(card.getId(), SessionMode.NORMAL, false);
+      cardSession.recordPauses(
+          List.of(
+              new SessionPause(
+                  NOW.minusSeconds(7000), NOW.minusSeconds(6940), PauseTag.TOILET, null)));
+      cardSession.recordEndReport(
+          Map.of("i1", NOW.minusSeconds(4000)),
+          null,
+          null,
+          null,
+          null,
+          EnumSet.of(GoodReason.FOCUS));
+      cardSession.recordMemos(List.of(new SessionMemo(NOW.minusSeconds(5000), "메모")));
+      entityManager.persist(cardSession);
     }
     entityManager.flush();
     callWith(tokenOfA);
