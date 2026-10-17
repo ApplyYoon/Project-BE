@@ -173,6 +173,7 @@ class LoginRequiredFlowTest {
               "GET", "/api/v1/checkins", "/api/v1/checkins?from=2026-10-01&to=2026-10-07", null),
           new Api(
               "GET", "/api/v1/checkins/today/questions", "/api/v1/checkins/today/questions", null),
+          new Api("DELETE", "/api/v1/checkins", "/api/v1/checkins", null),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
@@ -261,8 +262,11 @@ class LoginRequiredFlowTest {
               "{\"terms\":true,\"privacy\":true,\"over14\":true,\"version\":\"v1\"}"),
           // 첫 가설 (설문 답으로 만든 문장이라 학생의 정보입니다)
           new Api("GET", "/api/v1/insights/hypotheses", "/api/v1/insights/hypotheses", null),
+          new Api("GET", "/api/v1/insights/score-study", "/api/v1/insights/score-study", null),
           // 실패 원인 분석 (못 채운 날과 그 이유라서 학생의 정보입니다)
           new Api("GET", "/api/v1/stats/miss-reasons", "/api/v1/stats/miss-reasons", null),
+          // 리듬·패턴 분석 (공부한 날·시간대·시험 날이라 학생의 정보입니다)
+          new Api("GET", "/api/v1/stats/rhythm", "/api/v1/stats/rhythm", null),
           // 카드 체크리스트 추천 (내 지난 기록을 보고 AI 를 부릅니다. 이슈 #236)
           new Api("POST", "/api/v1/ai/checklist", "/api/v1/ai/checklist", "{\"title\":\"수학 문제집\"}"),
           // 첫 준비 행동 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #236)
