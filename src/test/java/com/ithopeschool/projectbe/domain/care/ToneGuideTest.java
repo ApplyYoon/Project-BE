@@ -80,6 +80,7 @@ class ToneGuideTest {
   void bannedExpressionsAreCaught() {
     assertThat(ToneGuide.hasBannedExpression("완주율이 55% 라니 한심하다.")).isTrue();
     assertThat(ToneGuide.hasBannedExpression("그렇게 게을러서 되겠어?")).isTrue();
+    assertThat(ToneGuide.hasBannedExpression("너는 게으른 편이야.")).isTrue();
     assertThat(ToneGuide.hasBannedExpression("머리가 나쁘면 더 해야지.")).isTrue();
     // 남과 비교하는 말
     assertThat(ToneGuide.hasBannedExpression("남들은 벌써 3시간 했어.")).isTrue();
@@ -92,6 +93,8 @@ class ToneGuideTest {
     assertThat(ToneGuide.hasBannedExpression("화요일은 40% 로 조금 낮았어.")).isFalse();
     assertThat(ToneGuide.hasBannedExpression("오늘 계획, 아직 시작 전이네.")).isFalse();
     assertThat(ToneGuide.hasBannedExpression("계획한 시각보다 평균 23분 늦게 시작했어.")).isFalse();
+    // 약점 칩의 이름("게으름")을 그대로 말하는 것은 사람을 깎아내리는 말이 아니라서 걸리지 않습니다.
+    assertThat(ToneGuide.hasBannedExpression("네가 꼽은 약점은 게으름 · 미루기야.")).isFalse();
     assertThat(ToneGuide.hasBannedExpression("")).isFalse();
   }
 
