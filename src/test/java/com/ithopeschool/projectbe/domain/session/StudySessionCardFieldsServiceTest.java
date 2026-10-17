@@ -213,7 +213,7 @@ class StudySessionCardFieldsServiceTest {
     assertThat(savedSession().getMode()).isEqualTo(SessionMode.OFFLINE);
 
     expectErrorWithoutSaveCheck(
-        cardSession("selfReport", null, null, null), "사후 입력(selfReport)은 여기서 저장할 수 없어요");
+        cardSession("selfReport", null, null, null), "사후 입력은 카드의 사후 입력(late-entry)으로 보내 주세요");
     expectErrorWithoutSaveCheck(
         cardSession("NORMAL", null, null, null), "세션 방법은 normal, offline 중에서 골라 주세요");
   }
@@ -318,6 +318,67 @@ class StudySessionCardFieldsServiceTest {
         cardSession(null, null, null, List.of(new SessionMemoRequest(0L, "1970년"))),
         ErrorCode.VALIDATION_ERROR,
         "메모를 쓴 시각이 올바르지 않아요");
+  }
+
+  // ---- 사후 입력 (#225) ----
+
+  @Test
+  @DisplayName("사후 입력 세션은 방법 selfReport · 일시정지 0번 · 목표는 카드 길이로 저장되고, 증빙을 같이 적는다")
+  void selfReport() {
+    StudySessionResponse response =
+        studySessionService.createSelfReport(
+            MY_CARD,
+            60,
+            Instant.ofEpochMilli(START),
+            Instant.ofEpochMilli(START + 50 * MINUTE),
+            new SessionEndReportRequest(
+                null,
+                null,
+                null,
+                new SessionEndReportRequest.Proof("https://x.com/a", null),
+                null));
+
+    StudySession saved = savedSession();
+    assertThat(saved.getMode()).isEqualTo(SessionMode.SELF_REPORT);
+    assertThat(saved.getCardId()).isEqualTo(MY_CARD);
+    assertThat(saved.getSubjectId()).isNull();
+    assertThat(saved.getPauseCount()).isZero();
+    assertThat(saved.getTargetMinutes()).isEqualTo(60);
+    assertThat(response.mode()).isEqualTo("selfReport");
+    assertThat(response.pauses()).isEmpty();
+    assertThat(response.endReport().proof().link()).isEqualTo("https://x.com/a");
+  }
+
+  @Test
+  @DisplayName("사후 입력도 남의 카드면 404, 이미 있는 기록과 겹치면 409, 1분 미만이면 400")
+  void selfReportChecks() {
+    assertThatThrownBy(
+            () ->
+                studySessionService.createSelfReport(
+                    99L, 60, Instant.ofEpochMilli(START), Instant.ofEpochMilli(END), null))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("카드를 찾을 수 없어요");
+    assertThatThrownBy(
+            () ->
+                studySessionService.createSelfReport(
+                    MY_CARD,
+                    60,
+                    Instant.ofEpochMilli(START),
+                    Instant.ofEpochMilli(START + 30_000),
+                    null))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("1분 미만의 기록은 저장하지 않아요");
+    given(
+            studySessionRepository.existsByUserIdAndStartedAtLessThanAndEndedAtGreaterThan(
+                any(), any(), any()))
+        .willReturn(true);
+    assertThatThrownBy(
+            () ->
+                studySessionService.createSelfReport(
+                    MY_CARD, 60, Instant.ofEpochMilli(START), Instant.ofEpochMilli(END), null))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("이미 저장된 기록과 시간이 겹쳐요");
+    verify(studySessionRepository, never()).save(any());
   }
 
   // ---- 노는 기록 ----

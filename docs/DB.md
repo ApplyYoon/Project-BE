@@ -52,6 +52,9 @@ erDiagram
     study_sessions ||--o{ session_checked_items : "study_session_id"
     study_sessions ||--o{ session_good_reasons : "study_session_id"
     study_sessions ||--o{ session_memos : "study_session_id"
+    users ||--o{ card_day_marks : "user_id"
+    cards ||--o{ card_day_marks : "card_id"
+    users ||--o{ rest_days : "user_id"
 
     users {
         bigint id PK "사용자를 구분하는 고유 번호"
@@ -86,7 +89,7 @@ erDiagram
         bigint paused_ms "일시정지해 있던 시간의 합, 밀리초 (없으면 0, 순공에서 뺌)"
         bigint plan_id "어느 계획을 하려고 켠 타이머인지 (계획 없이 켰으면 비어 있음)"
         int target_minutes "시작할 때 약속한 목표 시간(분) (목표 없이 켰으면 비어 있음)"
-        varchar stop_reason "목표 전에 그만둔 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, ETC 중 하나, 안 골랐으면 비어 있음)"
+        varchar stop_reason "목표 전에 그만둔 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, PROCRASTINATED, ETC 중 하나, 안 골랐으면 비어 있음)"
         varchar kind "공부 기록인지 노는 기록인지 (STUDY, PLAY 중 하나)"
         bigint card_id FK "어느 카드의 세션인지 (옛 기록이면 비어 있음, #224)"
         varchar mode "잰 방법 (NORMAL 타이머, OFFLINE 오프라인, SELF_REPORT 사후 입력 중 하나, 옛 기록은 비어 있음 = NORMAL)"
@@ -161,7 +164,7 @@ erDiagram
         varchar found_bias "대답에서 보인 생각 습관 (asked_bias 와 같은 값 중 하나, 없으면 비어 있음)"
         varchar found_evidence "그 습관이 보인 근거 한 줄 (100자까지)"
         varchar actual_question "AI 가 실제로 한 생각 습관 질문 (200자까지)"
-        varchar miss_reason "어제 계획을 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, ETC 중 하나)"
+        varchar miss_reason "어제 계획을 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, PROCRASTINATED, ETC 중 하나)"
         varchar promise_if "오늘의 약속 '만약 ~하면' (50자까지)"
         varchar promise_then "오늘의 약속 '~한다' (50자까지)"
         boolean promise_kept "지난 약속을 지켰다고 했는지 (이야기하지 않았으면 비어 있음)"
@@ -307,7 +310,7 @@ erDiagram
         varchar source "어디서 만든 체크인인지 (MANUAL, CALL, QUICK 중 하나)"
         int condition "오늘 컨디션 (1 ~ 5), 안 골랐으면 비어 있음"
         int mood "오늘 기분 (1 ~ 5), 안 골랐으면 비어 있음"
-        varchar miss_reason "어제 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, ETC 중 하나), 비어도 됨"
+        varchar miss_reason "어제 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, PROCRASTINATED, ETC 중 하나), 비어도 됨"
         varchar miss_reason_note "기타 이유 한 줄 (50자까지, ETC 일 때만)"
         int expected_minutes "오늘 예상 순공시간(분), 비어도 됨"
         varchar promise_if "오늘의 약속 만약 ~하면 (100자까지), 비어도 됨"
@@ -351,6 +354,25 @@ erDiagram
         int position "몇 번째 원인인지 (0 부터)"
         varchar cause "예상 실패 원인 글 (100자까지)"
     }
+    card_day_marks {
+        bigint id PK "표시를 구분하는 고유 번호"
+        bigint user_id FK "누구의 표시인지"
+        bigint card_id FK "어느 카드인지"
+        date mark_date "어느 날의 카드인지 (미루거나 실패한 그 날짜)"
+        varchar mark "미루기 POSTPONED 또는 실패 FAILED"
+        varchar reason "미루기 이유 100~500자 또는 실패 사유 500자까지 (위기 표현이 있으면 비움)"
+        varchar cause "실패 원인 태그 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, PROCRASTINATED, ETC 중 하나, 실패일 때만)"
+        date new_date "미룬 새 날짜 (미루기일 때만)"
+        time new_start_time "미룬 새 시작 시각 (미루기일 때만)"
+        boolean crisis_detected "이유 글에 위기 표현이 있었으면 true"
+        timestamptz created_at "표시를 남긴 시각"
+    }
+    rest_days {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "누가 쉰 날인지"
+        date rest_date "휴식으로 처리한 날짜 (같은 사람 안에서 중복 불가)"
+        timestamptz created_at "휴식으로 처리한 시각"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
@@ -367,6 +389,8 @@ erDiagram
 | `session_checked_items` | 기록 하나에서 체크한 카드 체크리스트 항목이 한 줄씩 (항목 id · 체크한 시각, `@ElementCollection`) | #224 |
 | `session_good_reasons` | 기록 하나의 잘 된 이유 태그가 한 줄씩 (`@ElementCollection`) | #224 |
 | `session_memos` | 기록 하나의 딴생각 메모가 한 줄씩 (`@ElementCollection`) | #224 |
+| `card_day_marks` | 카드 한 장 · 날짜 하나를 미뤘거나(이유 · 새 날짜 · 새 시각) 실패로 기록한(원인 태그 · 사유) 것이 한 줄. 같은 카드 · 같은 날짜에는 한 줄만 | #225 |
+| `rest_days` | 한 사람이 하루를 사후에 휴식으로 처리한 것이 한 줄. 같은 날은 한 번만, 한 달에 4번까지 | #225 |
 | `accounts` | 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시 또는 구글 고유 번호, 실명(선택), 학교, 동의). 사용자 한 명에 하나 | #97 · #19 |
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
 | `consent_records` | 개인정보 동의 한 번이 한 줄 (동의 시각, 문구 버전, 만 14세 확인). 다시 동의하면 **새 줄이 쌓여** 이력이 남음 | #71 |
@@ -473,6 +497,14 @@ erDiagram
 > - 체크리스트를 체크했는지는 카드가 아니라 **여기(`session_checked_items`)** 에 남깁니다. 반복 카드는 한 장이라 날짜마다 나눠 담을 곳이 세션이기 때문입니다. (#222)
 > - `end_reported` 는 "종료 팝업에 답했는지" 입니다. 이것이 없으면 "체크 0개로 답함" 과 "팝업을 닫아 버림" 을 구별할 수 없습니다.
 > - 카드로 켠 공부 기록은 과목이 없어도 됩니다. 그래서 검사 규칙을 `ck_study_sessions_study_has_subject_or_card` (노는 기록이거나, 과목이나 카드가 있음)로 바꿨습니다.
+
+> `card_day_marks` · `rest_days` 는 2026-10-17 에 이슈 #225 에서 **AI 가 만든 테이블**입니다. (**PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - **미루기와 실패는 한 테이블**에 `mark` 로 구분합니다. 둘 다 "카드 하루치에 사람이 남긴 표시" 이고, 한 날에는 둘 중 하나만 있을 수 있어서입니다. (`uk_card_day_marks_card_id_mark_date`)
+> - 미루기 한도(반복 카드 월 5회 · 1회성 장당 2회 · 절대 카드 0회)는 이 테이블의 줄을 세서 지킵니다. 1회성 카드를 미루면 카드 자체도 새 날짜 · 시각으로 옮깁니다. 반복 카드는 한 장이라 표시에만 새 날짜 · 시각이 남습니다.
+> - **휴식은 카드가 아니라 하루 전체**에 붙어서 `rest_days` 로 따로 뒀습니다. 휴식한 날의 카드는 실패 집계에서 빠집니다.
+> - 이유 글에 **위기 표현**(#56)이 있으면 글은 저장하지 않고 `crisis_detected` 만 남깁니다. (`call_records` 와 같은 방식)
+> - 실패 원인은 체크인의 못 채운 이유(`MissReason`)와 같은 값이고, 이 이슈에서 **'미루다 보니'(`PROCRASTINATED`)** 를 더했습니다. 그래서 `call_records.miss_reason` · `checkins.miss_reason` · `study_sessions.stop_reason` 의 검사 규칙에도 이 값이 들어갑니다.
+> - 두 테이블 모두 `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
 
 > `study_plans` 의 `start_time` · `kind` · `routine_id` 는 2026-10-12 에 이슈 #12 에서 더했습니다. (칸 이름과 뜻은 Project#12 의 표, 시작 시각을 `time` 으로 저장하는 것은 학생이 정함)
 > - 공부 계획(`STUDY`)은 `subject_id` 가 꼭 있어야 하고, 노는 계획(`PLAY`)만 비어도 됩니다. DB 에도 검사 규칙(`ck_study_plans_study_has_subject`)으로 걸어 두었습니다.

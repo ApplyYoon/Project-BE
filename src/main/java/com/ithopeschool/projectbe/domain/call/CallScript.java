@@ -524,6 +524,7 @@ public final class CallScript {
       case "tooMuch" -> "계획 과다";
       case "unwilling" -> "하기 싫음";
       case "sick" -> "아픔";
+      case "procrastinated" -> "미루다 보니";
       default -> "기타";
     };
   }

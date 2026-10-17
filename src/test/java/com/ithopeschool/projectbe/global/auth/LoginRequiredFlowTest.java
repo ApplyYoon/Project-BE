@@ -127,6 +127,37 @@ class LoginRequiredFlowTest {
           new Api("POST", "/api/v1/cards", "/api/v1/cards", CARD_BODY),
           new Api("PATCH", "/api/v1/cards/{id}", "/api/v1/cards/1", "{\"title\":\"수학\"}"),
           new Api("DELETE", "/api/v1/cards/{id}", "/api/v1/cards/1", null),
+          // 미루기 · 실패 · 사후 입력 · 휴식 처리 (이슈 #225)
+          new Api(
+              "GET",
+              "/api/v1/cards/{id}/postpone-limit",
+              "/api/v1/cards/1/postpone-limit?date=2026-10-12",
+              null),
+          new Api(
+              "POST",
+              "/api/v1/cards/{id}/postpone",
+              "/api/v1/cards/1/postpone",
+              "{\"date\":\"2026-10-12\",\"reason\":\""
+                  + "가".repeat(100)
+                  + "\",\"newDate\":\"2026-10-13\",\"newStartTime\":\"20:00\"}"),
+          new Api(
+              "POST",
+              "/api/v1/cards/{id}/fail",
+              "/api/v1/cards/1/fail",
+              "{\"date\":\"2026-10-12\",\"cause\":\"tired\"}"),
+          new Api(
+              "POST",
+              "/api/v1/cards/{id}/late-entry",
+              "/api/v1/cards/1/late-entry",
+              "{\"date\":\"2026-10-12\",\"startedAt\":1790000000000,\"endedAt\":1790003000000}"),
+          new Api(
+              "GET",
+              "/api/v1/card-day-marks",
+              "/api/v1/card-day-marks?from=2026-10-01&to=2026-10-07",
+              null),
+          new Api("POST", "/api/v1/rest-days/{date}", "/api/v1/rest-days/2026-10-12", null),
+          new Api(
+              "GET", "/api/v1/rest-days", "/api/v1/rest-days?from=2026-10-01&to=2026-10-07", null),
           // 관리 설정
           new Api("GET", "/api/v1/settings", "/api/v1/settings", null),
           new Api("PATCH", "/api/v1/settings", "/api/v1/settings", "{\"maxHarshness\":5}"),

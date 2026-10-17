@@ -156,7 +156,7 @@ class CheckInServiceTest {
     expectRejected(
         TODAY,
         withReason("lazy", null),
-        "못 채운 이유는 tired, event, phone, tooMuch, unwilling, sick, etc 중에서 골라 주세요");
+        "못 채운 이유는 tired, event, phone, tooMuch, unwilling, sick, procrastinated, etc 중에서 골라 주세요");
   }
 
   @Test
