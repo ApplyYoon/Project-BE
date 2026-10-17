@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -14,6 +15,7 @@ import com.ithopeschool.projectbe.domain.plan.dto.StudyPlanBatchCreateRequest;
 import com.ithopeschool.projectbe.domain.plan.dto.StudyPlanCreateRequest;
 import com.ithopeschool.projectbe.domain.plan.dto.StudyPlanResponse;
 import com.ithopeschool.projectbe.domain.plan.dto.StudyPlanUpdateRequest;
+import com.ithopeschool.projectbe.domain.routine.RoutineService;
 import com.ithopeschool.projectbe.domain.subject.Subject;
 import com.ithopeschool.projectbe.domain.subject.SubjectColor;
 import com.ithopeschool.projectbe.domain.subject.SubjectRepository;
@@ -43,6 +45,7 @@ class StudyPlanServiceTest {
   private CurrentUserProvider currentUserProvider;
   private StudyPlanRepository studyPlanRepository;
   private SubjectRepository subjectRepository;
+  private RoutineService routineService;
   private StudyPlanService studyPlanService;
 
   @BeforeEach
@@ -50,12 +53,10 @@ class StudyPlanServiceTest {
     currentUserProvider = mock(CurrentUserProvider.class);
     studyPlanRepository = mock(StudyPlanRepository.class);
     subjectRepository = mock(SubjectRepository.class);
+    routineService = mock(RoutineService.class);
     studyPlanService =
         new StudyPlanService(
-            currentUserProvider,
-            studyPlanRepository,
-            subjectRepository,
-            mock(com.ithopeschool.projectbe.domain.routine.RoutineService.class));
+            currentUserProvider, studyPlanRepository, subjectRepository, routineService);
     given(currentUserProvider.getCurrentUserId()).willReturn(ME);
     // 3번은 내 과목이고, 그 밖의 번호는 없는 과목이거나 남의 과목입니다.
     given(subjectRepository.findByIdAndUserId(any(), any())).willReturn(Optional.empty());
@@ -176,6 +177,65 @@ class StudyPlanServiceTest {
     given(studyPlanRepository.findByUserIdAndPlanDateOrderById(ME, OCT_5)).willReturn(List.of());
 
     assertThat(studyPlanService.getPlans(OCT_5)).isEmpty();
+  }
+
+  // ---- 기간 목록 (#250) ----
+
+  @Test
+  @DisplayName("기간 목록은 내 번호와 보낸 기간(둘 다 포함)으로 묻고, 날짜순 → 같은 날은 하루치 목록과 같은 순서다")
+  void getPlansBetween() {
+    LocalDate oct6 = OCT_5.plusDays(1);
+    StudyPlan oct5NoTime = plan(1, 3, "5일 시간 미정", 30);
+    StudyPlan oct6Morning = withId(new StudyPlan(ME, 3L, oct6, "6일 아침", 30), 2L);
+    oct6Morning.changeStartTime(LocalTime.of(9, 0));
+    StudyPlan oct5Evening = plan(3, 3, "5일 저녁", 30);
+    oct5Evening.changeStartTime(LocalTime.of(19, 0));
+    StudyPlan oct6NoTime = withId(new StudyPlan(ME, 3L, oct6, "6일 시간 미정", 30), 4L);
+    given(
+            studyPlanRepository.findByUserIdAndPlanDateBetweenOrderByPlanDateAscIdAsc(
+                ME, OCT_5, oct6))
+        .willReturn(List.of(oct5NoTime, oct5Evening, oct6Morning, oct6NoTime));
+
+    assertThat(studyPlanService.getPlansBetween(OCT_5, oct6))
+        .extracting(StudyPlanResponse::content)
+        .containsExactly("5일 저녁", "5일 시간 미정", "6일 아침", "6일 시간 미정");
+  }
+
+  @Test
+  @DisplayName("기간 목록도 하루치처럼 날마다 루틴 계획을 채운다 (지난 날을 채우지 않는 것은 RoutineService 가 정함)")
+  void getPlansBetweenFillsEveryDay() {
+    given(
+            studyPlanRepository.findByUserIdAndPlanDateBetweenOrderByPlanDateAscIdAsc(
+                any(), any(), any()))
+        .willReturn(List.of());
+
+    assertThat(studyPlanService.getPlansBetween(OCT_5, OCT_5.plusDays(2))).isEmpty();
+
+    verify(routineService).fill(ME, OCT_5);
+    verify(routineService).fill(ME, OCT_5.plusDays(1));
+    verify(routineService).fill(ME, OCT_5.plusDays(2));
+  }
+
+  @Test
+  @DisplayName("기간은 하루부터 62일까지 된다. 63일이거나 시작이 끝보다 늦으면 400 이고 DB 는 묻지 않는다")
+  void getPlansBetweenLimits() {
+    given(
+            studyPlanRepository.findByUserIdAndPlanDateBetweenOrderByPlanDateAscIdAsc(
+                any(), any(), any()))
+        .willReturn(List.of());
+    assertThat(studyPlanService.getPlansBetween(OCT_5, OCT_5)).isEmpty();
+    assertThat(studyPlanService.getPlansBetween(OCT_5, OCT_5.plusDays(61))).isEmpty();
+
+    assertError(
+        () -> studyPlanService.getPlansBetween(OCT_5, OCT_5.plusDays(62)),
+        ErrorCode.VALIDATION_ERROR,
+        "한 번에 62일까지만 조회할 수 있어요");
+    assertError(
+        () -> studyPlanService.getPlansBetween(OCT_5, OCT_5.minusDays(1)),
+        ErrorCode.VALIDATION_ERROR,
+        "시작 날짜는 끝 날짜보다 늦을 수 없어요");
+    verify(studyPlanRepository, times(2))
+        .findByUserIdAndPlanDateBetweenOrderByPlanDateAscIdAsc(any(), any(), any());
   }
 
   // ---- 추가 ----

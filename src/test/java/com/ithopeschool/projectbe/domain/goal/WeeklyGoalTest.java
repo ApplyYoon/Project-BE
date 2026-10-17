@@ -86,7 +86,7 @@ class WeeklyGoalTest {
   // ─── 안전 브레이크가 켜진 주 ───
 
   // 안전 브레이크의 네 값: 채찍 멈춤 · 회복 모드 · 도움 안내 · 연락 금지 시간
-  private static final SafetyBrake BRAKE_OFF = new SafetyBrake(false, false, false, false);
+  private static final SafetyBrake BRAKE_OFF = new SafetyBrake(false, false, false, false, false);
 
   @Test
   void brakeOffSuggestsTheSameAsBefore() {
@@ -102,14 +102,18 @@ class WeeklyGoalTest {
   void noSuggestionWhileTheSafetyBrakeIsOn() {
     WeekFacts lastWeek = facts(55, 20, 10, 90);
 
-    // 채찍 멈춤(위기 표현 · 시험 기간)이 켜진 주
-    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(true, false, false, false)))
+    // 채찍 멈춤(위기 표현)이 켜진 주
+    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(true, false, false, false, false)))
         .isEmpty();
     // 회복 모드(기분 저하가 이어짐)가 켜진 주
-    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(false, true, false, false)))
+    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(false, true, false, false, false)))
         .isEmpty();
     // 둘 다 켜지고 도움 안내까지 보여주는 주
-    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(true, true, true, false))).isEmpty();
+    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(true, true, false, true, false)))
+        .isEmpty();
+    // 시험 기간인 주 (회복 모드는 아니지만 시험 주에 "더" 를 내밀지 않습니다, 이슈 #232)
+    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(false, false, true, false, false)))
+        .isEmpty();
   }
 
   @Test
@@ -117,7 +121,7 @@ class WeeklyGoalTest {
     // 연락 금지 시간은 "지금 연락해도 되는지" 일 뿐입니다. 목표 제안과는 상관없습니다.
     WeekFacts lastWeek = facts(55, 20, 10, 90);
 
-    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(false, false, false, true)))
+    assertThat(WeeklyGoal.candidates(lastWeek, new SafetyBrake(false, false, false, false, true)))
         .isEqualTo(WeeklyGoal.candidates(lastWeek));
   }
 

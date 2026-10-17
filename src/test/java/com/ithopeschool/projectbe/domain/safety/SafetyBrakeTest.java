@@ -51,7 +51,7 @@ class SafetyBrakeTest {
     // 글도 기분도 괜찮고, 시험도 없고, 낮이면 아무것도 켜지지 않습니다.
     SafetyBrake brake = SafetyBrake.check(NOON, ORDINARY_TEXTS, NO_MOODS, NO_EXAMS);
 
-    assertThat(brake).isEqualTo(new SafetyBrake(false, false, false, false));
+    assertThat(brake).isEqualTo(new SafetyBrake(false, false, false, false, false));
   }
 
   @Test
@@ -66,25 +66,24 @@ class SafetyBrakeTest {
   }
 
   @Test
-  void examPeriodOnlyTurnsOnRecoveryMode() {
-    // 규칙 2) 시험 이틀 전 → 회복 모드만. 위기가 아니라서 도움 안내는 띄우지 않습니다.
+  void examPeriodOnlyTurnsOnExamPeriod() {
+    // 규칙 2) 시험 이틀 전 → examPeriod 만. 회복 모드(0)가 아니라 관리 강도 상한 2 입니다. (이슈 #232)
+    // 위기가 아니라서 도움 안내도 띄우지 않습니다.
     List<LocalDate> exams = List.of(TODAY.plusDays(2));
 
     SafetyBrake brake = SafetyBrake.check(NOON, ORDINARY_TEXTS, NO_MOODS, exams);
 
-    assertThat(brake.stopWhip()).isFalse();
-    assertThat(brake.recoveryMode()).isTrue();
-    assertThat(brake.showHelp()).isFalse();
-    assertThat(brake.quiet()).isFalse();
+    assertThat(brake).isEqualTo(new SafetyBrake(false, false, true, false, false));
   }
 
   @Test
-  void examFarAwayDoesNotTurnOnRecoveryMode() {
+  void examFarAwayDoesNotTurnOnExamPeriod() {
     // 시험이 4일 뒤면 아직 시험 기간이 아닙니다.
     List<LocalDate> exams = List.of(TODAY.plusDays(4));
 
     SafetyBrake brake = SafetyBrake.check(NOON, ORDINARY_TEXTS, NO_MOODS, exams);
 
+    assertThat(brake.examPeriod()).isFalse();
     assertThat(brake.recoveryMode()).isFalse();
   }
 
@@ -117,7 +116,7 @@ class SafetyBrakeTest {
 
     SafetyBrake brake = SafetyBrake.check(lateNight, ORDINARY_TEXTS, NO_MOODS, NO_EXAMS);
 
-    assertThat(brake).isEqualTo(new SafetyBrake(false, false, false, true));
+    assertThat(brake).isEqualTo(new SafetyBrake(false, false, false, false, true));
   }
 
   @Test
@@ -146,7 +145,7 @@ class SafetyBrakeTest {
 
     SafetyBrake brake = SafetyBrake.check(lateNight, List.of("사라지고 싶어"), NO_MOODS, NO_EXAMS);
 
-    assertThat(brake).isEqualTo(new SafetyBrake(true, true, true, true));
+    assertThat(brake).isEqualTo(new SafetyBrake(true, true, false, true, true));
   }
 
   @Test
@@ -170,8 +169,8 @@ class SafetyBrakeTest {
     // 10월 11일 04:00 부터는 10월 11일 → 시험 3일 전 → 시험 기간
     SafetyBrake atFour = SafetyBrake.check(seoul(nextDay, 4, 0), List.of(), NO_MOODS, exams);
 
-    assertThat(beforeFour.recoveryMode()).isFalse();
-    assertThat(atFour.recoveryMode()).isTrue();
+    assertThat(beforeFour.examPeriod()).isFalse();
+    assertThat(atFour.examPeriod()).isTrue();
     // 연락 금지 시간은 하루의 기준과 상관없이 시계 시각 그대로 봅니다. 새벽 3시 59분·4시는 둘 다 금지 시간입니다.
     assertThat(beforeFour.quiet()).isTrue();
     assertThat(atFour.quiet()).isTrue();

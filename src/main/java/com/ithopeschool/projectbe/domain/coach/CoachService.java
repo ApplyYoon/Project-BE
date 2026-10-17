@@ -5,6 +5,7 @@ import com.ithopeschool.projectbe.domain.coach.dto.CoachParagraphResponse;
 import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import java.util.List;
 import java.util.Optional;
@@ -23,7 +24,9 @@ import org.springframework.stereotype.Service;
 //   6. 받은 문단을 검사한다                (지어낸 숫자·깎아내리는 말이 있으면 문단 없음)
 //   7. 통과한 문단을 기억해 둔다           (CoachParagraphStore)
 //
-// 안전 브레이크가 켜져 있으면(safetyBrakeOn) 사용자가 정한 한도와 상관없이 위로하는 말투만 씁니다.
+// 안전 브레이크가 켜져 있으면 사용자가 정한 한도와 상관없이 위로하는 말투만 씁니다. (이슈 #87)
+// 켜졌는지는 FE 가 보낸 safetyBrakeOn 과, 서버의 보호 조치 기록(SafetyService.isActive: 최근 7일 안에 위기 표현이
+// 감지된 체크인 · 통화 · 채팅이 있었는지, 이슈 #56) 중 하나라도 켜져 있으면 켜진 것으로 봅니다.
 //
 // "문단 없음" 은 에러가 아닙니다. { "paragraph": null } 을 돌려주면 FE 가 기본 문장을 보여줍니다.
 // ⚠️ 받은 숫자와 AI 가 쓴 글은 로그에 찍지 않습니다.
@@ -39,6 +42,8 @@ public class CoachService {
   // GPT 글 호출 하루 한도를 보고, 부른 것을 기록합니다. (이슈 #33)
   private final GptUsageGuard gptUsageGuard;
   private final CoachParagraphStore coachParagraphStore;
+  // 서버에 남은 위기 보호 조치 기록을 봅니다. FE 가 기기에만 있는 기록으로 판정한 것을 한 번 더 확인합니다.
+  private final SafetyService safetyService;
 
   // 주간 리포트의 코치 한마디
   public CoachParagraphResponse weeklyParagraph(WeeklyCoachRequest request) {
@@ -46,7 +51,8 @@ public class CoachService {
         CoachKind.WEEKLY,
         request.mondayKey(),
         request.numbers(),
-        careLevelLimit(request.maxCareLevel(), request.safetyBrakeOn()),
+        request.maxCareLevel(),
+        request.safetyBrakeOn(),
         request.maxHarshness());
   }
 
@@ -56,7 +62,8 @@ public class CoachService {
         CoachKind.DAILY,
         NO_PERIOD,
         request.numbers(),
-        careLevelLimit(request.maxCareLevel(), request.safetyBrakeOn()),
+        request.maxCareLevel(),
+        request.safetyBrakeOn(),
         request.maxHarshness());
   }
 
@@ -66,17 +73,18 @@ public class CoachService {
         CoachKind.MONTHLY,
         NO_PERIOD,
         request.numbers(),
-        careLevelLimit(request.maxCareLevel(), request.safetyBrakeOn()),
+        request.maxCareLevel(),
+        request.safetyBrakeOn(),
         request.maxHarshness());
   }
 
   // 말투를 정할 때 쓸 관리 강도 한도를 돌려줍니다.
   // 안전 브레이크가 켜져 있으면 한도가 몇이든 0(회복)으로 봅니다. 그러면 말투 규칙이 "위로하는 말만" 이 됩니다.
   // (안전 브레이크는 어떤 설정보다 먼저입니다. CLAUDE.md 4장)
-  //   한도 3, 브레이크 꺼짐(false 또는 안 보냄)  →  3
-  //   한도 3, 브레이크 켜짐                      →  0
-  private static int careLevelLimit(int maxCareLevel, Boolean safetyBrakeOn) {
-    return Boolean.TRUE.equals(safetyBrakeOn) ? 0 : maxCareLevel;
+  //   한도 3, 브레이크 꺼짐  →  3
+  //   한도 3, 브레이크 켜짐  →  0
+  private static int careLevelLimit(int maxCareLevel, boolean safetyBrakeOn) {
+    return safetyBrakeOn ? 0 : maxCareLevel;
   }
 
   // 어느 종류든 같은 순서로 처리합니다. 달라지는 것은 AI 에게 주는 지침(기간·문장 수·권하는 행동)뿐입니다.
@@ -85,7 +93,8 @@ public class CoachService {
       CoachKind kind,
       String periodKey,
       List<WeeklyCoachRequest.Number> numbers,
-      int maxCareLevel,
+      int requestedMaxCareLevel,
+      Boolean safetyBrakeOn,
       int maxHarshness) {
     // 로그인하지 않은 요청은 여기서 401 이 나갑니다. 아무나 불러서 GPT 비용을 쓰게 두면 안 됩니다.
     Long userId = currentUserProvider.getCurrentUserId();
@@ -93,6 +102,10 @@ public class CoachService {
     if (!coachAiClient.isEnabled()) {
       return CoachParagraphResponse.none(numbers);
     }
+
+    // FE 가 보낸 값(안 보냈으면 꺼짐) 또는 서버의 보호 조치 기록 중 하나라도 켜져 있으면 위로하는 말투입니다.
+    boolean brakeOn = Boolean.TRUE.equals(safetyBrakeOn) || safetyService.isActive(userId);
+    int maxCareLevel = careLevelLimit(requestedMaxCareLevel, brakeOn);
 
     // 같은 숫자·같은 한도로 받아 둔 문단이 있으면 그대로 돌려줍니다. GPT 를 부르지 않아서 하루 한도도 쓰지 않습니다.
     // signature 는 "이번에 받은 숫자와 한도" 를 글자로 이어 붙인 것입니다. 하나라도 달라지면 다른 글자가 됩니다.

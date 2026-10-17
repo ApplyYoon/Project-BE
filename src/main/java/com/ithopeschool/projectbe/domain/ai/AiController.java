@@ -8,6 +8,7 @@ import com.ithopeschool.projectbe.domain.ai.dto.FailCauseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.ProfileLinesResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
@@ -42,6 +43,7 @@ public class AiController {
   private final RoutineCardService routineCardService;
   private final QuickCardService quickCardService;
   private final SettingsFromTextService settingsFromTextService;
+  private final ProfileLinesService profileLinesService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -105,5 +107,13 @@ public class AiController {
   public SettingsFromTextResponse settingsFromText(
       @Valid @RequestBody SettingsFromTextRequest request) {
     return settingsFromTextService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "성향 요약 3줄: 내 가장 최근 심리검사에서 두드러진 척도 3개를 AI 가 한 줄씩 (본문 없음 · 저장 안 함 · 못 만들면 lines: null · 토큰 필요)")
+  @PostMapping("/profile-lines")
+  public ProfileLinesResponse profileLines() {
+    return profileLinesService.suggest();
   }
 }

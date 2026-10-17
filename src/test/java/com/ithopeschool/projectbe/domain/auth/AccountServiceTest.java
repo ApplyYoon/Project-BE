@@ -30,6 +30,8 @@ import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.SubjectLevel;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
+import com.ithopeschool.projectbe.domain.psychtest.PsychItem;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTest;
 import com.ithopeschool.projectbe.domain.risk.RiskForecast;
 import com.ithopeschool.projectbe.domain.risk.RiskLevel;
 import com.ithopeschool.projectbe.domain.risk.RiskReason;
@@ -545,6 +547,29 @@ class AccountServiceTest {
     assertThat(countCollectionRows("thinking_test_weaknesses")).isEqualTo(2);
   }
 
+  @Test
+  @DisplayName("탈퇴하면 심리검사(딸린 답 테이블까지)도 지워지고, 남의 것은 그대로다")
+  void withdrawDeletesPsychTests() {
+    for (Long userId : new Long[] {idOfA, idOfB}) {
+      Map<PsychItem, Integer> answers = new EnumMap<>(PsychItem.class);
+      for (PsychItem item : PsychItem.values()) {
+        answers.put(item, 4);
+      }
+      entityManager.persist(new PsychTest(userId, NOW, answers));
+    }
+    entityManager.flush();
+    callWith(tokenOfA);
+
+    accountService.withdraw(new WithdrawRequest(PASSWORD, null));
+    entityManager.flush();
+    entityManager.clear();
+
+    assertThat(countRows("PsychTest", idOfA)).isZero();
+    assertThat(countRows("PsychTest", idOfB)).isEqualTo(1);
+    // 딸린 답 테이블도 에이 것(35줄)은 남지 않고, 비이 것 35줄만 남습니다.
+    assertThat(countCollectionRows("psych_test_answers")).isEqualTo(35);
+  }
+
   // ---- 실제 DB 의 모든 테이블 확인 (이슈 #69 "모든 테이블에서 그 사용자의 행이 사라지는 테스트") ----
 
   // user_id 칸이 없는데도 탈퇴 때 지워지는 "딸린 테이블" 과, 그 줄이 가리키는 부모 테이블 · 부모를 가리키는 칸입니다.
@@ -576,7 +601,9 @@ class AccountServiceTest {
           // 보여 준 인사이트(insights)에 매달린 근거 날짜 (이슈 #43)
           Map.entry("INSIGHT_EVIDENCE_DATES", new String[] {"INSIGHTS", "INSIGHT_ID"}),
           // 위험 예측(risk_forecasts)에 매달린 "위험하다고 본 이유" (이슈 #49)
-          Map.entry("RISK_FORECAST_REASONS", new String[] {"RISK_FORECASTS", "RISK_FORECAST_ID"}));
+          Map.entry("RISK_FORECAST_REASONS", new String[] {"RISK_FORECASTS", "RISK_FORECAST_ID"}),
+          // 심리검사(psych_tests)에 매달린 문장 14개의 답 (이슈 #219)
+          Map.entry("PSYCH_TEST_ANSWERS", new String[] {"PSYCH_TESTS", "PSYCH_TEST_ID"}));
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")

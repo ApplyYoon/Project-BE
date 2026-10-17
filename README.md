@@ -280,7 +280,16 @@ export DATABASE_PASSWORD='<비밀번호>'
 
 1. `db/schema.sql` 도 **같은 커밋**에서 고칩니다. 안 고치면 `./gradlew build` 의 `SchemaSqlTest` 가 실패합니다.
    (PostgreSQL 문법이 헷갈리면 Hibernate 가 만들어 주는 SQL 을 참고합니다 — Claude 에게 "schema.sql 고쳐 줘" 라고 하면 됩니다)
-2. 이미 테이블이 있는 Neon 브랜치에는 **바뀐 부분만** `alter table ...` 로 SQL Editor 에서 실행합니다. `dev` 먼저, `main` 은 그다음.
+2. 이미 테이블이 있는 Neon 브랜치에 넣을 **바뀐 부분**은 [`db/migrations/`](./db/migrations) 에 번호를 붙인 파일로 남깁니다. (예: `03-main-300.sql`)
+   - **여러 번 실행해도 되게** 씁니다. `create table if not exists`, `add column if not exists`, 외래키·검사 규칙은 `drop constraint if exists` 다음 `add constraint`.
+   - 파일 전체를 `begin;` ~ `commit;` 으로 묶습니다. 중간에 에러가 나면 하나도 안 바뀝니다.
+   - `./gradlew build` 의 `MigrationSqlTest` 가 "최신 DB 에 두 번 실행해도 에러가 없는지" 검사합니다.
+
+#### 이미 있는 Neon 을 최신으로 올리기 (어느 상태든 같은 순서)
+
+`db/migrations/` 의 파일을 **01 부터 끝 번호까지 순서대로** SQL Editor 에 붙여 넣고 Run 합니다. `dev` 먼저, `main` 은 그다음.
+전에 어디까지 실행했는지 몰라도 처음부터 다시 돌리면 됩니다. 이미 있는 것은 건너뛰고 없는 것만 만들어집니다.
+빈 Neon 브랜치라면 이 파일들 대신 `db/schema.sql` 하나만 실행합니다.
 
 ### 왜 이렇게 정했나 — 서버가 아니라 사람이 테이블을 만듭니다
 
