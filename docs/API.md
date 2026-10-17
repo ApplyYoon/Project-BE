@@ -313,7 +313,6 @@ SNS 중에서는 **구글만** 씁니다. 아래 [구글로 시작하기](#구�
 {
   "email": "tmax@starflow.com",
   "password": "study2026",
-  "name": "김티맥",
   "nickname": "티맥이",
   "schoolCode": "7530560",
   "schoolName": "한국디지털미디어고등학교",
@@ -325,7 +324,7 @@ SNS 중에서는 **구글만** 씁니다. 아래 [구글로 시작하기](#구�
 | -------------------------- | ----------------------------------------------------------------------- |
 | `email`                    | 필수. 이메일 모양, 100자까지. 대문자·소문자를 가리지 않습니다 (소문자로 저장) |
 | `password`                 | 필수. 8 ~ 64자, 영문과 숫자를 모두 포함                                  |
-| `name`                     | **선택.** 실명. 안 보내도 가입됩니다. 보냈다면 2 ~ 20자. (이슈 #71: 실명은 받지 않는 방향이라, FE 가 실명 입력을 없애면 이 칸도 없앱니다) |
+| `name`                     | 보내지 마세요. 예전 FE가 보내도 무시하며 새 계정에 저장하지 않습니다. (#71) |
 | `nickname`                 | 필수. 앱에서 부르는 이름. 2 ~ 10자                                      |
 | `schoolCode`, `schoolName` | 선택. 고른 고등학교의 번호와 이름. 고르지 않았으면 둘 다 `null`         |
 | `consents.terms`           | 필수 동의(서비스 이용약관). `true` 여야 합니다                          |
@@ -433,11 +432,11 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 ```
 
 ```json
-{ "status": "SIGNUP_REQUIRED", "name": "김티맥", "email": "tmax@gmail.com" }
+{ "status": "SIGNUP_REQUIRED", "name": "", "email": "tmax@gmail.com" }
 ```
 
 - `LOGGED_IN` : 이미 구글로 가입한 사람입니다. 이메일 로그인과 같은 토큰을 줍니다.
-- `SIGNUP_REQUIRED` : 처음 온 구글 계정입니다. **계정은 아직 만들지 않습니다.** (약관 동의 전에는 개인정보를 저장하지 않기) `name` · `email` 은 FE 가 가입 화면을 미리 채우는 데 씁니다. `name` 은 구글 계정에 없으면 빈 글자입니다.
+- `SIGNUP_REQUIRED` : 처음 온 구글 계정입니다. **계정은 아직 만들지 않습니다.** (약관 동의 전에는 개인정보를 저장하지 않기) `email`만 가입 화면을 미리 채우는 데 씁니다. `name`은 호환용 빈 글자이며 구글 실명은 읽거나 전달하지 않습니다.
 
 #### 구글로 가입하기
 
@@ -446,7 +445,6 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 ```json
 {
   "credential": "eyJhbGciOiJSUzI1NiIs…",
-  "name": "김티맥",
   "nickname": "티맥이",
   "schoolCode": null,
   "schoolName": null,
@@ -454,7 +452,7 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 }
 ```
 
-- 규칙은 [가입](#가입) 과 같습니다. `email` · `password` 칸이 없고, 이메일은 구글이 확인한 값을 씁니다. 실명(`name`)이 선택인 것, 만 14세 확인(`consents.over14`)과 동의 문구 버전(`consents.version`)이 필수인 것, 가입하면 동의 기록이 남는 것도 같습니다.
+- 규칙은 [가입](#가입) 과 같습니다. `email` · `password` 칸이 없고, 이메일은 구글이 확인한 값을 씁니다. 실명(`name`)을 무시하는 것, 만 14세 확인(`consents.over14`)과 동의 문구 버전(`consents.version`)이 필수인 것, 가입하면 동의 기록이 남는 것도 같습니다.
 - **응답 201** — 로그인 응답과 같은 모양 `{ "token": "…", "user": { "id": "1", "name": "티맥이" } }`
 
 **에러** (두 API 공통)
@@ -485,7 +483,7 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 ```json
 {
   "email": "tmax@starflow.com",
-  "name": "김티맥",
+  "name": "티맥이",
   "nickname": "티맥이",
   "schoolCode": "7530560",
   "schoolName": "한국디지털미디어고등학교",
@@ -497,6 +495,8 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 - 학교를 고르지 않았으면 `schoolCode` · `schoolName` 이 `null` 입니다.
 - 이메일로 가입한 계정이 없는 사용자(내 컴퓨터의 테스트 사용자)는 **404** 입니다.
 
+- 응답 `name`은 기존 화면 호환을 위한 `nickname`의 별칭입니다. 저장된 과거 실명은 반환하지 않습니다.
+
 #### 내 정보 고치기
 
 `PUT /api/v1/auth/profile` — 고칠 수 있는 값을 **한꺼번에** 보냅니다. (일부만 보내는 방식이 아닙니다)
@@ -505,7 +505,6 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 
 ```json
 {
-  "name": "김티맥",
   "nickname": "새별명",
   "schoolCode": null,
   "schoolName": null,
@@ -515,7 +514,7 @@ Authorization: Bearer WXyXv1hAodmBchJoX60QXxLYGP_8-TWzI-1UGuw2gpQ
 
 | 필드                       | 규칙                                                              |
 | -------------------------- | ----------------------------------------------------------------- |
-| `name`                     | **선택.** 실명. 보냈다면 2 ~ 20자. **안 보내면 저장된 실명이 비워집니다** (일부가 아니라 전부를 보내는 요청이라서요. 이슈 #71) |
+| `name`                     | 보내지 마세요. 보내도 무시합니다. 과거 DB 값은 이 요청으로 갱신하거나 삭제하지 않습니다. (#71) |
 | `nickname`                 | 필수. 2 ~ 10자 (가입할 때와 같음)                                 |
 | `schoolCode`, `schoolName` | 선택. 학교를 지우려면 둘 다 `null`                                |
 | `diaryAnalysis`            | 필수. 선택 동의(일기·감정 기록을 분석에 쓰기)를 켜거나 끕니다     |
@@ -2613,3 +2612,16 @@ AI 가 보낸 메시지(당근·넛지·채찍·이벤트 알림·회복)를 보
 | 500  | `INTERNAL_ERROR` | 작업을 실행하다가 실패함            |
 
 > 같은 작업을 **두 번 불러도 결과가 망가지지 않게** 만드는 것이 규칙입니다. 결과는 "새로 추가" 가 아니라 "그날 것을 덮어쓰기" 로 저장합니다.
+
+### 실명 수집 중단 전환 (#71)
+
+서버는 가입·구글 가입·프로필 요청의 과거 `name` 값을 무시하고, 요청 DTO와 Swagger에서 실명 입력을 숨깁니다.
+새 가입 계정의 `accounts.name`은 null이며 프로필 응답의 `name`은 닉네임입니다.
+구글 tokeninfo 응답에서도 실명 필드를 읽지 않으며 신규 가입 안내의 `name`은 호환용 빈 문자열입니다.
+
+기존 FE가 보내던 JSON 자체는 오류 없이 처리하여 전환 기간의 가입을 깨뜨리지 않습니다.
+FE는 실명 입력/검사/전송을 없애고 Google profile scope 등도 필요한 정보만 요청하도록 맞춰야 합니다.
+BE가 무시해도 구버전 FE가 실명을 요청 본문에 보내는 것까지 막지는 못합니다.
+
+기존 DB 실명과 컬럼은 이번 변경에서 삭제하지 않습니다. 보관·삭제 정책과 운영 DB 절차를 정해 따로 처리해야 합니다.
+기존 회원의 프로필 수정으로 과거 실명을 덮어쓰거나 지우지도 않습니다. 스키마 변경 및 운영 DB 실행은 없습니다.

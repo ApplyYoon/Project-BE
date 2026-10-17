@@ -98,7 +98,7 @@ class AuthControllerTest {
     ArgumentCaptor<SignupRequest> captor = ArgumentCaptor.forClass(SignupRequest.class);
     verify(authService).signup(captor.capture());
     assertThat(captor.getValue().email()).isEqualTo("tmax@starflow.com");
-    assertThat(captor.getValue().name()).isEqualTo("김티맥");
+    assertThat(captor.getValue().name()).isNull();
     assertThat(captor.getValue().nickname()).isEqualTo("티맥이");
     assertThat(captor.getValue().password()).isEqualTo(" study2026 ");
   }
@@ -145,14 +145,11 @@ class AuthControllerTest {
   }
 
   @Test
-  @DisplayName("이름은 보냈다면 2 ~ 20자, 닉네임은 2 ~ 10자가 아니면 400 (닉네임은 꼭 있어야 한다)")
+  @DisplayName("닉네임은 2 ~ 10자가 아니면 400 (닉네임은 꼭 있어야 한다)")
   void signupRejectsBadNames() throws Exception {
-    String nameMessage = "이름은 2자 이상 20자 이하로 적어 주세요";
+
     String nicknameMessage = "닉네임은 2자 이상 10자 이하로 적어 주세요";
 
-    expectSignupRejected(VALID_SIGNUP.replace("\"김티맥\"", "\"김\""), nameMessage);
-    expectSignupRejected(
-        VALID_SIGNUP.replace("\"김티맥\"", "\"" + "가".repeat(21) + "\""), nameMessage);
     expectSignupRejected(VALID_SIGNUP.replace("\"티맥이\"", "\"티\""), nicknameMessage);
     expectSignupRejected(
         VALID_SIGNUP.replace("\"티맥이\"", "\"" + "가".repeat(11) + "\""), nicknameMessage);
@@ -160,16 +157,18 @@ class AuthControllerTest {
   }
 
   @Test
-  @DisplayName("실명은 선택이다: 안 보내거나 공백뿐이어도 가입되고, 로직에는 null 로 넘어간다 (이슈 #71)")
+  @DisplayName("실명은 보내거나 생략해도 무시하며, 로직에는 null만 넘어간다 (이슈 #71)")
   void signupDoesNotRequireRealName() throws Exception {
     given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이"));
 
+    signup(VALID_SIGNUP).andExpect(status().isCreated());
+    signup(VALID_SIGNUP.replace("\"김티맥\"", "\"김\"")).andExpect(status().isCreated());
     signup(VALID_SIGNUP.replace("\"name\": \"김티맥\",", "")).andExpect(status().isCreated());
     signup(VALID_SIGNUP.replace("\"김티맥\"", "\"   \"")).andExpect(status().isCreated());
     signup(VALID_SIGNUP.replace("\"김티맥\"", "null")).andExpect(status().isCreated());
 
     ArgumentCaptor<SignupRequest> captor = ArgumentCaptor.forClass(SignupRequest.class);
-    verify(authService, org.mockito.Mockito.times(3)).signup(captor.capture());
+    verify(authService, org.mockito.Mockito.times(5)).signup(captor.capture());
     assertThat(captor.getAllValues()).allSatisfy(request -> assertThat(request.name()).isNull());
   }
 

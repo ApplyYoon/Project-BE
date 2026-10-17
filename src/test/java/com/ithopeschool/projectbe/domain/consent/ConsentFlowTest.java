@@ -74,7 +74,7 @@ class ConsentFlowTest {
   }
 
   @Test
-  @DisplayName("실명 없이도 가입된다 (이슈 #71: 실명은 받지 않는 방향)")
+  @DisplayName("실명 없이도 가입되며 호환용 name 응답은 닉네임이다 (이슈 #71)")
   void signupWithoutRealName() throws Exception {
     String email = newEmail();
     String body = signupBody(email, CONSENTS_OK).replace("\"name\": \"김티맥\",", "");
@@ -84,7 +84,7 @@ class ConsentFlowTest {
     try {
       send(get("/api/v1/auth/profile"), token, null)
           .andExpect(status().isOk())
-          .andExpect(jsonPath("$.name").isEmpty());
+          .andExpect(jsonPath("$.name").value("동의이"));
     } finally {
       withdraw(token);
     }
