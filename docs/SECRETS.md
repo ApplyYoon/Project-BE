@@ -64,6 +64,13 @@ infisical run --env=dev --projectId=PROJECT_ID -- ./gradlew --no-daemon bootRun
 개발 Neon 연결은 README의 운영 DB 안내에 따라 프로필까지 명시적으로 선택할 때만 합니다.
 개발 프로젝트에는 `SPRING_PROFILES_ACTIVE=prod`를 넣지 않습니다.
 
+**기능 확인 범위:** 현재 `OPENAI_API_KEY`를 읽는 설정은 `application-prod.yml`에만 있습니다.
+따라서 위 명령으로 개발 키를 전달해도 `local` 또는 `local,neon`에서는 GPT 호출이 켜지지 않습니다.
+학생 실행 확인은 H2 상태 확인, 또는 명시적으로 선택한 Neon `dev` 연결부터 진행합니다.
+GPT 개발 실행까지 필요하면 개발 전용 프로필의 별도 구현·검증이 먼저 필요합니다.
+이를 우회하려고 학생 컴퓨터에서 `prod`를 켜지 않습니다.
+Google 로그인은 `GOOGLE_CLIENT_ID`를 로컬에서도 읽지만, 로그인 성공 여부는 실제 브라우저 로그인으로 따로 확인합니다.
+
 비밀값이 필요 없는 평소 실행:
 
 ```powershell
