@@ -4016,6 +4016,47 @@ AI 가 보낸 메시지(당근·넛지·채찍·이벤트 알림·회복)를 보
 | --- | --- | --- | --- |
 | 401 | `UNAUTHORIZED` | 로그인하지 않음 | `"로그인이 필요해요"` |
 
+#### AI 자기 분석
+
+`POST /api/v1/ai/analysis` — FE 가 **최근 28일 기록으로 계산한 숫자**(최대 30줄)를 보내면, AI 가 5묶음으로 나눠 "나는 어떤 사람인지" 와 다음 2주 실험 하나를 써 줍니다. **저장하지 않습니다.** 분석 › 기록 맨 위와 주간 리포트 ③ · ⑤ 가 씁니다. (FE#419 표 14번, 이슈 #237, 기획서 「2 자기분석의 목표」 · 「4.6」)
+
+```json
+{ "facts": [
+  { "key": "slotRate", "group": "tendency", "label": "시간대별 실행률", "value": "아침 95% · 밤 63%", "basis": "카드 64번" },
+  { "key": "hypothesisChronotype", "group": "distortion", "label": "아침형 / 밤형 가설", "value": "생각: 밤형 · 기록: 아침 카드 실행률 95% · 밤 카드 77%.", "basis": "27일 · 예상과 다름" }
+] }
+```
+
+- `group`: `tendency`(성향) · `distortion`(생각과 실제) · `willpower`(약속 지키기) · `efficiency`(공부 효율) · `failure`(실패 원인)
+- `key` 는 영문·숫자 30자, `label` · `basis` 는 30자, `value` 는 80자까지. 글자는 한글·영문·숫자·띄어쓰기와 `% · ( ) → , . : / ~ + ' -` 만 됩니다. (그대로 AI 에게 가는 값이라 좁혔습니다)
+- 숫자를 FE 가 보내는 것은 카드 하루치 · 세션 · 실패 표시 · 내 가설 · 예측이 아직 서버에 다 올라오지 않았기 때문입니다. 서버에 이미 있는 **통화에서 자주 보인 생각 습관**(최근 14일, 최대 2개)은 서버가 DB 에서 읽어 `callHabit1` · `callHabit2` 로 더합니다. 통화 근거 문장은 AI 에게 주지 않습니다.
+
+**응답 200** (예상 응답 — 로컬은 AI 가 꺼져 있어 `analysis: null` 만 받아 봤습니다)
+
+```json
+{ "showHelp": false,
+  "serverFacts": [ { "key": "callHabit1", "group": "distortion", "label": "통화에서 자주 보인 생각 습관", "value": "계획 오류 · 최근 14일 중 3일", "basis": "AI 통화 정리" } ],
+  "analysis": {
+    "summary": "스스로는 밤형이라고 믿지만, 기록으로는 아침에 더 잘 되는 편이야",
+    "sections": [ { "group": "distortion", "headline": "밤형이라고 했지만 아침 카드가 더 잘 돼",
+                    "body": "아침 카드 실행률은 95%, 밤 카드는 77%야. 밤에 공부하는 게 익숙해서 그렇게 느꼈을 수 있어.",
+                    "evidenceKeys": ["hypothesisChronotype"] } ],
+    "nextExperiment": { "ifText": "만약 학원에서 돌아오면", "thenText": "폰을 다른 방에 두고 오답 노트부터 편다", "why": "…" } } }
+```
+
+- **서버가 AI 의 답을 검사합니다** (`SelfAnalysis.from`): 묶음 이름이 맞고 한 번씩만 · 한 줄 40자 · 본문 160자 · 근거 `key` 가 보낸 숫자의 `key` · 글에 나온 숫자가 모두 보낸 숫자(‘1위’ 의 1, 실험 기간 2주 · 14일만 예외) · 깎아내리는 말 없음. 걸린 묶음만 빼고, 남은 묶음이 없으면 `analysis: null`. 요약 · 실험 제안만 걸리면 그 칸만 `null`.
+- AI 가 꺼져 있거나 하루 한도 · 실패면 `analysis: null` (에러가 아님). FE 는 숫자로 만든 기본 문장을 씁니다. `serverFacts` 는 그때도 옵니다.
+- 값에 위기 표현이 있으면 AI 를 부르지 않고 `{ "showHelp": true, "serverFacts": [], "analysis": null }`.
+- 답이 길어서 GPT 를 **25초**까지 기다립니다(`AiClient.askLong`, 다른 작은 기능은 10초). 하루 한도는 `ASSIST` 로 셉니다.
+
+| 상태 | `code` | 언제 | `message` |
+| --- | --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `facts` 가 없거나 비었음 | `"숫자(facts)를 하나 이상 보내 주세요"` |
+| 400 | `VALIDATION_ERROR` | `facts` 가 30개를 넘음 | `"숫자(facts)는 30개까지 보낼 수 있어요"` |
+| 400 | `VALIDATION_ERROR` | 모르는 `group` | `"group 은 tendency · distortion · willpower · efficiency · failure 중 하나예요"` |
+| 400 | `VALIDATION_ERROR` | 쓸 수 없는 글자 · 너무 긴 값 | 칸마다 안내 (예: `"숫자의 값(value)에 쓸 수 없는 글자가 있어요"`) |
+| 401 | `UNAUTHORIZED` | 로그인하지 않음 | `"로그인이 필요해요"` |
+
 ### 개선안
 
 `GET /api/v1/improvements/suggestions` — 내 실패 원인에 맞는 **개선안 3개**(쉬움 · 보통 · 강함 하나씩)를 전략 카탈로그에서 골라 줍니다. **저장하지 않습니다.** **로그인이 필요합니다.** (이슈 #51, 기획서 "자기 실험: 전략 카탈로그에서 쉬움·보통·강함 3개 제시")

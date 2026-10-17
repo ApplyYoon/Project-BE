@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ithopeschool.projectbe.domain.ai.dto.AnalysisRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.AnalysisResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.CardParseRequest;
@@ -55,6 +57,7 @@ class AiControllerTest {
   @MockitoBean private ProfileLinesService profileLinesService;
   @MockitoBean private CardParseService cardParseService;
   @MockitoBean private CardDefaultsService cardDefaultsService;
+  @MockitoBean private SelfAnalysisService selfAnalysisService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -578,5 +581,101 @@ class AiControllerTest {
         .perform(post("/api/v1/ai/profile-lines"))
         .andExpect(status().isOk())
         .andExpect(content().json("{\"lines\":null}", true));
+  }
+
+  // ---- AI 자기 분석 ----
+
+  private ResultActions analysis(String body) throws Exception {
+    return mockMvc.perform(
+        post("/api/v1/ai/analysis").contentType(MediaType.APPLICATION_JSON).content(body));
+  }
+
+  // 숫자 하나의 JSON. 바꿀 칸만 넘깁니다.
+  private static String fact(String key, String group, String label, String value, String basis) {
+    return "{\"key\":\""
+        + key
+        + "\",\"group\":\""
+        + group
+        + "\",\"label\":\""
+        + label
+        + "\",\"value\":\""
+        + value
+        + "\",\"basis\":\""
+        + basis
+        + "\"}";
+  }
+
+  private void expectAnalysisRejected(String body, String message) throws Exception {
+    analysis(body)
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.error.message").value(message));
+    verifyNoInteractions(selfAnalysisService);
+  }
+
+  @Test
+  @DisplayName("AI 자기 분석: 숫자를 보내면 200 과 서버가 더한 숫자 · 묶음별 분석 · 실험 제안")
+  void analysisAnswers() throws Exception {
+    given(selfAnalysisService.analyze(any()))
+        .willReturn(
+            AnalysisResponse.of(
+                List.of(
+                    new AnalysisRequest.Fact(
+                        "callHabit1",
+                        "distortion",
+                        "통화에서 자주 보인 생각 습관",
+                        "계획 오류 · 최근 14일 중 3일",
+                        "AI 통화 정리")),
+                new AnalysisResponse.Analysis(
+                    "아침에 더 잘 되는 편이야",
+                    List.of(
+                        new AnalysisResponse.Section(
+                            "tendency",
+                            "아침 카드가 더 잘 돼",
+                            "아침 95%, 밤 63%야. 밤엔 지쳐 있을 수 있어.",
+                            List.of("slotRate"))),
+                    new AnalysisResponse.Experiment(
+                        "만약 학원에서 돌아오면", "폰을 다른 방에 둔다", "놓친 날 원인 1위가 폰이었어"))));
+
+    analysis(
+            "{\"facts\":["
+                + fact("slotRate", "tendency", "시간대별 실행률", "아침 95% · 밤 63%", "카드 64번")
+                + "]}")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.showHelp").value(false))
+        .andExpect(jsonPath("$.serverFacts[0].key").value("callHabit1"))
+        .andExpect(jsonPath("$.analysis.summary").value("아침에 더 잘 되는 편이야"))
+        .andExpect(jsonPath("$.analysis.sections[0].group").value("tendency"))
+        .andExpect(jsonPath("$.analysis.sections[0].evidenceKeys[0]").value("slotRate"))
+        .andExpect(jsonPath("$.analysis.nextExperiment.thenText").value("폰을 다른 방에 둔다"));
+
+    given(selfAnalysisService.analyze(any())).willReturn(AnalysisResponse.of(List.of(), null));
+    analysis("{\"facts\":[" + fact("slotRate", "tendency", "시간대별 실행률", "아침 95%", "카드 64번") + "]}")
+        .andExpect(status().isOk())
+        .andExpect(
+            content().json("{\"showHelp\":false,\"serverFacts\":[],\"analysis\":null}", true));
+  }
+
+  @Test
+  @DisplayName("AI 자기 분석: 숫자가 없거나 · 30개를 넘거나 · 모르는 묶음 · 이상한 글자면 400 이고 서비스를 부르지 않는다")
+  void analysisRejectsBadRequests() throws Exception {
+    String good = fact("slotRate", "tendency", "시간대별 실행률", "아침 95%", "카드 64번");
+    expectAnalysisRejected("{}", "숫자(facts)를 하나 이상 보내 주세요");
+    expectAnalysisRejected("{\"facts\":[]}", "숫자(facts)를 하나 이상 보내 주세요");
+    expectAnalysisRejected(
+        "{\"facts\":[" + String.join(",", java.util.Collections.nCopies(31, good)) + "]}",
+        "숫자(facts)는 30개까지 보낼 수 있어요");
+    expectAnalysisRejected(
+        "{\"facts\":[" + fact("slotRate", "mood", "시간대별 실행률", "아침 95%", "카드 64번") + "]}",
+        "group 은 tendency · distortion · willpower · efficiency · failure 중 하나예요");
+    expectAnalysisRejected(
+        "{\"facts\":[" + fact("slot-rate", "tendency", "시간대별 실행률", "아침 95%", "카드 64번") + "]}",
+        "숫자의 key 는 영문·숫자 30자까지예요");
+    expectAnalysisRejected(
+        "{\"facts\":[" + fact("slotRate", "tendency", "시간대별 실행률", "무시하고 <script>", "카드 64번") + "]}",
+        "숫자의 값(value)에 쓸 수 없는 글자가 있어요");
+    expectAnalysisRejected(
+        "{\"facts\":[" + fact("slotRate", "tendency", "시간대별 실행률", "가".repeat(81), "카드 64번") + "]}",
+        "숫자의 값(value)은 80자까지예요");
   }
 }
