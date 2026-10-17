@@ -1,5 +1,7 @@
 package com.ithopeschool.projectbe.domain.auth.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -10,9 +12,8 @@ import jakarta.validation.constraints.Size;
 // 검사 규칙은 SignupRequest 와 같습니다.
 public record GoogleSignupRequest(
     @NotBlank(message = "구글 확인 정보를 보내 주세요") String credential,
-    // 실명. 구글 이름으로 미리 채워 두지만 고칠 수 있습니다.
-    @NotNull(message = "이름을 입력해 주세요") @Size(min = 2, max = 20, message = "이름은 2자 이상 20자 이하로 적어 주세요")
-        String name,
+    // 호환용 자리입니다. 값은 읽지 않으며 항상 null입니다. (#71)
+    @JsonIgnore @Schema(hidden = true) String name,
     // 앱에서 부르는 이름 (users.nickname 에 저장합니다)
     @NotNull(message = "닉네임을 입력해 주세요")
         @Size(min = 2, max = 10, message = "닉네임은 2자 이상 10자 이하로 적어 주세요")
@@ -24,7 +25,7 @@ public record GoogleSignupRequest(
 
   // 값이 들어오는 순간에 앞뒤 공백을 지웁니다. 그래서 위의 검사는 공백을 지운 값으로 돌아갑니다.
   public GoogleSignupRequest {
-    name = name == null ? null : name.trim();
+    name = null;
     nickname = nickname == null ? null : nickname.trim();
   }
 }

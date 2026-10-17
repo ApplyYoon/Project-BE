@@ -86,7 +86,7 @@ class GoogleIdTokenVerifierTest {
     googleAnswers(answerOf(CLIENT_ID, "https://accounts.google.com", "true"));
 
     assertThat(verifierWith(CLIENT_ID).verify(TOKEN))
-        .contains(new GoogleProfile("110169484474386276334", "tmax@gmail.com", "김티맥"));
+        .contains(new GoogleProfile("110169484474386276334", "tmax@gmail.com", ""));
     google.verify();
   }
 

@@ -46,7 +46,7 @@ class AuthFlowTest {
           "nickname": "티맥이",
           "schoolCode": null,
           "schoolName": null,
-          "consents": { "terms": true, "privacy": true, "diaryAnalysis": true }
+          "consents": { "terms": true, "privacy": true, "diaryAnalysis": true, "over14": true, "version": "v1" }
         }
         """
         .formatted(email, password);

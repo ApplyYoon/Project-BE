@@ -1,14 +1,23 @@
 name: CI
 
-# PR 을 올리거나 develop·main 에 합쳐질 때 GitHub 가 대신 검사를 돌려 줍니다.
+# PR 생성/수정과 main push 에서만 실행합니다. develop push 는 중복 실행하지 않습니다.
 on:
   pull_request:
   push:
-    branches: [main, develop]
+    branches: [main]
+
+permissions:
+  contents: read
+
+# 같은 PR/브랜치의 새 커밋이 오면 이전 검사를 취소해 실행 시간을 줄입니다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -16,5 +25,11 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # 의존성, Gradle 배포판, 빌드 캐시를 재사용합니다. 별도 setup-java 캐시는 쓰지 않습니다.
+          cache-disabled: false
+          # 기본 브랜치가 develop 이므로 main 과 같은 저장소의 PR 에도 캐시 저장을 허용합니다.
+          # PR 캐시는 해당 PR 에서만 재사용되고, 외부 fork PR 은 읽기만 합니다.
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
       # 내 컴퓨터에서 돌리는 것과 같은 명령입니다: 코드 정리 검사 + 빌드 + 테스트
-      - run: ./gradlew spotlessCheck build
+      - run: ./gradlew spotlessCheck build --build-cache --no-daemon

@@ -44,7 +44,7 @@ class AuthControllerTest {
         "nickname": "티맥이",
         "schoolCode": "7530560",
         "schoolName": "한국디지털미디어고등학교",
-        "consents": { "terms": true, "privacy": true, "diaryAnalysis": false }
+        "consents": { "terms": true, "privacy": true, "diaryAnalysis": false, "over14": true, "version": "v1" }
       }
       """;
 
@@ -98,7 +98,7 @@ class AuthControllerTest {
     ArgumentCaptor<SignupRequest> captor = ArgumentCaptor.forClass(SignupRequest.class);
     verify(authService).signup(captor.capture());
     assertThat(captor.getValue().email()).isEqualTo("tmax@starflow.com");
-    assertThat(captor.getValue().name()).isEqualTo("김티맥");
+    assertThat(captor.getValue().name()).isNull();
     assertThat(captor.getValue().nickname()).isEqualTo("티맥이");
     assertThat(captor.getValue().password()).isEqualTo(" study2026 ");
   }
@@ -145,20 +145,54 @@ class AuthControllerTest {
   }
 
   @Test
-  @DisplayName("이름은 2 ~ 20자, 닉네임은 2 ~ 10자가 아니면 400 (공백만 있으면 빈 것으로 본다)")
+  @DisplayName("닉네임은 2 ~ 10자가 아니면 400 (닉네임은 꼭 있어야 한다)")
   void signupRejectsBadNames() throws Exception {
-    String nameMessage = "이름은 2자 이상 20자 이하로 적어 주세요";
+
     String nicknameMessage = "닉네임은 2자 이상 10자 이하로 적어 주세요";
 
-    expectSignupRejected(VALID_SIGNUP.replace("\"김티맥\"", "\"김\""), nameMessage);
-    expectSignupRejected(VALID_SIGNUP.replace("\"김티맥\"", "\"   \""), nameMessage);
-    expectSignupRejected(
-        VALID_SIGNUP.replace("\"김티맥\"", "\"" + "가".repeat(21) + "\""), nameMessage);
     expectSignupRejected(VALID_SIGNUP.replace("\"티맥이\"", "\"티\""), nicknameMessage);
     expectSignupRejected(
         VALID_SIGNUP.replace("\"티맥이\"", "\"" + "가".repeat(11) + "\""), nicknameMessage);
-    expectSignupRejected(VALID_SIGNUP.replace("\"name\": \"김티맥\",", ""), "이름을 입력해 주세요");
     expectSignupRejected(VALID_SIGNUP.replace("\"nickname\": \"티맥이\",", ""), "닉네임을 입력해 주세요");
+  }
+
+  @Test
+  @DisplayName("실명은 보내거나 생략해도 무시하며, 로직에는 null만 넘어간다 (이슈 #71)")
+  void signupDoesNotRequireRealName() throws Exception {
+    given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이"));
+
+    signup(VALID_SIGNUP).andExpect(status().isCreated());
+    signup(VALID_SIGNUP.replace("\"김티맥\"", "\"김\"")).andExpect(status().isCreated());
+    signup(VALID_SIGNUP.replace("\"name\": \"김티맥\",", "")).andExpect(status().isCreated());
+    signup(VALID_SIGNUP.replace("\"김티맥\"", "\"   \"")).andExpect(status().isCreated());
+    signup(VALID_SIGNUP.replace("\"김티맥\"", "null")).andExpect(status().isCreated());
+
+    ArgumentCaptor<SignupRequest> captor = ArgumentCaptor.forClass(SignupRequest.class);
+    verify(authService, org.mockito.Mockito.times(5)).signup(captor.capture());
+    assertThat(captor.getAllValues()).allSatisfy(request -> assertThat(request.name()).isNull());
+  }
+
+  @Test
+  @DisplayName("만 14세 이상 확인이 없거나 false 면 400 이고, 로직까지 가지 않는다 (이슈 #71)")
+  void signupRequiresOver14() throws Exception {
+    String message = "만 14세 이상만 가입할 수 있어요";
+
+    expectSignupRejected(VALID_SIGNUP.replace("\"over14\": true", "\"over14\": false"), message);
+    // 아예 안 보낸 경우: true/false 자리가 비어서 값을 읽을 수 없는 요청이라 400 과 기본 문장이 나옵니다.
+    expectSignupRejected(VALID_SIGNUP.replace(", \"over14\": true", ""), "보낸 값을 다시 확인해 주세요");
+  }
+
+  @Test
+  @DisplayName("동의 문구 버전이 없거나 비었거나 너무 길면 400 이다 (이슈 #71)")
+  void signupRequiresConsentVersion() throws Exception {
+    expectSignupRejected(
+        VALID_SIGNUP.replace(", \"version\": \"v1\"", ""), "동의 문구 버전(version)을 보내 주세요");
+    expectSignupRejected(
+        VALID_SIGNUP.replace("\"version\": \"v1\"", "\"version\": \"   \""),
+        "동의 문구 버전(version)을 보내 주세요");
+    expectSignupRejected(
+        VALID_SIGNUP.replace("\"version\": \"v1\"", "\"version\": \"" + "v".repeat(21) + "\""),
+        "동의 문구 버전이 너무 길어요");
   }
 
   @Test
@@ -171,7 +205,7 @@ class AuthControllerTest {
     // 동의 내용을 아예 안 보낸 경우
     expectSignupRejected(
         VALID_SIGNUP.replace(
-            "\"consents\": { \"terms\": true, \"privacy\": true, \"diaryAnalysis\": false }",
+            "\"consents\": { \"terms\": true, \"privacy\": true, \"diaryAnalysis\": false, \"over14\": true, \"version\": \"v1\" }",
             "\"consents\": null"),
         "약관 동의 내용을 보내 주세요");
     // 필수 항목을 아예 빼고 보낸 경우: true/false 자리가 비어서 값을 읽을 수 없는 요청입니다. 400 과 기본 문장이 나옵니다.

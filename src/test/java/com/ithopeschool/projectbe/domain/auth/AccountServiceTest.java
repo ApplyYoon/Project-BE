@@ -16,6 +16,8 @@ import com.ithopeschool.projectbe.domain.auth.dto.WithdrawRequest;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallRecord;
+import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
+import com.ithopeschool.projectbe.domain.consent.ConsentService;
 import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
 import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
@@ -57,6 +59,7 @@ class AccountServiceTest {
   @Autowired private UserRepository userRepository;
   @Autowired private AccountRepository accountRepository;
   @Autowired private LoginTokenRepository loginTokenRepository;
+  @Autowired private ConsentRecordRepository consentRecordRepository;
   @Autowired private EntityManager entityManager;
 
   // 테스트가 빨리 끝나게 되풀이 횟수는 가장 작은 값으로 둡니다.
@@ -81,7 +84,8 @@ class AccountServiceTest {
     request = new MockHttpServletRequest();
     Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
     CurrentUserProvider currentUserProvider =
-        new CurrentUserProvider(request, loginTokenRepository, tokenHasher, clock, "");
+        new CurrentUserProvider(
+            request, loginTokenRepository, consentRecordRepository, tokenHasher, clock, "");
     authService =
         new AuthService(
             userRepository,
@@ -91,6 +95,7 @@ class AccountServiceTest {
             tokenHasher,
             currentUserProvider,
             googleIdTokenVerifier,
+            new ConsentService(currentUserProvider, consentRecordRepository, clock),
             clock);
     accountService =
         new AccountService(
@@ -117,7 +122,7 @@ class AccountServiceTest {
         nickname,
         "7530560",
         "한국디지털미디어고등학교",
-        new SignupRequest.Consents(true, true, false));
+        new SignupRequest.Consents(true, true, false, true, "v1"));
   }
 
   // 이 토큰으로 부른 요청인 것처럼 만듭니다. null 이면 로그인하지 않은 요청입니다.
@@ -145,7 +150,7 @@ class AccountServiceTest {
     ProfileResponse mine = accountService.getProfile();
 
     assertThat(mine.email()).isEqualTo("a@starflow.com");
-    assertThat(mine.name()).isEqualTo("김티맥");
+    assertThat(mine.name()).isEqualTo("에이");
     assertThat(mine.nickname()).isEqualTo("에이");
     assertThat(mine.schoolCode()).isEqualTo("7530560");
     assertThat(mine.schoolName()).isEqualTo("한국디지털미디어고등학교");
@@ -183,6 +188,20 @@ class AccountServiceTest {
   // ---- 내 정보 고치기 ----
 
   @Test
+  @DisplayName("기존 DB 실명은 응답에서 숨기고, 프로필 수정으로 덮어쓰거나 삭제하지 않는다")
+  void legacyRealNameIsNeverReturnedOrReplaced() {
+    Account account = accountRepository.findByUserId(idOfA).orElseThrow();
+    account.updateProfile("기존실명", null, null, false);
+    callWith(tokenOfA);
+    assertThat(accountService.getProfile().name()).isEqualTo("에이");
+
+    ProfileResponse updated =
+        accountService.updateProfile(new ProfileUpdateRequest("새실명", "새별명", null, null, false));
+    assertThat(updated.name()).isEqualTo("새별명");
+    assertThat(account.getName()).isEqualTo("기존실명");
+  }
+
+  @Test
   @DisplayName("이름·닉네임·학교·일기 분석 동의를 고치면 DB 에 반영되고, 남의 정보는 그대로다")
   void updateProfileChangesOnlyMine() {
     callWith(tokenOfA);
@@ -190,7 +209,7 @@ class AccountServiceTest {
         accountService.updateProfile(
             new ProfileUpdateRequest("김하늘", "하늘이", "1234567", "별빛고등학교", true));
 
-    assertThat(updated.name()).isEqualTo("김하늘");
+    assertThat(updated.name()).isEqualTo("하늘이");
     assertThat(updated.nickname()).isEqualTo("하늘이");
     assertThat(updated.schoolName()).isEqualTo("별빛고등학교");
     assertThat(updated.diaryAnalysis()).isTrue();
@@ -203,7 +222,7 @@ class AccountServiceTest {
     assertThat(accountRepository.findByUserId(idOfA).orElseThrow().isDiaryAnalysisAgreed())
         .isTrue();
     assertThat(userRepository.findById(idOfB).orElseThrow().getNickname()).isEqualTo("비이");
-    assertThat(accountRepository.findByUserId(idOfB).orElseThrow().getName()).isEqualTo("김티맥");
+    assertThat(accountRepository.findByUserId(idOfB).orElseThrow().getName()).isNull();
   }
 
   @Test
@@ -355,7 +374,7 @@ class AccountServiceTest {
                     "씨씨",
                     null,
                     null,
-                    new SignupRequest.Consents(true, true, false)))
+                    new SignupRequest.Consents(true, true, false, true, "v1")))
             .token();
     callWith(token);
     return accountRepository.findByGoogleSubject(GOOGLE_SUBJECT).orElseThrow().getUserId();

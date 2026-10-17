@@ -3,8 +3,16 @@
 BE 를 인터넷에 올려서 FE(Vercel) 가 부를 수 있게 하는 방법입니다. (이슈 #8)
 왜 Render 인지는 [README 의 "배포"](../README.md#-배포-무료-서버) 에 적혀 있습니다.
 
-> ⚠️ **이 문서는 공식 문서와 코드로 확인한 내용으로 썼고, 실제로 한 번 배포해 본 것은 아닙니다.**
-> 첫 배포에서 막히면 아래 [막혔을 때](#막혔을-때) 를 보고, 풀린 방법은 이 문서에 추가해 주세요.
+> **2026-10-17 배포 확인:** [#194](https://github.com/Tmax-IT-Hope-School/Project-BE/issues/194)의
+> `https://project-be-mxxc.onrender.com/api/v1/health` 에서 HTTP 200과
+> `{"status":"ok","db":"connected"}` 를 직접 확인했습니다.
+> 이는 서버와 DB 연결 확인입니다. 실제 Neon 브랜치가 `main`인지, 모든 테이블이 있는지,
+> 비밀값이 Render 설정에만 있는지는 헬스 응답으로 알 수 없으므로 관리자가 별도로 확인합니다.
+>
+> 같은 날 Render 서비스 조회에서도 저장소 `Project-BE`, 배포 브랜치 `main`, 무료 플랜,
+> 싱가포르 지역, 자동 배포 조건 `checksPass`를 확인했습니다. 최근 배포는 `live`이며
+> 배포 커밋은 `97e6e6364e6f7916da367be767013c85f822e75d`입니다.
+> 환경변수의 비밀값과 Neon 콘솔은 조회하지 않았습니다.
 
 ---
 
@@ -22,7 +30,7 @@ BE 를 인터넷에 올려서 FE(Vercel) 가 부를 수 있게 하는 방법입�
 
 ## 1. 시작 전에 확인할 것
 
-- [ ] **`main` 에 코드가 있다.** 지금 `main` 은 "저장소 시작" 커밋뿐이라 `Dockerfile` 도 `/api/v1/health` 도 없습니다.
+- [ ] **배포할 `main` 에 코드가 있다.** Render 에서 선택한 브랜치와 배포 커밋에 `Dockerfile` 과 `/api/v1/health` 가 있는지 확인합니다.
       `develop → main` PR 은 **선생님/팀장이** 엽니다. (AI 는 열지 않습니다)
 - [ ] **Neon 에 운영 DB(`main` 브랜치)가 있고 테이블이 만들어져 있다.** 배포 설정은 서버가 켜질 때 테이블을 만들지 않습니다(`ddl-auto: none`). 테이블은 [`db/schema.sql`](../db/schema.sql) 을 Neon SQL Editor 에서 실행해 만듭니다. (README "운영 DB(Neon)", 이슈 #75)
 - [ ] **가입·로그인 테이블도 만들어져 있다.** `accounts`, `login_tokens` 두 테이블이 없으면 가입·로그인이 500 으로 실패합니다. 컬럼은 [DB.md](./DB.md) 의 그림과 같아야 합니다. (#97)
@@ -32,6 +40,19 @@ BE 를 인터넷에 올려서 FE(Vercel) 가 부를 수 있게 하는 방법입�
 ---
 
 ## 2. 배포하기
+
+### CI/CD 자동 연결
+
+- GitHub Actions 설정은 저장소 루트의 `.github/workflows/ci.yml` 입니다. PR 생성/수정과 `main` push 에서만 포맷 검사·테스트·빌드를 실행합니다. `develop` push 는 실행하지 않습니다.
+- Java 21 / Ubuntu 작업 하나를 사용하고, Gradle 의존성·배포판·빌드 결과를 캐시합니다. 같은 PR 에 새 커밋을 올리면 이전 실행을 취소하며, 한 실행은 최대 15분입니다.
+- 같은 저장소의 PR 은 해당 PR 범위에 캐시를 저장하고 재사용합니다. 다른 PR 과 공유되지는 않습니다. 외부 fork PR 은 캐시를 읽기만 합니다.
+- `render.yaml` 의 `autoDeployTrigger: checksPass` 는 `main` 커밋의 CI 완료 후 Render 가 자동으로 Docker 빌드·배포하도록 설정합니다. 별도 Deploy Hook, Render API 키, Actions 배포 작업은 필요하지 않습니다.
+- 기존 서비스가 Blueprint 로 관리된다면 이 설정이 있는 `main` 의 Blueprint 를 동기화합니다. 대시보드에서 직접 만든 서비스라면 **Settings → Branch = main**, **Auto-Deploy → After CI Checks Pass** 를 설정합니다. 파일 수정만으로 기존 서비스 설정이 바뀌지는 않습니다.
+- 먼저 백엔드 코드와 이 워크플로우가 `main` 에 있어야 합니다. `main` 이 초기 커밋뿐이면 배포 브랜치를 바로 전환하지 말고, 팀의 릴리스 절차로 코드를 반영한 뒤 전환합니다.
+- 확인 순서: PR 의 `CI / check` 성공 → `main` 반영 후 해당 커밋의 CI 성공 → Render Events/Deploys 에 같은 커밋 배포 성공 확인. PR 성공만으로 운영 배포되지는 않습니다.
+- CI 실패 또는 체크가 없는 커밋은 자동 배포되지 않습니다. 테스트는 H2 기반 `local` 프로필을 사용하며 운영 DB 비밀값은 GitHub 에 추가하지 않습니다.
+
+공식 문서: [Render CI 연동](https://render.com/docs/deploys#integrating-with-ci), [Gradle Actions 캐시](https://github.com/gradle/actions/blob/v4/docs/setup-gradle.md).
 
 ### 2-1. Render 가입
 
@@ -146,6 +167,7 @@ Render 서비스의 **Environment** 화면에서 `OPENAI_API_KEY` 를 넣으면 
 | `OPENAI_API_KEY`          | OpenAI 에서 받은 키. **이 화면에만** 입력합니다. 코드·문서·채팅 어디에도 적지 않습니다        |
 | `OPENAI_MODEL`            | (선택) 글 모델의 이름. **안 넣으면 `gpt-6-luna`** 를 씁니다 (2026-10-11 에 정함)              |
 | `AI_DAILY_LIMIT_PER_USER` | (선택) 한 사람이 하루에 글 AI(코치 문단 + 통화 요약)를 부를 수 있는 횟수. 안 넣으면 `20`. `0` 이면 AI 를 잠깐 막습니다 |
+| `AI_ASSIST_DAILY_LIMIT_PER_USER` | (선택) 한 사람이 하루에 작은 AI 기능(카드 체크리스트 추천 등)을 부를 수 있는 횟수. 글 AI 와 따로 셉니다. 안 넣으면 `40`. `0` 이면 잠깐 막습니다 |
 | `AI_COST_WON_PER_TEXT_CALL` | (선택) 글 AI 한 번의 대략적인 비용(원). 기록용 어림값. 안 넣으면 `1` |
 
 **모델** — 글 모델은 `gpt-6-luna` 로 정했습니다. 2026-10-11 가격표에서 최신 계열 중 가장 싼 모델입니다(100만 토큰당 입력 $0.10 · 출력 $0.50, 문단 하나에 1원이 안 됩니다).

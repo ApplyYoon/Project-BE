@@ -48,7 +48,7 @@ public class AccountService {
     return ProfileResponse.of(findUser(userId), findAccount(userId));
   }
 
-  // 내 정보 고치기: 이름·닉네임·학교·일기 분석 동의를 받은 값으로 바꿉니다.
+  // 내 정보 고치기: 닉네임·학교·일기 분석 동의를 받은 값으로 바꿉니다.
   @Transactional
   public ProfileResponse updateProfile(ProfileUpdateRequest request) {
     Long userId = currentUserProvider.getCurrentUserId();
@@ -57,8 +57,9 @@ public class AccountService {
 
     // 엔티티의 값을 바꾸기만 하면, 이 메서드가 끝날 때 JPA 가 바뀐 것을 알아채고 DB 에 반영합니다. (save 를 부르지 않아도 됩니다)
     user.changeNickname(request.nickname());
+    // 기존 실명은 별도 삭제 정책이 정해질 때까지 보존하지만, 요청값으로 갱신하거나 응답에 노출하지 않습니다.
     account.updateProfile(
-        request.name(), request.schoolCode(), request.schoolName(), request.diaryAnalysis());
+        account.getName(), request.schoolCode(), request.schoolName(), request.diaryAnalysis());
     return ProfileResponse.of(user, account);
   }
 
@@ -85,7 +86,8 @@ public class AccountService {
   @Transactional
   public void logout() {
     // 로그인한 요청인지 먼저 확인합니다. (토큰이 없거나 틀리면 여기서 401)
-    currentUserProvider.getCurrentUserId();
+    // 동의 검사가 없는 쪽을 씁니다. 최신 문구에 동의하지 않은 사람도 로그아웃할 수 있어야 합니다. (이슈 #71)
+    currentUserProvider.getCurrentUserIdWithoutConsent();
 
     String currentTokenHash = currentUserProvider.getCurrentTokenHash();
     if (currentTokenHash != null) {
@@ -99,7 +101,8 @@ public class AccountService {
   // (서버는 구글의 토큰을 갖고 있지 않아서, 사용자의 구글 계정 설정에 남은 "앱 연결" 은 서버가 지울 수 없습니다)
   @Transactional
   public void withdraw(WithdrawRequest request) {
-    Long userId = currentUserProvider.getCurrentUserId();
+    // 동의 검사가 없는 쪽을 씁니다. 최신 문구에 동의하지 않은 사람도 내 데이터를 지울 수 있어야 하기 때문입니다. (이슈 #71)
+    Long userId = currentUserProvider.getCurrentUserIdWithoutConsent();
     Account account = findAccount(userId);
     if (account.hasPassword()) {
       if (request.password() == null || request.password().isBlank()) {
