@@ -16,7 +16,7 @@ public enum GptUsageKind {
   // 작은 AI 기능: 카드의 체크리스트 추천 · 첫 준비 행동 (AiClient, 이슈 #236)
   //   작은 AI 기능은 위의 글 호출과 하루 한도를 따로 셉니다. (GptUsageGuard.ASSIST_KINDS)
   CHECKLIST,
-  // 작은 AI 기능 묶음: 예상 실패 원인 선지 등 (AiClient, 이슈 #237)
+  // 작은 AI 기능 묶음: 예상 실패 원인 선지 · 개선안 문장 다듬기 등 (AiClient, 이슈 #237 · #51)
   //   기능마다 종류를 따로 만들면 그때마다 운영 DB 의 허용값을 사람이 고쳐야 해서, #237 의 기능들은 이 하나를 같이 씁니다.
   ASSIST
 }

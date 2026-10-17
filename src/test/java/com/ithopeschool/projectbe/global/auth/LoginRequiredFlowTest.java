@@ -362,7 +362,10 @@ class LoginRequiredFlowTest {
               "GET",
               "/api/v1/risk-forecasts",
               "/api/v1/risk-forecasts?from=2026-10-01&to=2026-10-31",
-              null));
+              null),
+          // 개선안 3개 제안 (내 실패 원인을 봅니다. 이슈 #51)
+          new Api(
+              "GET", "/api/v1/improvements/suggestions", "/api/v1/improvements/suggestions", null));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.
