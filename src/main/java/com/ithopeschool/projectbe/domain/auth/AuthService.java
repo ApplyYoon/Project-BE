@@ -8,6 +8,7 @@ import com.ithopeschool.projectbe.domain.auth.dto.LoginRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.LoginResponse;
 import com.ithopeschool.projectbe.domain.auth.dto.SignupRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.UserResponse;
+import com.ithopeschool.projectbe.domain.consent.ConsentService;
 import com.ithopeschool.projectbe.domain.user.User;
 import com.ithopeschool.projectbe.domain.user.UserRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
@@ -57,12 +58,17 @@ public class AuthService {
   private final TokenHasher tokenHasher;
   private final CurrentUserProvider currentUserProvider;
   private final GoogleIdTokenVerifier googleIdTokenVerifier;
+  // 가입할 때 동의 문구 버전을 확인하고 동의 기록을 남깁니다. (이슈 #71)
+  private final ConsentService consentService;
   // "지금 몇 시인지" 는 시계에게 묻습니다. 테스트에서 시각을 고정할 수 있습니다. (global/config/ClockConfig)
   private final Clock clock;
 
   // 가입: 계정만 만들고 로그인은 하지 않습니다. (가입한 뒤 로그인 화면에서 로그인합니다)
   @Transactional
   public UserResponse signup(SignupRequest request) {
+    // 동의 문구 버전부터 확인합니다. 낡은 문구를 보여 주고 받은 동의는 저장하지 않습니다. (이슈 #71)
+    consentService.checkVersion(request.consents().version());
+
     String email = normalizeEmail(request.email());
     if (accountRepository.existsByEmail(email)) {
       throw new ApiException(ErrorCode.CONFLICT, "이미 가입한 이메일이에요");
@@ -88,6 +94,9 @@ public class AuthService {
       // DB 의 "이메일은 겹칠 수 없다" 규칙이 막아 준 것이고, 예외가 나가면서 위에서 만든 users 한 줄도 같이 취소됩니다.
       throw new ApiException(ErrorCode.CONFLICT, "이미 가입한 이메일이에요");
     }
+
+    // 계정을 만든 같은 트랜잭션 안에서 동의 기록 한 줄을 남깁니다. 어느 한쪽이 실패하면 둘 다 취소됩니다.
+    consentService.recordAtSignup(user.getId(), request.consents().version());
     return UserResponse.from(user);
   }
 
@@ -144,6 +153,9 @@ public class AuthService {
   // 이메일은 구글이 확인한 값을 씁니다. (요청에 이메일 칸이 없습니다)
   @Transactional
   public LoginResponse googleSignup(GoogleSignupRequest request) {
+    // 동의 문구 버전부터 확인합니다. 낡은 문구를 보여 주고 받은 동의는 저장하지 않습니다. (이슈 #71)
+    consentService.checkVersion(request.consents().version());
+
     GoogleProfile profile = verifyGoogle(request.credential());
 
     if (accountRepository.existsByGoogleSubject(profile.subject())) {
@@ -172,6 +184,9 @@ public class AuthService {
       // 예외가 나가면서 위에서 만든 users 한 줄도 같이 취소됩니다.
       throw new ApiException(ErrorCode.CONFLICT, GOOGLE_ACCOUNT_EXISTS_MESSAGE);
     }
+
+    // 계정을 만든 같은 트랜잭션 안에서 동의 기록 한 줄을 남깁니다. 어느 한쪽이 실패하면 둘 다 취소됩니다.
+    consentService.recordAtSignup(user.getId(), request.consents().version());
     return issueToken(user);
   }
 

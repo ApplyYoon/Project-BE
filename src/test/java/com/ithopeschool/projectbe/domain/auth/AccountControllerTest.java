@@ -162,13 +162,26 @@ class AccountControllerTest {
             "/api/v1/auth/profile", VALID_UPDATE.replace("\"티맥이\"", "\"" + "가".repeat(11) + "\"")),
         "닉네임은 2자 이상 10자 이하로 적어 주세요");
     expectRejected(
-        putJson("/api/v1/auth/profile", VALID_UPDATE.replace("\"name\": \"김티맥\",", "")),
-        "이름을 입력해 주세요");
-    expectRejected(
         putJson(
             "/api/v1/auth/profile",
             VALID_UPDATE.replace("\"diaryAnalysis\": true", "\"diaryAnalysis\": null")),
         "일기 분석 동의 여부를 보내 주세요");
+  }
+
+  @Test
+  @DisplayName("실명은 선택이다: 안 보내거나 공백뿐이면 200 이고, 로직에는 null 로 넘어간다 (이슈 #71)")
+  void updateProfileDoesNotRequireRealName() throws Exception {
+    given(accountService.updateProfile(any())).willReturn(PROFILE);
+
+    putJson("/api/v1/auth/profile", VALID_UPDATE.replace("\"name\": \"김티맥\",", ""))
+        .andExpect(status().isOk());
+    putJson("/api/v1/auth/profile", VALID_UPDATE.replace("\"김티맥\"", "\"   \""))
+        .andExpect(status().isOk());
+
+    ArgumentCaptor<ProfileUpdateRequest> captor =
+        ArgumentCaptor.forClass(ProfileUpdateRequest.class);
+    verify(accountService, org.mockito.Mockito.times(2)).updateProfile(captor.capture());
+    assertThat(captor.getAllValues()).allSatisfy(request -> assertThat(request.name()).isNull());
   }
 
   // ---- 비밀번호 바꾸기 ----

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.ithopeschool.projectbe.domain.auth.LoginToken;
 import com.ithopeschool.projectbe.domain.auth.LoginTokenRepository;
 import com.ithopeschool.projectbe.domain.auth.TokenHasher;
+import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.io.IOException;
@@ -30,6 +31,7 @@ class CurrentUserProviderTest {
   private static final String TEST_TOKEN = "local-test-token";
 
   @Autowired private LoginTokenRepository loginTokenRepository;
+  @Autowired private ConsentRecordRepository consentRecordRepository;
 
   private final TokenHasher tokenHasher = new TokenHasher();
 
@@ -42,6 +44,7 @@ class CurrentUserProviderTest {
     return new CurrentUserProvider(
         request,
         loginTokenRepository,
+        consentRecordRepository,
         tokenHasher,
         Clock.fixed(NOW, ZoneOffset.UTC),
         configuredTestToken);

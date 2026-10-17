@@ -17,6 +17,10 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
   // 번호로 내 메시지 하나를 찾습니다. 없거나 다른 사람의 것이면 빈 Optional 입니다.
   Optional<Message> findByIdAndUserId(Long id, Long userId);
 
+  // 이 종류의 내 메시지 중 가장 최근에 보낸 것. 없으면 빈 Optional 입니다.
+  // 전화 알림(CALL)을 마지막으로 울린 시각을 알아낼 때 씁니다. (CallRingJob)
+  Optional<Message> findFirstByUserIdAndKindOrderBySentAtDesc(Long userId, MessageKind kind);
+
   // 이 사람에게 이 종류의 메시지를 from 이후에 보낸 적이 있는지. (하루에 한 번만 보내는 작업이 씁니다)
   boolean existsByUserIdAndKindAndSentAtGreaterThanEqual(
       Long userId, MessageKind kind, Instant from);

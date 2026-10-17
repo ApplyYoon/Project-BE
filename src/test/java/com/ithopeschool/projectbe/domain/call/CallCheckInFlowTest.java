@@ -62,7 +62,7 @@ class CallCheckInFlowTest {
           "nickname": "통화체크인",
           "schoolCode": null,
           "schoolName": null,
-          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false }
+          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false, "over14": true, "version": "v1" }
         }
         """
             .formatted(email, PASSWORD);

@@ -13,6 +13,9 @@ import com.ithopeschool.projectbe.domain.auth.dto.LoginRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.LoginResponse;
 import com.ithopeschool.projectbe.domain.auth.dto.SignupRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.UserResponse;
+import com.ithopeschool.projectbe.domain.consent.ConsentRecord;
+import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
+import com.ithopeschool.projectbe.domain.consent.ConsentService;
 import com.ithopeschool.projectbe.domain.user.User;
 import com.ithopeschool.projectbe.domain.user.UserRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
@@ -41,6 +44,7 @@ class AuthServiceTest {
   @Autowired private UserRepository userRepository;
   @Autowired private AccountRepository accountRepository;
   @Autowired private LoginTokenRepository loginTokenRepository;
+  @Autowired private ConsentRecordRepository consentRecordRepository;
 
   // 테스트가 빨리 끝나게 되풀이 횟수는 가장 작은 값으로 둡니다. (횟수와 상관없는 로직을 보는 테스트입니다)
   private final PasswordHasher passwordHasher = new PasswordHasher(PasswordHasher.MIN_ITERATIONS);
@@ -56,7 +60,8 @@ class AuthServiceTest {
   void setUp() {
     Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
     CurrentUserProvider currentUserProvider =
-        new CurrentUserProvider(request, loginTokenRepository, tokenHasher, clock, "");
+        new CurrentUserProvider(
+            request, loginTokenRepository, consentRecordRepository, tokenHasher, clock, "");
     authService =
         new AuthService(
             userRepository,
@@ -66,6 +71,7 @@ class AuthServiceTest {
             tokenHasher,
             currentUserProvider,
             googleIdTokenVerifier,
+            new ConsentService(currentUserProvider, consentRecordRepository, clock),
             clock);
   }
 
@@ -78,7 +84,7 @@ class AuthServiceTest {
         "티맥이",
         "7530560",
         "한국디지털미디어고등학교",
-        new SignupRequest.Consents(true, true, false));
+        new SignupRequest.Consents(true, true, false, true, "v1"));
   }
 
   // ---- 가입 ----
@@ -132,7 +138,7 @@ class AuthServiceTest {
             "티맥이",
             null,
             null,
-            new SignupRequest.Consents(true, true, true));
+            new SignupRequest.Consents(true, true, true, true, "v1"));
 
     authService.signup(request);
 
@@ -257,7 +263,7 @@ class AuthServiceTest {
             "별빛",
             null,
             null,
-            new SignupRequest.Consents(true, true, false)));
+            new SignupRequest.Consents(true, true, false, true, "v1")));
 
     assertThatThrownBy(() -> authService.login(new LoginRequest("one@starflow.com", "other2026")))
         .isInstanceOf(ApiException.class);
@@ -315,7 +321,12 @@ class AuthServiceTest {
 
   private static GoogleSignupRequest googleSignupRequest() {
     return new GoogleSignupRequest(
-        CREDENTIAL, "김티맥", "티맥이", null, null, new SignupRequest.Consents(true, true, true));
+        CREDENTIAL,
+        "김티맥",
+        "티맥이",
+        null,
+        null,
+        new SignupRequest.Consents(true, true, true, true, "v1"));
   }
 
   @Test
@@ -411,5 +422,93 @@ class AuthServiceTest {
         .isInstanceOf(ApiException.class)
         .extracting(e -> ((ApiException) e).getErrorCode())
         .isEqualTo(ErrorCode.SERVICE_UNAVAILABLE);
+  }
+
+  // ---- 동의 기록 · 실명 (이슈 #71) ----
+
+  @Test
+  @DisplayName("가입하면 동의 기록이 한 줄 남는다: 동의 시각 · 문구 버전 · 만 14세 확인")
+  void signupLeavesAConsentRecord() {
+    UserResponse response = authService.signup(signupRequest("tmax@starflow.com"));
+
+    ConsentRecord record =
+        consentRecordRepository
+            .findFirstByUserIdOrderByIdDesc(Long.valueOf(response.id()))
+            .orElseThrow();
+    assertThat(record.getAgreedAt()).isEqualTo(NOW);
+    assertThat(record.getTextVersion()).isEqualTo("v1");
+    assertThat(record.getAgeConfirmedOver14()).isTrue();
+    assertThat(consentRecordRepository.count()).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("지금 받는 버전이 아닌 문구로 동의하면 409 이고, 사용자·계정·동의 기록이 하나도 생기지 않는다")
+  void signupWithOldTextVersionIsRejected() {
+    SignupRequest request =
+        new SignupRequest(
+            "tmax@starflow.com",
+            "study2026",
+            "김티맥",
+            "티맥이",
+            null,
+            null,
+            new SignupRequest.Consents(true, true, false, true, "v0"));
+
+    assertThatThrownBy(() -> authService.signup(request))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("동의 문구가 바뀌었어요. 화면을 새로 고쳐서 최신 문구에 동의해 주세요")
+        .extracting(e -> ((ApiException) e).getErrorCode())
+        .isEqualTo(ErrorCode.CONFLICT);
+    assertThat(userRepository.count()).isZero();
+    assertThat(accountRepository.count()).isZero();
+    assertThat(consentRecordRepository.count()).isZero();
+  }
+
+  @Test
+  @DisplayName("실명 없이(null) 가입해도 되고, 계정의 실명 칸은 비어 있다")
+  void signupWithoutRealName() {
+    SignupRequest request =
+        new SignupRequest(
+            "tmax@starflow.com",
+            "study2026",
+            null,
+            "티맥이",
+            null,
+            null,
+            new SignupRequest.Consents(true, true, false, true, "v1"));
+
+    authService.signup(request);
+
+    assertThat(accountRepository.findByEmail("tmax@starflow.com").orElseThrow().getName()).isNull();
+  }
+
+  @Test
+  @DisplayName("구글로 가입해도 동의 기록이 남고, 낡은 문구 버전이면 409 이며 아무것도 생기지 않는다")
+  void googleSignupLeavesAConsentRecordAndChecksVersion() {
+    googleSays("google-1", "tmax@gmail.com", "김티맥");
+    GoogleSignupRequest oldText =
+        new GoogleSignupRequest(
+            CREDENTIAL,
+            "김티맥",
+            "티맥이",
+            null,
+            null,
+            new SignupRequest.Consents(true, true, true, true, "v0"));
+
+    assertThatThrownBy(() -> authService.googleSignup(oldText))
+        .isInstanceOf(ApiException.class)
+        .extracting(e -> ((ApiException) e).getErrorCode())
+        .isEqualTo(ErrorCode.CONFLICT);
+    assertThat(userRepository.count()).isZero();
+    assertThat(consentRecordRepository.count()).isZero();
+
+    LoginResponse signedUp = authService.googleSignup(googleSignupRequest());
+
+    ConsentRecord record =
+        consentRecordRepository
+            .findFirstByUserIdOrderByIdDesc(Long.valueOf(signedUp.user().id()))
+            .orElseThrow();
+    assertThat(record.getTextVersion()).isEqualTo("v1");
+    assertThat(record.getAgeConfirmedOver14()).isTrue();
   }
 }
