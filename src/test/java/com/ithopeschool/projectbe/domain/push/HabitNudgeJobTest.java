@@ -20,6 +20,7 @@ import com.ithopeschool.projectbe.domain.message.MessageKind;
 import com.ithopeschool.projectbe.domain.message.MessageRepository;
 import com.ithopeschool.projectbe.domain.message.MessageService;
 import com.ithopeschool.projectbe.domain.safety.QuietHours;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.domain.settings.QuietHoursSettings;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
@@ -57,6 +58,7 @@ class HabitNudgeJobTest {
   // 학생마다의 연락 금지 시간 (관리 설정 #22). 기본은 23:00 ~ 07:00 입니다. (setUp)
   private final QuietHoursSettings quietHoursSettings = mock(QuietHoursSettings.class);
 
+  private final SafetyService safetyService = mock(SafetyService.class);
   private final HabitNudgeJob job =
       new HabitNudgeJob(
           subscriptions,
@@ -66,7 +68,15 @@ class HabitNudgeJobTest {
           thinkingTests,
           callRecords,
           resultStore,
-          quietHoursSettings);
+          quietHoursSettings,
+          safetyService);
+
+  @Test
+  void checkInProtectionStopsNudgeBeforeSending() {
+    given(safetyService.isActive(7L)).willReturn(true);
+    job.run(EVENING);
+    org.mockito.Mockito.verifyNoInteractions(messageService, pushService);
+  }
 
   @BeforeEach
   void setUp() {

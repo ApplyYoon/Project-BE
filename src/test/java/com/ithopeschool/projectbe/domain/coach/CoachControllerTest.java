@@ -15,6 +15,7 @@ import com.ithopeschool.projectbe.domain.coach.dto.CoachParagraphResponse;
 import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -69,7 +70,7 @@ class CoachControllerTest {
   @DisplayName("FE 가 보내는 모양 그대로 통과하고, AI 문단을 200 으로 돌려준다")
   void returnsParagraph() throws Exception {
     given(coachService.weeklyParagraph(any()))
-        .willReturn(new CoachParagraphResponse("이번 주는 계획의 64% 를 했어."));
+        .willReturn(new CoachParagraphResponse("이번 주는 계획의 64% 를 했어.", List.of()));
 
     weekly(VALID)
         .andExpect(status().isOk())
@@ -77,9 +78,25 @@ class CoachControllerTest {
   }
 
   @Test
+  @DisplayName("응답에 문단과 함께 근거 숫자 목록(evidence)이 label · value · basis 모양으로 담긴다")
+  void returnsEvidence() throws Exception {
+    given(coachService.weeklyParagraph(any()))
+        .willReturn(
+            new CoachParagraphResponse(
+                "이번 주는 계획의 64% 를 했어.",
+                List.of(new WeeklyCoachRequest.Number("계획 대비 실제", "64%", "계획 12개"))));
+
+    weekly(VALID)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.evidence[0].label").value("계획 대비 실제"))
+        .andExpect(jsonPath("$.evidence[0].value").value("64%"))
+        .andExpect(jsonPath("$.evidence[0].basis").value("계획 12개"));
+  }
+
+  @Test
   @DisplayName("안전 브레이크(safetyBrakeOn)는 보내도 되고 안 보내도 된다. 보낸 값은 그대로 로직에 전해진다")
   void safetyBrakeIsOptional() throws Exception {
-    given(coachService.weeklyParagraph(any())).willReturn(CoachParagraphResponse.none());
+    given(coachService.weeklyParagraph(any())).willReturn(CoachParagraphResponse.none(List.of()));
 
     // 안 보낸 요청(VALID)은 null 로, true 로 보낸 요청은 true 로 전해집니다.
     weekly(VALID).andExpect(status().isOk());
@@ -95,11 +112,11 @@ class CoachControllerTest {
   @Test
   @DisplayName("AI 문단이 없으면 필드를 빼지 않고 null 로 돌려준다 (docs/API.md 4장)")
   void returnsNullParagraph() throws Exception {
-    given(coachService.weeklyParagraph(any())).willReturn(CoachParagraphResponse.none());
+    given(coachService.weeklyParagraph(any())).willReturn(CoachParagraphResponse.none(List.of()));
 
     weekly(VALID)
         .andExpect(status().isOk())
-        .andExpect(content().json("{\"paragraph\":null}", true));
+        .andExpect(content().json("{\"paragraph\":null,\"evidence\":[]}", true));
   }
 
   @Test
@@ -163,7 +180,7 @@ class CoachControllerTest {
   @Test
   @DisplayName("관리 강도 한도 0 과 4, 독설 수위 1 과 5 는 통과한다 (경계값)")
   void acceptsLevelsAtTheEdges() throws Exception {
-    given(coachService.weeklyParagraph(any())).willReturn(CoachParagraphResponse.none());
+    given(coachService.weeklyParagraph(any())).willReturn(CoachParagraphResponse.none(List.of()));
 
     weekly(
             VALID
@@ -209,15 +226,15 @@ class CoachControllerTest {
   @DisplayName("어제 한 줄(/coach/daily)과 월간(/coach/monthly)도 200 과 문단을 돌려준다")
   void dailyAndMonthlyReturnParagraph() throws Exception {
     given(coachService.dailyParagraph(any()))
-        .willReturn(new CoachParagraphResponse("어제는 계획의 79% 를 했어."));
-    given(coachService.monthlyParagraph(any())).willReturn(CoachParagraphResponse.none());
+        .willReturn(new CoachParagraphResponse("어제는 계획의 79% 를 했어.", List.of()));
+    given(coachService.monthlyParagraph(any())).willReturn(CoachParagraphResponse.none(List.of()));
 
     postTo("/api/v1/coach/daily", VALID_COMMENT)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.paragraph").value("어제는 계획의 79% 를 했어."));
     postTo("/api/v1/coach/monthly", VALID_COMMENT)
         .andExpect(status().isOk())
-        .andExpect(content().json("{\"paragraph\":null}", true));
+        .andExpect(content().json("{\"paragraph\":null,\"evidence\":[]}", true));
   }
 
   @Test
