@@ -36,6 +36,8 @@ erDiagram
     users ||--o{ exam_scores : "user_id"
     exams ||--o{ exam_scores : "exam_id"
     subjects ||--o{ exam_scores : "subject_id"
+    users ||--o{ reviews : "user_id"
+    exams ||--o{ reviews : "exam_id"
     users ||--o| care_settings : "user_id"
     users ||--o{ focus_lock_apps : "user_id"
     users ||--o{ setting_changes : "user_id"
@@ -211,6 +213,17 @@ erDiagram
         int expected_score "시험 전에 적은 예상 점수 (0 ~ 100)"
         int actual_score "시험 후에 적은 실제 점수 (0 ~ 100, 아직 안 적었으면 비어 있음)"
     }
+    reviews {
+        bigint id PK "회고를 구분하는 고유 번호"
+        bigint user_id FK "이 회고의 주인"
+        varchar type "회고 종류 (EXAM, WEEKLY 중 하나)"
+        bigint exam_id FK "어느 시험의 회고인지 (시험 후 회고만, 같은 사람 안에서 중복 불가)"
+        date week_start "어느 주의 회고인지, 그 주의 월요일 (주간 회고만, 같은 사람 안에서 중복 불가)"
+        varchar answer1 "1번 질문의 답 (200자까지, 건너뛰면 빈 글자)"
+        varchar answer2 "2번 질문의 답 (200자까지, 건너뛰면 빈 글자)"
+        varchar answer3 "3번 질문의 답 (200자까지, 건너뛰면 빈 글자)"
+        timestamptz saved_at "마지막으로 저장한 시각"
+    }
     care_settings {
         bigint id PK "설정 한 줄을 구분하는 고유 번호"
         bigint user_id FK "이 설정의 주인 (사용자 한 명에 한 줄, 중복 불가)"
@@ -240,7 +253,7 @@ erDiagram
     gpt_usages {
         bigint id PK "기록 한 줄을 구분하는 고유 번호 (나중에 부른 것일수록 큼)"
         bigint user_id FK "GPT 를 부르게 한 사람"
-        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH 중 하나)"
+        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE 중 하나)"
         timestamptz called_at "부른 시각 (통화는 시작한 시각)"
         bigint call_record_id FK "어느 통화인지 (통화일 때만, 그 외엔 비어 있음)"
         int call_seconds "통화한 시간(초) (통화가 아니거나 아직 안 끝났으면 비어 있음)"
@@ -295,6 +308,7 @@ erDiagram
 | `initial_plans` | 한 사람의 처음 계획이 한 줄. **한 사람에 한 줄**이고 "다시 세우기" 할 때만 그 줄을 고침 | #21 |
 | `exams` | 시험 하나가 한 줄 (이름, 종류, 날짜). 과목별 점수는 `exam_scores` 에 따로 적음 | #16 |
 | `exam_scores` | 시험 하나의 과목 하나의 점수가 한 줄 (예상 점수, 실제 점수). 같은 시험에 같은 과목은 한 번만 | #16 |
+| `reviews` | 회고 하나가 한 줄 (시험 후 회고 또는 주간 회고, 답 3개). 같은 시험·같은 주에 다시 쓰면 덮어씀 | #17 |
 | `care_settings` | 사용자 한 명의 관리 설정이 한 줄 (전화 시간, 메시지 횟수, 연락 금지, 독설 수위, 앱 잠금, 제재 한도와 바뀔 한도) | #22 |
 | `focus_lock_apps` | 한 사용자가 고른 잠금 대상 앱 하나가 한 줄. 같은 사용자 안에서 같은 앱은 한 번만 | #22 |
 | `setting_changes` | 설정 칸 하나를 한 번 바꾼 것이 한 줄 (바꾼 시각, 칸 이름, 이전 값, 새 값) | #22 |
@@ -342,7 +356,15 @@ erDiagram
 > - 실제 점수(`actual_score`)만 비어도 됩니다. 시험 전에는 아직 모르기 때문입니다. 나머지 칸은 꼭 있어야 합니다.
 > - 점수는 **0 ~ 100 의 정수**입니다. 같은 시험에 같은 과목은 한 번만(`uk_exam_scores_exam_id_subject_id`) 적을 수 있습니다. 이 둘은 DB 에도 규칙(unique · check)으로 걸어 두었습니다.
 > - 시험 종류(`type`)는 이슈에는 3개(모의고사·내신·쪽지시험)였지만 FE 의 `ExamType` 과 화면(#80)에 **기타(`ETC`)** 가 있어서 4개로 정했습니다.
-> - 시험 후 회고(`reflection`)는 #17 에서 만듭니다. 아직 칸이 없습니다.
+> - 시험 후 회고는 #17 에서 `reviews` 테이블에 따로 담았습니다. (아래 설명)
+
+> `reviews` 는 2026-10-17 에 이슈 #17 에서 **AI 가 초안을 먼저 만든 테이블**입니다. (이슈를 자동으로 처리하는 중이라 학생에게 묻지 못했습니다. **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - **시험 후 회고와 주간 회고를 한 테이블에 담고 `type` 으로 구분합니다.** 둘 다 "정해진 질문 3개에 짧게 답한 것" 이라 모양이 같고, 이슈가 `POST /reviews` 하나로 저장하라고 해서입니다.
+> - 시험 후 회고는 `exam_id` 만, 주간 회고는 `week_start`(그 주 월요일)만 차 있습니다. 나머지 하나는 비어 있습니다.
+> - **답은 `answer1` · `answer2` · `answer3` 세 칸**입니다. 질문이 늘 3개 이하라 딸린 테이블로 빼지 않았습니다. 질문 글은 저장하지 않고, 몇 번 질문인지는 칸 순서로 압니다. (질문 순서는 docs/API.md "회고")
+> - 덮어쓰기 기준은 `(user_id, exam_id)` 와 `(user_id, week_start)` 두 개의 중복 금지 규칙입니다. 비어 있는 칸(null)끼리는 겹친다고 보지 않아서 서로 부딪히지 않습니다.
+> - `user_id` 가 있어서 탈퇴하면 회고도 같이 지워집니다.
+> - FE 의 시험 회고 ① "준비가 충분했나" 는 1~5 버튼이지만, 이슈대로 **모든 답을 글자(200자까지)** 로 받습니다. FE 는 `"4"` 처럼 보내면 됩니다. 숫자 칸으로 따로 뺄지는 학생이 정해 주세요.
 
 > `care_settings` · `focus_lock_apps` · `setting_changes` 는 2026-10-17 에 이슈 #22 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 돕고 영어 이름만 같이 정했습니다)
 > - **사용자 한 명의 설정 = 한 줄.** 한 번도 바꾸지 않은 사람은 줄이 없고 처음 값을 보여 줍니다. 처음 바꿀 때 줄이 생깁니다.

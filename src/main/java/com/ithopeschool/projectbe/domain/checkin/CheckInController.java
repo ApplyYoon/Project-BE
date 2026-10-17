@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.checkin;
 
+import com.ithopeschool.projectbe.domain.checkin.dto.CheckInQuestionsResponse;
 import com.ithopeschool.projectbe.domain.checkin.dto.CheckInResponse;
 import com.ithopeschool.projectbe.domain.checkin.dto.CheckInSaveRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class CheckInController {
 
   private final CheckInService checkInService;
+  private final CheckInQuestionService checkInQuestionService;
 
   // 새로 만들 때도, 덮어쓸 때도 200 을 돌려줍니다. (FE 는 어느 쪽인지 신경 쓰지 않아도 됩니다)
   @Operation(summary = "그날의 체크인 저장 (같은 날 다시 보내면 덮어씀 · source 말고는 다 비어도 됨 · 토큰 필요)")
@@ -54,5 +56,11 @@ public class CheckInController {
           @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
           LocalDate to) {
     return checkInService.getCheckIns(from, to);
+  }
+
+  @Operation(summary = "오늘 체크인에서 물어볼 질문 (기본은 기분 · 어제 못 채운 날만 이유 · 어제 약속이 있으면 지켰는지 · 토큰 필요)")
+  @GetMapping("/today/questions")
+  public CheckInQuestionsResponse getTodayQuestions() {
+    return checkInQuestionService.getTodayQuestions();
   }
 }

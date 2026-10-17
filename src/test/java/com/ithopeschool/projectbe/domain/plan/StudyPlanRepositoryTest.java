@@ -62,4 +62,19 @@ class StudyPlanRepositoryTest {
     assertThat(studyPlanRepository.findByUserIdAndPlanDateOrderById(1L, OCT_6)).isEmpty();
     assertThat(studyPlanRepository.findByUserIdAndPlanDateOrderById(999L, OCT_5)).isEmpty();
   }
+
+  @Test
+  @DisplayName("내 계획 중 날짜가 가장 이른 것 하나 (남의 더 이른 계획은 무시) · 계획이 없으면 빈 Optional")
+  void findFirstByPlanDate() {
+    save(1L, OCT_6, "늦게 만든 이른 날짜는 아님");
+    save(1L, OCT_5, "내 첫 계획");
+    save(2L, OCT_5.minusDays(3), "남의 더 이른 계획");
+    em.clear();
+
+    assertThat(studyPlanRepository.findFirstByUserIdOrderByPlanDateAscIdAsc(1L))
+        .get()
+        .extracting(StudyPlan::getContent)
+        .isEqualTo("내 첫 계획");
+    assertThat(studyPlanRepository.findFirstByUserIdOrderByPlanDateAscIdAsc(999L)).isEmpty();
+  }
 }

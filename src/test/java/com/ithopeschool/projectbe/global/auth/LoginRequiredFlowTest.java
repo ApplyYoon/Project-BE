@@ -40,7 +40,9 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 // ⚠️ 새 API 를 만들면 이 테스트가 실패합니다. 아래 LOGIN_REQUIRED 표에 한 줄을 더해 주세요.
 //    그 한 줄이 "이 API 는 토큰 없이 부르면 401 이다" 를 확인해 줍니다.
 //    401 이 안 나오면 Service 에서 currentUserProvider.getCurrentUserId() 를 부르지 않은 것입니다. (CLAUDE.md 3장)
-@SpringBootTest
+// 다른 테스트의 create-drop이 이 테스트의 테이블을 지우지 않도록 DB 이름을 분리합니다.
+@SpringBootTest(
+    properties = "spring.datasource.url=jdbc:h2:mem:login-required-flow;MODE=PostgreSQL")
 @AutoConfigureMockMvc
 class LoginRequiredFlowTest {
 
@@ -108,6 +110,12 @@ class LoginRequiredFlowTest {
               "/api/v1/study-plans/batch",
               "/api/v1/study-plans/batch",
               "{\"plans\":[" + PLAN_BODY + "]}"),
+          // 말로 계획 세우기 (아무나 부르면 GPT 비용이 나갑니다)
+          new Api(
+              "POST",
+              "/api/v1/study-plans/parse",
+              "/api/v1/study-plans/parse",
+              "{\"date\":\"2026-10-12\",\"text\":\"수학 문제집 2시간\"}"),
           new Api("PATCH", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", "{\"done\":true}"),
           new Api("DELETE", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", null),
           // 관리 설정
@@ -149,6 +157,12 @@ class LoginRequiredFlowTest {
               "/api/v1/daily-signals",
               "/api/v1/daily-signals",
               "{\"date\":\"2026-10-12\"}"),
+          // 회고 (시험 후 · 주간)
+          new Api(
+              "POST",
+              "/api/v1/reviews",
+              "/api/v1/reviews",
+              "{\"type\":\"weekly\",\"weekStart\":\"2026-10-12\",\"answers\":[\"a\",\"\",\"\"]}"),
           // 체크인 (기분·약속은 개인적인 내용입니다)
           new Api(
               "PUT",
@@ -157,6 +171,8 @@ class LoginRequiredFlowTest {
               "{\"source\":\"manual\"}"),
           new Api(
               "GET", "/api/v1/checkins", "/api/v1/checkins?from=2026-10-01&to=2026-10-07", null),
+          new Api(
+              "GET", "/api/v1/checkins/today/questions", "/api/v1/checkins/today/questions", null),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
@@ -242,13 +258,16 @@ class LoginRequiredFlowTest {
               "POST",
               "/api/v1/auth/consent",
               "/api/v1/auth/consent",
-              "{\"terms\":true,\"privacy\":true,\"over14\":true,\"version\":\"v1\"}"));
+              "{\"terms\":true,\"privacy\":true,\"over14\":true,\"version\":\"v1\"}"),
+          // 첫 가설 (설문 답으로 만든 문장이라 학생의 정보입니다)
+          new Api("GET", "/api/v1/insights/hypotheses", "/api/v1/insights/hypotheses", null));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.
   private static final List<String> PUBLIC =
       List.of(
           "GET /api/v1/health",
+          "GET /api/v1/ping",
           "POST /api/v1/auth/signup",
           "POST /api/v1/auth/login",
           "POST /api/v1/auth/google",

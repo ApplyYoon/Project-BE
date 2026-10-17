@@ -9,7 +9,7 @@ services:
     plan: free # 무료 (메모리 512MB, CPU 0.1)
     region: singapore # 한국과 가까운 아시아 지역. 한 번 정하면 바꿀 수 없습니다
     branch: main # 배포용 브랜치. develop 은 개발용이라 배포하지 않습니다
-    autoDeployTrigger: commit # main 에 새 커밋이 들어오면 자동으로 다시 배포합니다
+    autoDeployTrigger: checksPass # main 커밋의 GitHub Actions 검사가 통과해야 배포합니다
     healthCheckPath: /api/v1/health # 서버가 살아 있는지 Render 가 확인하는 주소 (200 이면 정상)
     envVars:
       # ── 값을 이 파일에 적지 않습니다. sync: false 는 "Render 설정 화면에서 직접 입력" 이라는 뜻입니다. ──
