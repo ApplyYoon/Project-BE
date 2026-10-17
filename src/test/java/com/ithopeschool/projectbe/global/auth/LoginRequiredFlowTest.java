@@ -370,7 +370,10 @@ class LoginRequiredFlowTest {
           new Api("POST", "/api/v1/psych-tests", "/api/v1/psych-tests", "{\"answers\":{\"S1\":4}}"),
           new Api("GET", "/api/v1/psych-tests/latest", "/api/v1/psych-tests/latest", null),
           // 성향 요약 3줄 (내 심리검사를 봅니다. 이슈 #237)
-          new Api("POST", "/api/v1/ai/profile-lines", "/api/v1/ai/profile-lines", null));
+          new Api("POST", "/api/v1/ai/profile-lines", "/api/v1/ai/profile-lines", null),
+          // AI 하루 계획 (내 공부 기록 · 계획 · 설문 · 심리검사를 봅니다)
+          new Api(
+              "POST", "/api/v1/ai/day-plan", "/api/v1/ai/day-plan", "{\"date\":\"2099-01-01\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

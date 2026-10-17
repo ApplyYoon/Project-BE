@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
@@ -49,6 +50,7 @@ class AiControllerTest {
   @MockitoBean private QuickCardService quickCardService;
   @MockitoBean private SettingsFromTextService settingsFromTextService;
   @MockitoBean private ProfileLinesService profileLinesService;
+  @MockitoBean private DayPlanService dayPlanService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -487,5 +489,39 @@ class AiControllerTest {
         .perform(post("/api/v1/ai/profile-lines"))
         .andExpect(status().isOk())
         .andExpect(content().json("{\"lines\":null}", true));
+  }
+
+  // ---- AI 하루 계획 ----
+
+  @Test
+  @DisplayName("AI 하루 계획: 200 과 칸 길이 · 총량 · 계획 초안 · 근거, 날짜가 없으면 400")
+  void dayPlan() throws Exception {
+    java.time.LocalDate date = java.time.LocalDate.parse("2026-10-18");
+    given(dayPlanService.suggest(any()))
+        .willReturn(
+            new DayPlanResponse(
+                date,
+                25,
+                50,
+                List.of(new DayPlanResponse.Plan(date, "1", "기출 1회분", 25, null, "study")),
+                List.of("최근 14일 공부 기록 6번의 한 번 길이 가운데값이 24분이라 25분씩 나눴어요")));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/day-plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"date\":\"2026-10-18\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.blockMinutes").value(25))
+        .andExpect(jsonPath("$.plans[0].subjectId").value("1"))
+        .andExpect(jsonPath("$.plans[0].kind").value("study"))
+        .andExpect(jsonPath("$.plans[0].startTime").doesNotExist())
+        .andExpect(
+            jsonPath("$.evidence[0]").value("최근 14일 공부 기록 6번의 한 번 길이 가운데값이 24분이라 25분씩 나눴어요"));
+
+    mockMvc
+        .perform(post("/api/v1/ai/day-plan").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("계획을 짤 날짜를 보내 주세요"));
   }
 }

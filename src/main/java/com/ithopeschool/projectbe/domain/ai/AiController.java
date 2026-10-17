@@ -2,6 +2,8 @@ package com.ithopeschool.projectbe.domain.ai;
 
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseRequest;
@@ -44,6 +46,7 @@ public class AiController {
   private final QuickCardService quickCardService;
   private final SettingsFromTextService settingsFromTextService;
   private final ProfileLinesService profileLinesService;
+  private final DayPlanService dayPlanService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -115,5 +118,11 @@ public class AiController {
   @PostMapping("/profile-lines")
   public ProfileLinesResponse profileLines() {
     return profileLinesService.suggest();
+  }
+
+  @Operation(summary = "AI 하루 계획: 내 기록으로 한 칸 길이·총량·과목을 정하고 AI 가 할 일을 씀 (근거 문장 포함 · 저장 안 함 · 토큰 필요)")
+  @PostMapping("/day-plan")
+  public DayPlanResponse dayPlan(@Valid @RequestBody DayPlanRequest request) {
+    return dayPlanService.suggest(request);
   }
 }
