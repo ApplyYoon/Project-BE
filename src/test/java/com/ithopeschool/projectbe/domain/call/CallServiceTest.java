@@ -17,6 +17,7 @@ import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
@@ -61,7 +62,8 @@ class CallServiceTest {
           tokenHasher,
           callRecordRepository,
           thinkingTestRepository,
-          Clock.fixed(NOW, ZoneOffset.UTC));
+          Clock.fixed(NOW, ZoneOffset.UTC),
+          mock(SafetyService.class));
 
   private static final CallSessionRequest REQUEST =
       new CallSessionRequest(

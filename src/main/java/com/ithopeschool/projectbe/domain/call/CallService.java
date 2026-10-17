@@ -8,6 +8,7 @@ import com.ithopeschool.projectbe.domain.call.CallKeyClient.CallKey;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.domain.thinkingtest.StudyStyle;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingGap;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
@@ -62,6 +63,7 @@ public class CallService {
   private final CallRecordRepository callRecordRepository;
   private final ThinkingTestRepository thinkingTestRepository;
   private final Clock clock;
+  private final SafetyService safetyService;
 
   public CallService(
       CurrentUserProvider currentUserProvider,
@@ -70,7 +72,8 @@ public class CallService {
       TokenHasher tokenHasher,
       CallRecordRepository callRecordRepository,
       ThinkingTestRepository thinkingTestRepository,
-      Clock clock) {
+      Clock clock,
+      SafetyService safetyService) {
     this.currentUserProvider = currentUserProvider;
     this.callKeyClient = callKeyClient;
     this.gptUsageGuard = gptUsageGuard;
@@ -78,6 +81,7 @@ public class CallService {
     this.callRecordRepository = callRecordRepository;
     this.thinkingTestRepository = thinkingTestRepository;
     this.clock = clock;
+    this.safetyService = safetyService;
   }
 
   public CallSessionResponse startSession(CallSessionRequest request) {
@@ -101,7 +105,10 @@ public class CallService {
             userId, today.minusDays(RECENT_DAYS - 1));
 
     // 최근에 위기 표현이 있었으면 위로하는 통화로 합니다. (관리 강도 0 이면 말투·순서가 모두 위로하는 쪽으로 바뀝니다)
-    int careLevel = hasRecentCrisis(recentCalls, today) ? 0 : request.careLevel();
+    int careLevel =
+        safetyService.isActive(userId) || hasRecentCrisis(recentCalls, today)
+            ? 0
+            : request.careLevel();
     CallSessionRequest.Card card = request.card();
 
     // 생각 습관 테스트 결과. 서버에 저장된 것이 있으면 그것을, 없으면 FE 가 보낸 것을 씁니다.
