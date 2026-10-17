@@ -1,0 +1,7 @@
+# 테스트에서만 쓰는 설정입니다. src/main/resources/application-local.yml 위에 이 값만 덮어씁니다.
+# 테스트마다 Spring 이 따로 켜질 때(컨텍스트) 같은 이름의 H2 메모리 DB 를 함께 쓰면,
+# 한 컨텍스트가 꺼지면서 create-drop 으로 테이블을 지워 다른 테스트가 빈 DB 를 보고 500 이 납니다.
+# 그래서 컨텍스트마다 DB 이름을 다르게 줍니다. (내 컴퓨터의 h2-console 주소 jdbc:h2:mem:projectbe 는 그대로)
+spring:
+  datasource:
+    url: jdbc:h2:mem:projectbe-${random.uuid};MODE=PostgreSQL
