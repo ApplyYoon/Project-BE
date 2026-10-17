@@ -115,6 +115,35 @@ public class CallService {
 
     Instant now = clock.instant();
     LocalDate today = DayRule.dateOf(now);
+    Script script = prepareScript(userId, request, now, today, CallChannel.VOICE);
+    String instructions = script.instructions();
+    BiasQuestion biasQuestion = script.biasQuestion();
+    // OpenAI 에는 "어느 사용자의 요청인지" 를 알아볼 수 없는 글자로만 알려 줍니다. (번호를 그대로 보내지 않습니다)
+    String safetyIdentifier = tokenHasher.hash("starflow-user-" + userId);
+
+    Optional<CallKey> key = callKeyClient.createKey(instructions, safetyIdentifier);
+    if (key.isEmpty()) {
+      // 통화가 시작되지 않았으니 통화 기록도, GPT 호출 기록도 만들지 않습니다. (그래서 오늘 횟수도 쓰지 않습니다)
+      throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
+    }
+
+    CallRecord record = callRecordRepository.save(new CallRecord(userId, today, now, biasQuestion));
+    gptUsageGuard.recordCallStart(userId, record.getId());
+    return new CallSessionResponse(
+        key.get().value(),
+        key.get().expiresAtMillis(),
+        // FE 는 이 시간이 되면 통화를 끊습니다. 오늘 남은 시간이 적으면 그만큼만 줍니다.
+        allowedSeconds,
+        String.valueOf(record.getId()));
+  }
+
+  // 대본(지침)과 오늘 확인할 생각 습관 질문입니다. 음성 통화와 상담 채팅(ChatService, 이슈 #238)이 같이 씁니다.
+  record Script(String instructions, BiasQuestion biasQuestion) {}
+
+  // 위 순서의 4 ~ 6 번입니다. 안전 브레이크 · 학생 카드(DB) · 생각 습관 테스트 · 지난 통화로 대본을 만듭니다.
+  // channel 이 CHAT 이면 같은 대본의 글 버전입니다. (CallScript.chatInstructions)
+  Script prepareScript(
+      Long userId, CallSessionRequest request, Instant now, LocalDate today, CallChannel channel) {
     // 최근 2주의 내 통화 기록 (최근 것이 앞)
     List<CallRecord> recentCalls =
         callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
@@ -141,30 +170,22 @@ public class CallService {
             askedQuestionKeysOf(recentCalls),
             selfReport.biases());
     String instructions =
-        CallScript.instructions(
-            careLevel,
-            request.maxHarshness(),
-            card,
-            biasQuestion,
-            pastCallsOf(recentCalls),
-            selfReport);
-    // OpenAI 에는 "어느 사용자의 요청인지" 를 알아볼 수 없는 글자로만 알려 줍니다. (번호를 그대로 보내지 않습니다)
-    String safetyIdentifier = tokenHasher.hash("starflow-user-" + userId);
-
-    Optional<CallKey> key = callKeyClient.createKey(instructions, safetyIdentifier);
-    if (key.isEmpty()) {
-      // 통화가 시작되지 않았으니 통화 기록도, GPT 호출 기록도 만들지 않습니다. (그래서 오늘 횟수도 쓰지 않습니다)
-      throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
-    }
-
-    CallRecord record = callRecordRepository.save(new CallRecord(userId, today, now, biasQuestion));
-    gptUsageGuard.recordCallStart(userId, record.getId());
-    return new CallSessionResponse(
-        key.get().value(),
-        key.get().expiresAtMillis(),
-        // FE 는 이 시간이 되면 통화를 끊습니다. 오늘 남은 시간이 적으면 그만큼만 줍니다.
-        allowedSeconds,
-        String.valueOf(record.getId()));
+        channel == CallChannel.CHAT
+            ? CallScript.chatInstructions(
+                careLevel,
+                request.maxHarshness(),
+                card,
+                biasQuestion,
+                pastCallsOf(recentCalls),
+                selfReport)
+            : CallScript.instructions(
+                careLevel,
+                request.maxHarshness(),
+                card,
+                biasQuestion,
+                pastCallsOf(recentCalls),
+                selfReport);
+    return new Script(instructions, biasQuestion);
   }
 
   // 통화 지침에 넣을 "생각" 쪽 자료를 모읍니다.

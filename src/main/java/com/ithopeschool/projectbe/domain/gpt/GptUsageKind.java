@@ -1,6 +1,6 @@
 package com.ithopeschool.projectbe.domain.gpt;
 
-// GPT 를 부른 종류입니다. (이슈 #33) 지금 GPT 를 실제로 부르는 네 곳만 있습니다.
+// GPT 를 부른 종류입니다. (이슈 #33) 지금 GPT 를 실제로 부르는 다섯 곳만 있습니다.
 // 인사이트 문장 · 개선안 · 일기 분석처럼 GPT 를 부르는 기능이 새로 생기면 여기에 한 줄을 더합니다.
 public enum GptUsageKind {
   // AI 와 음성 통화 (분당 과금. 통화 시간 한도를 따로 셉니다)
@@ -10,5 +10,7 @@ public enum GptUsageKind {
   // 주간·월간·어제 한 줄 코치 문단 (CoachAiClient)
   COACH,
   // 말로 계획 세우기: 문장 → 계획 초안 (PlanParseClient, 이슈 #86)
-  PLAN_PARSE
+  PLAN_PARSE,
+  // 상담 채팅에서 AI 가 한 번 답한 것 (ChatAiClient, 이슈 #238). 채팅을 열 때 첫 인사도 한 번입니다.
+  CHAT
 }

@@ -192,6 +192,18 @@ class LoginRequiredFlowTest {
           // AI 통화 기록 (자막은 학생의 대화입니다)
           new Api("GET", "/api/v1/calls", "/api/v1/calls", null),
           new Api("GET", "/api/v1/calls/habits", "/api/v1/calls/habits", null),
+          // 상담 채팅 (이슈 #238)
+          new Api("POST", "/api/v1/chats", "/api/v1/chats", "{\"careLevel\":2,\"maxHarshness\":3}"),
+          new Api(
+              "POST",
+              "/api/v1/chats/{id}/messages",
+              "/api/v1/chats/1/messages",
+              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
+          new Api(
+              "POST",
+              "/api/v1/chats/{id}/finish",
+              "/api/v1/chats/1/finish",
+              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
           // 웹 푸시 (내 기기를 알림 받을 곳으로 등록합니다)
           new Api("GET", "/api/v1/push/public-key", "/api/v1/push/public-key", null),
           new Api(
