@@ -52,10 +52,15 @@ erDiagram
     study_sessions {
         bigint id PK "기록을 구분하는 고유 번호"
         bigint user_id FK "이 기록의 주인"
-        bigint subject_id FK "어떤 과목을 공부했는지"
+        bigint subject_id FK "어떤 과목을 공부했는지 (노는 기록이면 비어 있음)"
         timestamptz started_at "공부를 시작한 시각"
         timestamptz ended_at "공부를 끝낸 시각"
         int pause_count "일시정지를 누른 횟수"
+        bigint paused_ms "일시정지해 있던 시간의 합, 밀리초 (없으면 0, 순공에서 뺌)"
+        bigint plan_id "어느 계획을 하려고 켠 타이머인지 (계획 없이 켰으면 비어 있음)"
+        int target_minutes "시작할 때 약속한 목표 시간(분) (목표 없이 켰으면 비어 있음)"
+        varchar stop_reason "목표 전에 그만둔 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, ETC 중 하나, 안 골랐으면 비어 있음)"
+        varchar kind "공부 기록인지 노는 기록인지 (STUDY, PLAY 중 하나)"
     }
     accounts {
         bigint id PK "계정을 구분하는 고유 번호"
@@ -136,7 +141,7 @@ erDiagram
 | `users` | 서비스를 쓰는 사람 한 명이 한 줄 (별명, 가입 시각) | #3 |
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
 | `study_plans` | 하루의 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부, 시작 시각, 공부/노는 계획, 루틴) | #3 · #12 |
-| `study_sessions` | 타이머로 한 번 공부한 기록 하나가 한 줄 (과목, 시작·끝 시각, 일시정지 횟수) | #3 |
+| `study_sessions` | 타이머로 한 번 잰 기록 하나가 한 줄 (과목, 시작·끝 시각, 일시정지 횟수·시간, 계획, 목표 시간, 그만둔 이유, 공부/노는 기록) | #3 · #13 |
 | `accounts` | 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시 또는 구글 고유 번호, 실명, 학교, 동의). 사용자 한 명에 하나 | #97 · #19 |
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
 | `messages` | AI 가 사용자에게 보낸 메시지 하나가 한 줄 (종류, 내용, 보낸 시각, 읽은 시각) | #30 |
