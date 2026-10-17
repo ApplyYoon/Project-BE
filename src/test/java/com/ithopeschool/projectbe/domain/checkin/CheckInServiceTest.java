@@ -245,4 +245,12 @@ class CheckInServiceTest {
             () -> service.getCheckIns(LocalDate.parse("1969-12-31"), LocalDate.parse("1970-01-01")))
         .hasMessage("날짜는 1970-01-01 부터 9999-12-31 사이로 보내 주세요");
   }
+
+  @Test
+  @DisplayName("모두 지우기는 로그인한 사람의 번호로만 지운다")
+  void deleteAllUsesMyUserId() {
+    service.deleteAll();
+
+    verify(checkInRepository).deleteAllOfUser(USER_ID);
+  }
 }

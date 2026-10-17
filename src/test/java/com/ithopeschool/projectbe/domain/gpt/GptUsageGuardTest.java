@@ -15,7 +15,8 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 
 // GPT 비용 지키기(이슈 #33)를 진짜 DB(H2)에 기록하며 확인합니다.
-// 한도: 하루 통화 3번 · 하루 통화 15분 · 통화 한 번 최대 300초 · 하루 글 호출 2번 · 분당 400원 · 글 한 번 5원
+// 한도: 하루 통화 3번 · 하루 통화 15분 · 통화 한 번 최대 300초 · 하루 글 호출 2번 · 하루 작은 AI 기능 3번
+//       · 분당 400원 · 글 한 번 5원
 @DataJpaTest
 class GptUsageGuardTest {
 
@@ -34,7 +35,7 @@ class GptUsageGuardTest {
 
   private GptUsageGuard guardAt(Instant now) {
     return new GptUsageGuard(
-        gptUsageRepository, Clock.fixed(now, ZoneOffset.UTC), 3, 15, 300, 2, 400, 5);
+        gptUsageRepository, Clock.fixed(now, ZoneOffset.UTC), 3, 15, 300, 2, 3, 400, 5);
   }
 
   // 통화를 시작하고 seconds 초 뒤에 끝낸 것으로 기록합니다. (callRecordId 는 통화마다 다르게)
@@ -75,7 +76,7 @@ class GptUsageGuardTest {
 
     GptUsageGuard bigLimit =
         new GptUsageGuard(
-            gptUsageRepository, Clock.fixed(NOON, ZoneOffset.UTC), 10, 15, 300, 2, 400, 5);
+            gptUsageRepository, Clock.fixed(NOON, ZoneOffset.UTC), 10, 15, 300, 2, 3, 400, 5);
     finishedCall(bigLimit, ME, 3, 300);
     // 840초(14분) → 남은 60초
     assertThat(bigLimit.allowedCallSeconds(ME)).isEqualTo(60);
@@ -90,7 +91,7 @@ class GptUsageGuardTest {
   void unfinishedCallCountsAsMax() {
     GptUsageGuard bigLimit =
         new GptUsageGuard(
-            gptUsageRepository, Clock.fixed(NOON, ZoneOffset.UTC), 10, 15, 300, 2, 400, 5);
+            gptUsageRepository, Clock.fixed(NOON, ZoneOffset.UTC), 10, 15, 300, 2, 3, 400, 5);
     bigLimit.recordCallStart(ME, 1L);
     bigLimit.recordCallStart(ME, 2L);
 
@@ -240,6 +241,46 @@ class GptUsageGuardTest {
     assertThat(guard.tryUseText(OTHER, GptUsageKind.COACH)).isTrue();
     assertThat(guardAt(BEFORE_FOUR).tryUseText(ME, GptUsageKind.COACH)).isFalse();
     assertThat(guardAt(FOUR_AM).tryUseText(ME, GptUsageKind.COACH)).isTrue();
+  }
+
+  // ---- 작은 AI 기능 (체크리스트 추천 등, #236 · #237) ----
+
+  @Test
+  @DisplayName("작은 AI 기능은 하루 3번까지이고, 글 호출과 같은 비용(5원)으로 기록한다")
+  void assistLimit() {
+    GptUsageGuard guard = guardAt(NOON);
+
+    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
+    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
+    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
+    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isFalse();
+
+    assertThat(gptUsageRepository.findByUserIdOrderById(ME))
+        .extracting(GptUsage::getKind, GptUsage::getCostWon)
+        .containsExactly(
+            tuple(GptUsageKind.CHECKLIST, 5),
+            tuple(GptUsageKind.CHECKLIST, 5),
+            tuple(GptUsageKind.CHECKLIST, 5));
+  }
+
+  @Test
+  @DisplayName("작은 AI 기능과 글 호출은 한도를 따로 센다: 한쪽을 다 써도 다른 쪽은 그대로 쓸 수 있다")
+  void assistLimitIsSeparateFromTextLimit() {
+    GptUsageGuard guard = guardAt(NOON);
+    // 글 호출 2번을 다 씀
+    assertThat(guard.tryUseText(ME, GptUsageKind.COACH)).isTrue();
+    assertThat(guard.tryUseText(ME, GptUsageKind.PLAN_PARSE)).isTrue();
+    assertThat(guard.tryUseText(ME, GptUsageKind.COACH)).isFalse();
+
+    // 그래도 체크리스트는 3번 됩니다.
+    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
+    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
+    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
+    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isFalse();
+
+    // 다른 사람과 다음 날(새벽 4시)은 따로입니다.
+    assertThat(guard.tryUseText(OTHER, GptUsageKind.CHECKLIST)).isTrue();
+    assertThat(guardAt(FOUR_AM).tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
   }
 
   @Test

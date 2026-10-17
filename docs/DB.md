@@ -253,7 +253,7 @@ erDiagram
     gpt_usages {
         bigint id PK "기록 한 줄을 구분하는 고유 번호 (나중에 부른 것일수록 큼)"
         bigint user_id FK "GPT 를 부르게 한 사람"
-        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE 중 하나)"
+        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE, CHECKLIST 중 하나)"
         timestamptz called_at "부른 시각 (통화는 시작한 시각)"
         bigint call_record_id FK "어느 통화인지 (통화일 때만, 그 외엔 비어 있음)"
         int call_seconds "통화한 시간(초) (통화가 아니거나 아직 안 끝났으면 비어 있음)"
@@ -285,6 +285,31 @@ erDiagram
 <!-- DB-DIAGRAM:END -->
 
 ## 테이블 설명
+
+### 기능별 반영 현황 (#74)
+
+2026-10-17 `develop`의 엔티티와 아래 그림을 대조했습니다. 체크는 **그림 반영 여부**이며,
+운영 DB에 테이블이 만들어졌다는 뜻은 아닙니다. 아직 없는 테이블은 이름·컬럼을 미리 정하지 않습니다.
+
+| 기능 | 그림 반영 | 근거 / 남은 일 |
+| --- | --- | --- |
+| 사용자·과목·계획·기록 #3 | 완료 | `users`, `subjects`, `study_plans`, `study_sessions` |
+| 시험·점수 #16 | 완료 | `exams`, `exam_scores` |
+| 회고 #17 | 완료 | `reviews` |
+| 온보딩 #21 | 완료 | `onboarding_answers`와 선택 항목, `initial_plans` |
+| 관리 설정 #22 | 완료 | `care_settings`, `focus_lock_apps`, `setting_changes` |
+| 체크인 #24 | 완료 | `checkins` |
+| 통화 요약 #29 | 완료 | `call_records` |
+| AI 메시지 #30 | 완료 | `messages` |
+| 하루 요약 #34 | 대기 | 현재 `DaySummary` 계산 객체만 있고 저장 엔티티 없음 |
+| 개선안·실험 #52 | 대기 | 계산 객체만 있고 저장 엔티티 없음 |
+| 일기 #60 | 대기 | 저장 엔티티 없음 |
+| 잠금 해제 #67 | 작업 중 | 해당 기능 PR에서 엔티티·그림·운영 SQL을 함께 반영 |
+| 동의 기록 #71 | 완료 | PR #204가 반영되어 `consent_records` 이력과 그림이 있음 |
+| 계획 루틴 #85 | 작업 중 | 해당 기능 PR에서 엔티티·그림·운영 SQL을 함께 반영 |
+
+추가 테이블을 만드는 PR에서는 이 표의 상태도 함께 바꿉니다.
+미완료 기능이 있어 #74 전체를 완료 처리하지 않습니다.
 
 | 테이블 | 무엇을 담나 | 만든 이슈 |
 | ------ | ----------- | --------- |
