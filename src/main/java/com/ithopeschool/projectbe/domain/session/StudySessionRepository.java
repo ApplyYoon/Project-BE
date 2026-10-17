@@ -3,6 +3,7 @@ package com.ithopeschool.projectbe.domain.session;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -35,6 +36,10 @@ public interface StudySessionRepository extends JpaRepository<StudySession, Long
       @Param("userId") Long userId,
       @Param("periodStart") Instant periodStart,
       @Param("periodEnd") Instant periodEnd);
+
+  // 내 기록 중 가장 먼저 시작한 것 하나. 기록이 없으면 빈 Optional 입니다.
+  // 첫 리포트 카운트다운의 "첫 기록 날짜" 를 찾을 때 씁니다. (InsightService, 이슈 #35)
+  Optional<StudySession> findFirstByUserIdOrderByStartedAtAscIdAsc(Long userId);
 
   // 내 기록 중에 이 계획들로 켠 타이머의 기록을 모두 찾습니다. 날짜와 종류(공부·노는)는 가리지 않습니다.
   // 계획 줄의 "실제 / 목표" 를 계산할 때 씁니다. 계획이 없으면(planIds 가 비면) 부르지 않습니다.

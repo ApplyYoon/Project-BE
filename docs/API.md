@@ -2137,6 +2137,70 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 > **탈퇴하면** 설문 답(딸린 테이블 포함)과 처음 계획이 모두 지워집니다. (`/auth/withdraw`)
 > **녹음은 서버로 오지 않습니다.** 처음의 다짐 녹음은 기기에만 저장합니다. (FE #241)
 
+### 인사이트
+
+#### 첫 가설 · 첫 리포트 카운트다운
+
+`GET /api/v1/insights/hypotheses` — 온보딩 설문 답으로 만든 "앞으로 2주 동안 확인할 가설" 과 14일 차 첫 리포트까지 남은 날입니다. **로그인이 필요합니다.** (이슈 #35, FE #85)
+
+기록이 하나도 없는 첫날에도 할 말이 있게 하려는 것입니다. 2주 뒤 이 가설을 분석(#37 ~ #40)으로 확인하는 것이 첫 '아하' 입니다.
+
+```json
+{
+  "hypotheses": [
+    {
+      "answerType": "pastFailureCauses",
+      "answer": "weekend",
+      "sentence": "주말에 무너지는 편이라고 했지? 2주 동안 평일과 주말을 비교해서 확인해볼게.",
+      "analysis": "rhythm",
+      "analysisIssue": 37
+    },
+    {
+      "answerType": "chronotype",
+      "answer": "night",
+      "sentence": "밤형이라고 했지? 밤과 오전 중 언제 더 오래 집중하는지 2주 동안 확인해볼게.",
+      "analysis": "perceptionGap",
+      "analysisIssue": 40
+    }
+  ],
+  "defaultSentence": null,
+  "firstReport": {
+    "firstRecordDate": "2026-10-15",
+    "totalDays": 14,
+    "daysPassed": 3,
+    "daysLeft": 11,
+    "ready": false
+  }
+}
+```
+
+**가설 (`hypotheses`)**
+
+- 문장은 AI 가 아니라 **코드의 규칙**으로 만듭니다. 답 하나에 가설 하나입니다. (`domain/insight/FirstHypothesis.java`)
+- 재료: 과거에 계획이 무너졌던 때(`pastFailureCauses`) · 아침형/밤형(`chronotype`) · 한 번에 집중 가능한 시간(`maxFocusMinutes`) · 가장 큰 방해 요소(`biggestDistraction`). 이 순서로 나옵니다.
+  - 하루 공부 가능 시간은 모두가 꼭 답하는 칸이라 쓰지 않습니다. (그 비교는 #40 "처음 계획 대비 지금")
+- `answerType` 은 온보딩 응답의 칸 이름, `answer` 는 그 칸에 고른 답(FE 글자 그대로, **항상 글자**. 집중 시간도 `"50"`)입니다.
+- **가설을 DB 에 저장하지 않습니다.** 부를 때마다 "지금 내 설문 답" 으로 새로 만듭니다. 그래서 "내 정보 더 알려주기"(`PATCH /onboarding`)로 답이 들어오면 다음 조회부터 그 가설이 나옵니다.
+- 답이 하나도 없으면(설문을 안 했거나 필수 칸만 답함) 가설을 억지로 만들지 않고 `hypotheses: []`, 대신 `defaultSentence` 에 기본 문장이 들어 있습니다. 가설이 있으면 `defaultSentence` 는 `null` 입니다.
+- 설문을 안 했어도 **404 가 아닙니다.** (홈 화면의 카운트다운은 설문과 상관없이 보여야 해서)
+
+| `analysis` | `analysisIssue` | 2주 뒤 무엇으로 확인하나 | 이어진 답 |
+| --- | --- | --- | --- |
+| `rhythm` | 37 | 리듬·패턴 (요일·이벤트 다음 날) | 무너진 때: `afterExam` `weekend` `lateAcademy` |
+| `condition` | 38 | 조건-성과 (수면 등) | 방해 요소: `졸림` |
+| `failureCause` | 39 | 실패 원인 (못 지킨 날의 이유) | 무너진 때: `phone` · 방해 요소: `졸림` 말고 전부 |
+| `perceptionGap` | 40 | 인식-실제 갭 | 무너진 때: `tooMuchPlan` · `chronotype` · `maxFocusMinutes` |
+
+**첫 리포트 카운트다운 (`firstReport`)** — FE 홈 화면(`HomePage.tsx`)과 같은 규칙입니다.
+
+- `firstRecordDate`: 첫 기록 날짜. **공부 계획의 날짜**와 **공부 기록을 시작한 날**(새벽 4시 기준) 중 가장 이른 날. 기록이 없으면 `null`
+- `daysPassed`: 첫 기록 날짜부터 오늘까지 두 날 모두 포함해 센 날 (첫날 = 1). 14에서 멈추고, 미리 세운 계획만 있으면 0
+- `daysLeft`: `14 - daysPassed`. `0` 이면 `ready: true` (첫 리포트 보기)
+
+| 상태 | 언제 |
+| --- | --- |
+| 401 | 로그인하지 않음 |
+
 ### 웹 푸시
 
 앱을 닫아 둬도 휴대폰 알림 칸에 뜨는 **푸시 알림**을 받을 기기를 등록합니다. 세 주소 모두 **로그인이 필요합니다.** (이슈 #32)
