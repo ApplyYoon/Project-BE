@@ -7,6 +7,10 @@ import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
+import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
+import com.ithopeschool.projectbe.domain.psychtest.PsychScore;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTest;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
 import com.ithopeschool.projectbe.domain.safety.CrisisText;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
@@ -34,7 +38,7 @@ import org.springframework.stereotype.Service;
 //   1. 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. (#56, 어떤 기능보다 먼저)
 //   2. 서버 DB 에 쌓인 내 기록에서 맥락을 모읍니다.
 //      - 지난 같은 카드: 최근 4주(오늘 빼고) 같은 제목의 공부 계획, 최근 것부터 5개. 목표 시간 · 실제 순공 · 끝냈는지
-//      - 계획 성향: 가장 최근 생각 습관 테스트의 "계획할 때" 가 낙관인지 (안 했으면 낙관 아님)
+//      - 계획 성향: 가장 최근 심리검사의 "계획 낙관" 이 높은지 (안 했으면 예전 생각 습관 테스트로, 둘 다 없으면 낙관 아님)
 //   3. 개수를 코드가 정합니다. (ChecklistPrompt.countOf)
 //   4. AI 를 부릅니다. 꺼짐 · 하루 한도 · 실패면 items 가 null 입니다. (AiClient)
 //   5. 받은 항목을 검사합니다. 쓸 만한 항목이 모자라면 items 가 null 입니다. (ChecklistDraft)
@@ -53,6 +57,7 @@ public class ChecklistService {
   private final CurrentUserProvider currentUserProvider;
   private final StudyPlanRepository studyPlanRepository;
   private final StudySessionRepository studySessionRepository;
+  private final PsychTestRepository psychTestRepository;
   private final ThinkingTestRepository thinkingTestRepository;
   private final AiClient aiClient;
   private final Clock clock;
@@ -132,9 +137,18 @@ public class ChecklistService {
     return pastCards;
   }
 
-  // 가장 최근 생각 습관 테스트에서 "계획할 때" 축이 낙관인지. 테스트를 안 했으면 false 입니다.
-  // (온보딩 심리검사 v3 의 "계획 낙관"(#219)이 서버에 저장되면 그 값으로 바꿉니다)
+  // 계획을 크게 잡는 편인지 (계획 낙관이 높은지)
+  //   1. 가장 최근 온보딩 심리검사(#219)의 "계획 낙관"(P1 ~ P5)이 높음(5 이상)인지
+  //   2. 심리검사를 아직 안 했으면, 예전의 생각 습관 테스트(#35)에서 "계획할 때" 축이 낙관인지
+  //      (생각 습관 테스트는 2026-10-17 에 받지 않기로 했지만, 이미 쌓인 결과는 버리지 않고 씁니다)
+  //   둘 다 없으면 false 입니다.
   private boolean isPlanOptimistic(Long userId) {
+    Optional<PsychTest> psychTest = psychTestRepository.findFirstByUserIdOrderByIdDesc(userId);
+    if (psychTest.isPresent()) {
+      double score =
+          PsychScore.scoresOf(psychTest.get().getAnswers()).get(PsychScale.PLAN_OPTIMISM);
+      return PsychScore.levelOf(score) == PsychScore.Level.HIGH;
+    }
     Optional<ThinkingTest> latest = thinkingTestRepository.findFirstByUserIdOrderByIdDesc(userId);
     if (latest.isEmpty()) {
       return false;
