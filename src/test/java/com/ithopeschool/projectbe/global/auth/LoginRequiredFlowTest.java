@@ -9,7 +9,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ithopeschool.projectbe.global.time.DayRule;
 import com.jayway.jsonpath.JsonPath;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -110,6 +113,21 @@ class LoginRequiredFlowTest {
               "/api/v1/study-sessions",
               "{\"subjectId\":\"1\",\"startedAt\":1790000000000,"
                   + "\"endedAt\":1790003000000,\"pauseCount\":0}"),
+          new Api(
+              "GET",
+              "/api/v1/study-sessions",
+              "/api/v1/study-sessions?from=2026-10-01&to=2026-10-07",
+              null),
+          new Api(
+              "GET",
+              "/api/v1/study-sessions/today/total",
+              "/api/v1/study-sessions/today/total",
+              null),
+          new Api(
+              "GET",
+              "/api/v1/study-sessions/by-plan",
+              "/api/v1/study-sessions/by-plan?date=2026-10-12",
+              null),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
@@ -338,6 +356,68 @@ class LoginRequiredFlowTest {
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.length()").value(1))
           .andExpect(jsonPath("$[0].done").value(false));
+    } finally {
+      withdraw(tokenA);
+      withdraw(tokenB);
+    }
+  }
+
+  @Test
+  @DisplayName("A 의 토큰으로 조회하면 B 의 공부 기록은 기간 목록·오늘 합계·계획별 실제 시간 어디에도 섞이지 않는다")
+  void otherUsersSessionsAreNotMixedIn() throws Exception {
+    String tokenA = signupAndLogin("에이에이");
+    String tokenB = signupAndLogin("비이비이");
+    try {
+      // 비이가 과목과 계획을 만들고, 그 계획으로 켠 60분짜리 기록을 저장합니다. (한 시간 전에 끝난 기록)
+      ResultActions subject =
+          send(post("/api/v1/subjects"), tokenB, "{\"name\":\"수학\",\"color\":\"red\"}");
+      subject.andExpect(status().isCreated());
+      String subjectId = JsonPath.read(responseBody(subject), "$.id");
+
+      String planBody =
+          "{\"date\":\"2026-10-12\",\"subjectId\":\"%s\",\"content\":\"수학 문제집\",\"targetMinutes\":60}"
+              .formatted(subjectId);
+      ResultActions plan = send(post("/api/v1/study-plans"), tokenB, planBody);
+      plan.andExpect(status().isCreated());
+      String planId = JsonPath.read(responseBody(plan), "$.id").toString();
+
+      Instant end = Instant.now().minusSeconds(3600);
+      Instant start = end.minusSeconds(3600);
+      String sessionBody =
+          "{\"subjectId\":\"%s\",\"startedAt\":%d,\"endedAt\":%d,\"pauseCount\":0,\"planId\":\"%s\"}"
+              .formatted(subjectId, start.toEpochMilli(), end.toEpochMilli(), planId);
+      send(post("/api/v1/study-sessions"), tokenB, sessionBody).andExpect(status().isCreated());
+
+      // 기간은 어제 ~ 오늘로 잡습니다. 지금이 새벽 4시 근처여도 방금 저장한 기록이 꼭 들어오게 하려는 것입니다.
+      LocalDate today = DayRule.dateOf(Instant.now());
+      String period = "?from=" + today.minusDays(1) + "&to=" + today;
+
+      // 에이의 기간 목록에는 비이의 기록이 보이지 않습니다.
+      send(get("/api/v1/study-sessions" + period), tokenA, null)
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.length()").value(0));
+      // 비이의 기간 목록에는 그 기록이 있습니다.
+      send(get("/api/v1/study-sessions" + period), tokenB, null)
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.length()").value(1))
+          .andExpect(jsonPath("$[0].planId").value(planId));
+
+      // 에이의 오늘 합계는 0분입니다.
+      send(get("/api/v1/study-sessions/today/total"), tokenA, null)
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.studyMinutes").value(0))
+          .andExpect(jsonPath("$.subjects.length()").value(0));
+
+      // 에이에게는 그날 계획이 없어서 빈 배열이고, 비이의 계획은 60분을 채운 것으로 나옵니다.
+      send(get("/api/v1/study-sessions/by-plan?date=2026-10-12"), tokenA, null)
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.length()").value(0));
+      send(get("/api/v1/study-sessions/by-plan?date=2026-10-12"), tokenB, null)
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.length()").value(1))
+          .andExpect(jsonPath("$[0].planId").value(planId))
+          .andExpect(jsonPath("$[0].actualMinutes").value(60))
+          .andExpect(jsonPath("$[0].isReached").value(true));
     } finally {
       withdraw(tokenA);
       withdraw(tokenB);
