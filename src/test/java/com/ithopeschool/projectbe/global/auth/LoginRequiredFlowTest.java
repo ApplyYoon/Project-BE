@@ -336,6 +336,12 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/classify-text",
               "/api/v1/ai/classify-text",
               "{\"kind\":\"memo\",\"text\":\"문자 보내기\"}"),
+          // 루틴 카드 제안 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #239)
+          new Api(
+              "POST",
+              "/api/v1/ai/routine-cards",
+              "/api/v1/ai/routine-cards",
+              "{\"goal\":\"영단어장 1회독\",\"plan\":\"폰을 다른 방에 두기\"}"),
           // 위험 예측 (무너질 가능성이 높은 날과 그 이유라서 학생의 정보입니다. 이슈 #49)
           new Api(
               "POST",
