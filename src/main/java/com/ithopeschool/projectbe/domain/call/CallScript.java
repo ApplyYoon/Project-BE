@@ -7,6 +7,7 @@ import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.care.ToneGuide;
 import com.ithopeschool.projectbe.domain.checkin.CheckInQuestions;
 import com.ithopeschool.projectbe.domain.plan.AchievementRate;
+import com.ithopeschool.projectbe.domain.risk.RiskLevel;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -89,10 +90,7 @@ public final class CallScript {
     return instructions(careLevel, maxHarshness, card, biasQuestion, pastCalls, SelfReport.NONE);
   }
 
-  // 통화 한 번의 지침 전체를 만듭니다.
-  // biasQuestion: 오늘 확인할 생각 습관 질문 (BiasQuestion.pick). 묻지 않는 날이면 null
-  // pastCalls: 지난 통화들. 최근 것이 앞에 옵니다. 없으면 빈 목록
-  // selfReport: 가입 테스트에서 스스로 고른 생각 습관과 약점. 테스트를 안 했으면 SelfReport.NONE
+  // 통화 한 번의 지침 전체를 만듭니다. 오늘은 위험한 날이 아닌 것으로 봅니다.
   public static String instructions(
       int careLevel,
       int maxHarshness,
@@ -100,6 +98,23 @@ public final class CallScript {
       BiasQuestion biasQuestion,
       List<PastCall> pastCalls,
       SelfReport selfReport) {
+    return instructions(
+        careLevel, maxHarshness, card, biasQuestion, pastCalls, selfReport, RiskLevel.NONE);
+  }
+
+  // 통화 한 번의 지침 전체를 만듭니다.
+  // biasQuestion: 오늘 확인할 생각 습관 질문 (BiasQuestion.pick). 묻지 않는 날이면 null
+  // pastCalls: 지난 통화들. 최근 것이 앞에 옵니다. 없으면 빈 목록
+  // selfReport: 가입 테스트에서 스스로 고른 생각 습관과 약점. 테스트를 안 했으면 SelfReport.NONE
+  // riskLevel: 오늘이 무너지기 쉬운 날인지의 예측 (RiskRule, 이슈 #49). 위험이 없으면 RiskLevel.NONE
+  public static String instructions(
+      int careLevel,
+      int maxHarshness,
+      CallSessionRequest.Card card,
+      BiasQuestion biasQuestion,
+      List<PastCall> pastCalls,
+      SelfReport selfReport,
+      RiskLevel riskLevel) {
     boolean supportive = isSupportive(careLevel, card);
     List<String> lines = new ArrayList<>();
     lines.add("너는 고등학생에게 하루에 한 번 짧게 전화하는 공부 코치야. 한국어 반말로 말해.");
@@ -121,6 +136,12 @@ public final class CallScript {
     lines.add("[오늘의 사실]");
     lines.addAll(facts(card));
     lines.add("");
+    // 위로하는 통화는 이미 부드럽게 말하므로 따로 적지 않습니다.
+    if (!supportive && riskLevel.isRisky()) {
+      lines.add("[오늘 예측]");
+      lines.addAll(riskLines(riskLevel));
+      lines.add("");
+    }
     // 위로하는 통화에서는 지난 통화의 못 한 일·생각 습관을 꺼내지 않습니다. 힘든 날에 캐물으면 자책으로 이어질 수 있어서입니다.
     if (!supportive && !pastCalls.isEmpty()) {
       lines.add("[지난 통화]");
@@ -163,6 +184,29 @@ public final class CallScript {
     }
     lines.add(step + ". 오늘의 약속을 같이 정해. '만약 ~하면 → ~한다' 한 문장으로. 학생이 정한 문장을 그대로 다시 말해 주고 통화를 끝내.");
     return String.join("\n", lines);
+  }
+
+  // ---- 오늘 예측 (위험한 날) ----
+
+  // 오늘이 무너지기 쉬운 날로 예측됐을 때 지침에 넣는 줄들입니다. (이슈 #49)
+  // 예측의 "이유" 는 넣지 않습니다. 이유 중에는 잠든 시각 같은 건강 데이터가 있어서, 외부 AI 에는 위험 정도만 알립니다.
+  // 말투([말투])보다 이 줄이 먼저입니다. 무너지기 쉬운 날에 꾸짖으면 더 무너지기 때문입니다.
+  static List<String> riskLines(RiskLevel riskLevel) {
+    List<String> lines = new ArrayList<>();
+    lines.add(
+        "- 학생의 최근 기록을 보니 오늘은 계획을 못 채우기 쉬운 날로 예측돼. 위험 정도: "
+            + (riskLevel == RiskLevel.HIGH ? "높음" : "주의")
+            + ". 예측일 뿐 확정이 아니야.");
+    lines.add(
+        "- '오늘 못 할 거야' 라고 단정하거나 겁주지 마. 이 예측을 네가 먼저 꺼내지도 마. 학생이 물으면 숨기지 말고, 기록을 보면 오늘은 힘들 수 있어 보인다고만 말해.");
+    lines.add("- 예측의 이유는 네가 모르는 정보야. 잠이나 기록 때문일 거라고 추측해서 말하지 마.");
+    if (riskLevel == RiskLevel.HIGH) {
+      lines.add("- 오늘은 아쉬운 점을 지적하지 마. [말투] 에서 짚으라고 했어도 이 줄이 먼저야.");
+    } else {
+      lines.add("- 아쉬운 점을 말하더라도 한 가지만, 아주 부드럽게 말해.");
+    }
+    lines.add("- 목표를 더 올리라고 밀지 마. 오늘은 작게 시작하는 것 하나를 같이 골라.");
+    return lines;
   }
 
   // ---- 지난 통화 ----

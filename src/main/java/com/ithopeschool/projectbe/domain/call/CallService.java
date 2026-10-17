@@ -8,6 +8,8 @@ import com.ithopeschool.projectbe.domain.call.CallKeyClient.CallKey;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.risk.RiskLevel;
+import com.ithopeschool.projectbe.domain.risk.RiskService;
 import com.ithopeschool.projectbe.domain.thinkingtest.StudyStyle;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingGap;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
@@ -36,9 +38,10 @@ import org.springframework.stereotype.Service;
 //   5. 오늘 확인할 생각 습관 질문을 고른다     (BiasQuestion: 자주 보인 습관 → 어제 이유 → 시작 지연 → 가입 테스트)
 //      가입 테스트는 서버에 저장된 결과(thinking_tests)를 먼저 쓰고, 없으면 FE 가 보낸 값을 씁니다.
 //      저장된 결과가 있으면 최근 통화와 견줘 "생각과 실제가 달랐던 점" 도 지침에 넣습니다. (ThinkingGap)
-//   6. 학생 카드와 지난 통화로 대본(지침)을 만든다 (CallScript: 기록에 따라 질문과 말투가 달라집니다)
-//   7. OpenAI 에서 그 대본이 묶인 임시 키를 받는다 (못 받으면 503)
-//   8. 통화 기록을 한 줄 만들고, GPT 호출 기록에도 "통화 시작" 을 남긴 뒤, 임시 키와 기록 번호를 돌려준다
+//   6. 오늘이 무너지기 쉬운 날인지 본다          (RiskService.levelOn: 위험 예측 이슈 #49. 저장하지 않고 지금 기록으로 계산)
+//   7. 학생 카드와 지난 통화로 대본(지침)을 만든다 (CallScript: 기록에 따라 질문과 말투가 달라집니다)
+//   8. OpenAI 에서 그 대본이 묶인 임시 키를 받는다 (못 받으면 503)
+//   9. 통화 기록을 한 줄 만들고, GPT 호출 기록에도 "통화 시작" 을 남긴 뒤, 임시 키와 기록 번호를 돌려준다
 //
 // 최근 7일 안에 위기 표현이 감지된 통화가 있으면, FE 가 보낸 관리 강도와 상관없이 위로하는 통화(0)로 합니다.
 // 안전 브레이크는 어떤 설정보다 먼저입니다. (CLAUDE.md 4장)
@@ -61,6 +64,8 @@ public class CallService {
   private final TokenHasher tokenHasher;
   private final CallRecordRepository callRecordRepository;
   private final ThinkingTestRepository thinkingTestRepository;
+  // 오늘이 무너지기 쉬운 날인지 알려 줍니다. (이슈 #49)
+  private final RiskService riskService;
   private final Clock clock;
 
   public CallService(
@@ -70,6 +75,7 @@ public class CallService {
       TokenHasher tokenHasher,
       CallRecordRepository callRecordRepository,
       ThinkingTestRepository thinkingTestRepository,
+      RiskService riskService,
       Clock clock) {
     this.currentUserProvider = currentUserProvider;
     this.callKeyClient = callKeyClient;
@@ -77,6 +83,7 @@ public class CallService {
     this.tokenHasher = tokenHasher;
     this.callRecordRepository = callRecordRepository;
     this.thinkingTestRepository = thinkingTestRepository;
+    this.riskService = riskService;
     this.clock = clock;
   }
 
@@ -115,6 +122,8 @@ public class CallService {
             foundBiasesOf(recentCalls),
             askedQuestionKeysOf(recentCalls),
             selfReport.biases());
+    // 오늘이 무너지기 쉬운 날이면 대본에 "표시" 로 넘깁니다. 이유(수면 등)는 넘기지 않고 위험 정도만 넘깁니다.
+    RiskLevel riskLevel = riskService.levelOn(userId, today);
     String instructions =
         CallScript.instructions(
             careLevel,
@@ -122,7 +131,8 @@ public class CallService {
             card,
             biasQuestion,
             pastCallsOf(recentCalls),
-            selfReport);
+            selfReport,
+            riskLevel);
     // OpenAI 에는 "어느 사용자의 요청인지" 를 알아볼 수 없는 글자로만 알려 줍니다. (번호를 그대로 보내지 않습니다)
     String safetyIdentifier = tokenHasher.hash("starflow-user-" + userId);
 
