@@ -10,6 +10,7 @@ import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -27,6 +28,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class StudyPlanService {
 
   // 정렬 기준: 시작 시각이 있는 것 먼저 시각 순 → 시작 시각이 없는 것(null)은 뒤로 → 같으면 만든 순서(번호 순)
+  // 기간 조회(getPlansBetween)가 받아 주는 가장 긴 기간(일)입니다. 시작일과 끝일을 모두 센 날 수입니다. (#250 "최대 62일")
+  // 홈 · 리포트가 최근 6주를 한 번에 읽어도 남도록 잡았습니다. 공부 기록 기간 조회는 31일입니다.
+  static final int MAX_RANGE_DAYS = 62;
+
   private static final Comparator<StudyPlan> PLAN_ORDER =
       Comparator.comparing(
               StudyPlan::getStartTime, Comparator.nullsLast(Comparator.<LocalTime>naturalOrder()))
@@ -46,6 +51,30 @@ public class StudyPlanService {
     routineService.fill(userId, date);
     return studyPlanRepository.findByUserIdAndPlanDateOrderById(userId, date).stream()
         .sorted(PLAN_ORDER)
+        .map(StudyPlanResponse::from)
+        .toList();
+  }
+
+  // 기간 안의 내 계획 목록. from ~ to 는 둘 다 포함하는 날짜이고, 계획이 없으면 빈 목록입니다. (이슈 #250)
+  // 정렬: 날짜 순 → 같은 날은 하루치 목록(getPlans)과 같은 순서(PLAN_ORDER)
+  // 기간 조회는 "하루치 조회를 날마다 한 것" 과 같아야 해서, 날마다 루틴 계획을 채웁니다. (지난 날은 RoutineService 가 채우지 않습니다)
+  @Transactional
+  public List<StudyPlanResponse> getPlansBetween(LocalDate from, LocalDate to) {
+    Long userId = currentUserProvider.getCurrentUserId();
+    if (from.isAfter(to)) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "시작 날짜는 끝 날짜보다 늦을 수 없어요");
+    }
+    if (ChronoUnit.DAYS.between(from, to) + 1 > MAX_RANGE_DAYS) {
+      throw new ApiException(
+          ErrorCode.VALIDATION_ERROR, "한 번에 " + MAX_RANGE_DAYS + "일까지만 조회할 수 있어요");
+    }
+    for (LocalDate date = from; !date.isAfter(to); date = date.plusDays(1)) {
+      routineService.fill(userId, date);
+    }
+    return studyPlanRepository
+        .findByUserIdAndPlanDateBetweenOrderByPlanDateAscIdAsc(userId, from, to)
+        .stream()
+        .sorted(Comparator.comparing(StudyPlan::getPlanDate).thenComparing(PLAN_ORDER))
         .map(StudyPlanResponse::from)
         .toList();
   }
