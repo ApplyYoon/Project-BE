@@ -158,6 +158,13 @@ class LoginRequiredFlowTest {
           new Api("POST", "/api/v1/rest-days/{date}", "/api/v1/rest-days/2026-10-12", null),
           new Api(
               "GET", "/api/v1/rest-days", "/api/v1/rest-days?from=2026-10-01&to=2026-10-07", null),
+          // 카드 결과 (이슈 #229)
+          new Api(
+              "GET",
+              "/api/v1/cards/results",
+              "/api/v1/cards/results?from=2026-10-01&to=2026-10-07",
+              null),
+          new Api("GET", "/api/v1/cards/plan-pattern", "/api/v1/cards/plan-pattern?goalId=1", null),
           // 관리 설정
           new Api("GET", "/api/v1/settings", "/api/v1/settings", null),
           new Api("PATCH", "/api/v1/settings", "/api/v1/settings", "{\"maxHarshness\":5}"),

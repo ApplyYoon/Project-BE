@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.card;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -29,4 +30,22 @@ public interface CardRepository extends JpaRepository<Card, Long> {
           + "   or (c.repeatDays is not null and c.cardDate <= :date))"
           + " order by c.id")
   List<Card> findCandidatesOn(@Param("userId") Long userId, @Param("date") LocalDate date);
+
+  // from ~ to (두 날짜 모두 포함) 기간에 "할 수도 있는" 내 카드를 번호 순서로 찾습니다. (후보, 카드 결과 판정 #229)
+  //   - 1회성 카드: 카드 날짜가 기간 안인 것
+  //   - 반복 카드: 반복을 시작한 날짜가 기간의 끝 날이거나 그 전인 것
+  // 날마다 findCandidatesOn 을 부르면 31일이면 31번 묻게 되어서, 기간을 한 번에 묻습니다.
+  // 요일이 맞는지는 위와 똑같이 Service 가 날짜마다 Card.isOnDate 로 봅니다.
+  @Query(
+      "select c from Card c"
+          + " where c.userId = :userId"
+          + " and ((c.repeatDays is null and c.cardDate between :from and :to)"
+          + "   or (c.repeatDays is not null and c.cardDate <= :to))"
+          + " order by c.id")
+  List<Card> findCandidatesBetween(
+      @Param("userId") Long userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
+
+  // 내 카드 중에서 이 번호들을 찾습니다. 남의 카드 번호는 빠집니다.
+  // 미룬 1회성 카드는 카드가 새 날짜로 옮겨져서, 원래 날짜의 "미룸" 표시로 카드를 다시 찾을 때 씁니다. (#229)
+  List<Card> findByUserIdAndIdIn(Long userId, Collection<Long> ids);
 }

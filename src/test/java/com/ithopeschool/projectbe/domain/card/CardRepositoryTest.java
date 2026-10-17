@@ -66,6 +66,37 @@ class CardRepositoryTest {
   }
 
   @Test
+  @DisplayName(
+      "10-05 ~ 10-12 의 후보: 기간 안 1회성 카드 + 기간 끝 날까지 시작한 반복 카드 (기간 밖 1회성 · 기간 뒤에 시작하는 반복 · 남의 카드는 빠짐)")
+  void findCandidatesBetween() {
+    save(1L, "기간 첫날 1회성", LocalDate.of(2026, 10, 5), List.of());
+    save(1L, "기간 끝날 1회성", MON_OCT_12, List.of());
+    save(1L, "기간 전 1회성", LocalDate.of(2026, 10, 4), List.of());
+    save(1L, "기간 뒤 1회성", LocalDate.of(2026, 10, 13), List.of());
+    save(1L, "기간 전에 시작한 반복", LocalDate.of(2026, 9, 1), List.of(2));
+    save(1L, "기간 끝날 시작 반복", MON_OCT_12, List.of(1));
+    save(1L, "기간 뒤에 시작하는 반복", LocalDate.of(2026, 10, 13), List.of(1));
+    save(2L, "남의 카드", MON_OCT_12, List.of());
+    em.clear();
+
+    assertThat(cardRepository.findCandidatesBetween(1L, LocalDate.of(2026, 10, 5), MON_OCT_12))
+        .extracting(Card::getTitle)
+        .containsExactly("기간 첫날 1회성", "기간 끝날 1회성", "기간 전에 시작한 반복", "기간 끝날 시작 반복");
+  }
+
+  @Test
+  @DisplayName("번호 목록으로 찾으면 내 카드만 나오고, 남의 카드 번호는 빠진다")
+  void findByUserIdAndIdIn() {
+    Card mine = save(1L, "수학", MON_OCT_12, List.of());
+    Card others = save(2L, "남의 카드", MON_OCT_12, List.of());
+    em.clear();
+
+    assertThat(cardRepository.findByUserIdAndIdIn(1L, List.of(mine.getId(), others.getId())))
+        .extracting(Card::getTitle)
+        .containsExactly("수학");
+  }
+
+  @Test
   @DisplayName("내 카드 전부는 만든 순서대로 나오고, 남의 카드는 섞이지 않는다")
   void findByUserIdOrderById() {
     save(1L, "수학", MON_OCT_12, List.of());
