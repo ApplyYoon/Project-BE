@@ -70,22 +70,23 @@ class AuthControllerTest {
   // ---- 가입 ----
 
   @Test
-  @DisplayName("가입에 성공하면 201 과 { id, name } 을 돌려준다")
+  @DisplayName("가입에 성공하면 201 과 { id, name, onboarded } 를 돌려준다")
   void signupReturns201() throws Exception {
-    given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이"));
+    given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이", false));
 
     signup(VALID_SIGNUP)
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.id").value("1"))
         .andExpect(jsonPath("$.name").value("티맥이"))
-        // 응답에는 id 와 name 두 개만 있습니다. (이메일·실명·비밀번호는 돌려주지 않습니다)
-        .andExpect(jsonPath("$.length()").value(2));
+        // 응답에는 id · name · onboarded 세 개만 있습니다. (이메일·실명·비밀번호는 돌려주지 않습니다)
+        .andExpect(jsonPath("$.onboarded").value(false))
+        .andExpect(jsonPath("$.length()").value(3));
   }
 
   @Test
   @DisplayName("이메일·이름·닉네임은 앞뒤 공백을 지운 값으로 로직에 넘어가고, 비밀번호는 그대로 넘어간다")
   void signupTrimsTextFields() throws Exception {
-    given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이"));
+    given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이", false));
 
     signup(
             VALID_SIGNUP
@@ -106,7 +107,7 @@ class AuthControllerTest {
   @Test
   @DisplayName("학교를 고르지 않아도(null) 가입 요청이 통과한다")
   void signupWithoutSchool() throws Exception {
-    given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이"));
+    given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이", false));
 
     signup(VALID_SIGNUP.replace("\"7530560\"", "null").replace("\"한국디지털미디어고등학교\"", "null"))
         .andExpect(status().isCreated());
@@ -138,7 +139,7 @@ class AuthControllerTest {
   @Test
   @DisplayName("비밀번호는 8자와 64자까지 통과한다 (경계값)")
   void signupAcceptsPasswordAtTheEdges() throws Exception {
-    given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이"));
+    given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이", false));
 
     signup(VALID_SIGNUP.replace("study2026", "abcd1234")).andExpect(status().isCreated());
     signup(VALID_SIGNUP.replace("study2026", "a1".repeat(32))).andExpect(status().isCreated());
@@ -159,7 +160,7 @@ class AuthControllerTest {
   @Test
   @DisplayName("실명은 보내거나 생략해도 무시하며, 로직에는 null만 넘어간다 (이슈 #71)")
   void signupDoesNotRequireRealName() throws Exception {
-    given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이"));
+    given(authService.signup(any())).willReturn(new UserResponse("1", "티맥이", false));
 
     signup(VALID_SIGNUP).andExpect(status().isCreated());
     signup(VALID_SIGNUP.replace("\"김티맥\"", "\"김\"")).andExpect(status().isCreated());
@@ -230,7 +231,7 @@ class AuthControllerTest {
   @DisplayName("로그인에 성공하면 200 과 { token, user: { id, name } } 을 돌려준다")
   void loginReturnsTokenAndUser() throws Exception {
     given(authService.login(new LoginRequest("tmax@starflow.com", "study2026")))
-        .willReturn(new LoginResponse("token-abc", new UserResponse("1", "티맥이")));
+        .willReturn(new LoginResponse("token-abc", new UserResponse("1", "티맥이", false)));
 
     login("{\"email\":\"tmax@starflow.com\",\"password\":\"study2026\"}")
         .andExpect(status().isOk())
@@ -267,16 +268,17 @@ class AuthControllerTest {
   // ---- 내 정보 ----
 
   @Test
-  @DisplayName("내 정보는 200 과 { id, name } 을 돌려준다")
+  @DisplayName("내 정보는 200 과 { id, name, onboarded } 를 돌려준다")
   void meReturnsUser() throws Exception {
-    given(authService.me()).willReturn(new UserResponse("1", "티맥이"));
+    given(authService.me()).willReturn(new UserResponse("1", "티맥이", false));
 
     mockMvc
         .perform(get("/api/v1/auth/me").header("Authorization", "Bearer token-abc"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value("1"))
         .andExpect(jsonPath("$.name").value("티맥이"))
-        .andExpect(jsonPath("$.length()").value(2));
+        .andExpect(jsonPath("$.onboarded").value(false))
+        .andExpect(jsonPath("$.length()").value(3));
   }
 
   @Test

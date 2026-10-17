@@ -278,6 +278,8 @@ class LoginRequiredFlowTest {
               "/api/v1/chats/{id}/finish",
               "/api/v1/chats/1/finish",
               "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
+          // 온보딩 마침 표시 (2026-10-17)
+          new Api("POST", "/api/v1/onboarding/completion", "/api/v1/onboarding/completion", null),
           // 목표 만들기 대화 (이슈 #239)
           new Api("POST", "/api/v1/goal-chats", "/api/v1/goal-chats", null),
           new Api(

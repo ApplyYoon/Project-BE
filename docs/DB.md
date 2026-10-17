@@ -101,6 +101,7 @@ erDiagram
         bigint id PK "사용자를 구분하는 고유 번호"
         varchar nickname "화면에 보이는 이름 (실명 아님, 50자까지)"
         timestamptz created_at "가입한 시각"
+        timestamptz onboarded_at "온보딩을 마친 시각 (안 마쳤으면 비어 있음)"
     }
     subjects {
         bigint id PK "과목을 구분하는 고유 번호"

@@ -33,6 +33,10 @@ public class User {
   @Column(nullable = false, updatable = false)
   private Instant createdAt;
 
+  // 온보딩(앱 소개 ~ 결과)을 마친 시각. 아직 안 마쳤으면 비어 있습니다.
+  // 다른 기기 · 브라우저에서 로그인해도 온보딩을 다시 하지 않게, 서버가 기억해 둡니다. (2026-10-17 멘토 결정)
+  private Instant onboardedAt;
+
   public User(String nickname) {
     this.nickname = nickname;
     this.createdAt = Instant.now();
@@ -41,5 +45,17 @@ public class User {
   // 별명을 바꿉니다. (@Setter 를 쓰지 않고, 바꿀 수 있는 값만 이름을 지어 메서드로 엽니다)
   public void changeNickname(String nickname) {
     this.nickname = nickname;
+  }
+
+  // 온보딩을 마쳤다고 적습니다. 이미 적혀 있으면 처음 마친 시각을 그대로 둡니다. (여러 번 불러도 같음)
+  public void markOnboarded(Instant now) {
+    if (onboardedAt == null) {
+      onboardedAt = now;
+    }
+  }
+
+  // 온보딩을 마쳤는지
+  public boolean isOnboarded() {
+    return onboardedAt != null;
   }
 }

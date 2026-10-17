@@ -299,8 +299,14 @@ class EntityRuleTest {
         expected.add(RENAMED.getOrDefault(key, frontendField));
       }
     }
-    // 엔티티에만 있는 필드: 누구의 것인지 알려 주는 userId, 그리고 users 의 가입 시각 createdAt
-    expected.add(entityName.equals("User") ? "createdAt" : "userId");
+    // 엔티티에만 있는 필드: 누구의 것인지 알려 주는 userId,
+    // 그리고 users 의 가입 시각 createdAt · 온보딩을 마친 시각 onboardedAt (FE 에는 마쳤는지 onboarded 로만 보냄, 2026-10-17)
+    if (entityName.equals("User")) {
+      expected.add("createdAt");
+      expected.add("onboardedAt");
+    } else {
+      expected.add("userId");
+    }
 
     assertThat(fieldNames(type)).containsExactlyInAnyOrderElementsOf(expected);
   }
