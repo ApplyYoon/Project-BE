@@ -1,6 +1,8 @@
 package com.ithopeschool.projectbe.domain.session;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,6 +19,26 @@ public interface StudySessionRepository extends JpaRepository<StudySession, Long
   // 이름 풀이: StartedAtLessThan(새 기록의 끝) And EndedAtGreaterThan(새 기록의 시작)
   boolean existsByUserIdAndStartedAtLessThanAndEndedAtGreaterThan(
       Long userId, Instant endedAt, Instant startedAt);
+
+  // 내 기록 중에 [periodStart, periodEnd) 사이에 "시작한" 것을 시작 시각이 빠른 순서로 찾습니다.
+  // periodEnd 는 포함하지 않습니다. (하루의 끝과 다음 날의 시작이 같은 순간이라, 포함하면 두 날에 다 잡힙니다)
+  //
+  // 끝난 시각이 아니라 시작한 시각(startedAt)만 봅니다. 날짜별로 센다는 것은 "시작한 날" 로 센다는 뜻이라,
+  // 04:00 를 걸친 기록(03:30 ~ 04:30)도 시작한 날의 기록 하나로 잡힙니다. (docs/API.md 2-4)
+  // (user_id, started_at) 색인 덕분에 기록이 많아져도 빨리 찾습니다.
+  // 값은 SQL 문자열에 붙이지 않고 :이름 자리에 넘깁니다.
+  @Query(
+      "select s from StudySession s"
+          + " where s.userId = :userId and s.startedAt >= :periodStart and s.startedAt < :periodEnd"
+          + " order by s.startedAt asc, s.id asc")
+  List<StudySession> findStartedBetween(
+      @Param("userId") Long userId,
+      @Param("periodStart") Instant periodStart,
+      @Param("periodEnd") Instant periodEnd);
+
+  // 내 기록 중에 이 계획들로 켠 타이머의 기록을 모두 찾습니다. 날짜와 종류(공부·노는)는 가리지 않습니다.
+  // 계획 줄의 "실제 / 목표" 를 계산할 때 씁니다. 계획이 없으면(planIds 가 비면) 부르지 않습니다.
+  List<StudySession> findByUserIdAndPlanIdIn(Long userId, Collection<Long> planIds);
 
   // 이 사용자의 줄(users)을 잠급니다. (for update = "내 저장이 끝날 때까지 다른 저장은 기다려")
   //
