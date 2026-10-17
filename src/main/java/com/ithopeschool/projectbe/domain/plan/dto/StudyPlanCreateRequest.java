@@ -17,7 +17,8 @@ import java.time.LocalDate;
 public record StudyPlanCreateRequest(
     @NotNull(message = "날짜를 보내 주세요") LocalDate date,
     // FE 의 id 는 글자라서 글자로 받습니다. 숫자만 받습니다. ("3" 은 되고 "abc" 는 안 됨)
-    @Pattern(regexp = "\\d*", message = "과목 번호가 올바르지 않아요") String subjectId,
+    // 18자리까지만 받습니다. 그보다 길면 서버의 숫자(Long)에 안 들어가서 500 이 나기 때문입니다.
+    @Pattern(regexp = "\\d{0,18}", message = "과목 번호가 올바르지 않아요") String subjectId,
     @NotBlank(message = "할 일을 입력해 주세요") @Size(max = 200, message = "할 일은 200자 이하로 적어 주세요")
         String content,
     // FE 의 타이머와 같은 범위입니다. (FE src/lib/countdown.ts 의 MIN·MAX_TARGET_MINUTES)
