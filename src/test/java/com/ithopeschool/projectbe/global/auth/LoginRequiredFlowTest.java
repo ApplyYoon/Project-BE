@@ -110,6 +110,12 @@ class LoginRequiredFlowTest {
               "/api/v1/study-sessions",
               "{\"subjectId\":\"1\",\"startedAt\":1790000000000,"
                   + "\"endedAt\":1790003000000,\"pauseCount\":0}"),
+          // 하루 신호 (수면·걸음은 건강 데이터입니다)
+          new Api(
+              "POST",
+              "/api/v1/daily-signals",
+              "/api/v1/daily-signals",
+              "{\"date\":\"2026-10-12\"}"),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
