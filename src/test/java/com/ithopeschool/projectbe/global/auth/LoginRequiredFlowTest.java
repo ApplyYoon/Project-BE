@@ -58,6 +58,10 @@ class LoginRequiredFlowTest {
   private static final String PLAN_BODY =
       "{\"date\":\"2026-10-12\",\"subjectId\":\"1\",\"content\":\"수학 문제집\",\"targetMinutes\":60}";
 
+  private static final String EXAM_BODY =
+      "{\"type\":\"mock\",\"name\":\"10월 모의고사\",\"date\":\"2026-10-20\","
+          + "\"subjectScores\":[{\"subjectId\":\"1\",\"expectedScore\":85}]}";
+
   private static final String COACH_BODY =
       "{\"numbers\":[{\"label\":\"완주율\",\"value\":\"55%\",\"basis\":\"20번\"}],"
           + "\"maxCareLevel\":2,\"maxHarshness\":3}";
@@ -103,6 +107,14 @@ class LoginRequiredFlowTest {
               "{\"plans\":[" + PLAN_BODY + "]}"),
           new Api("PATCH", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", "{\"done\":true}"),
           new Api("DELETE", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", null),
+          // 시험 점수
+          new Api("GET", "/api/v1/exams", "/api/v1/exams", null),
+          new Api("POST", "/api/v1/exams", "/api/v1/exams", EXAM_BODY),
+          new Api(
+              "PATCH",
+              "/api/v1/exams/{id}",
+              "/api/v1/exams/1",
+              "{\"subjectScores\":[{\"subjectId\":\"1\",\"actualScore\":80}]}"),
           // 공부 기록
           new Api(
               "POST",
