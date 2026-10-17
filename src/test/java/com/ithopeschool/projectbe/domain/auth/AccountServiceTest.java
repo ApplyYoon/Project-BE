@@ -23,6 +23,9 @@ import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.SubjectLevel;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
+import com.ithopeschool.projectbe.domain.risk.RiskForecast;
+import com.ithopeschool.projectbe.domain.risk.RiskLevel;
+import com.ithopeschool.projectbe.domain.risk.RiskReason;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.subject.Subject;
 import com.ithopeschool.projectbe.domain.subject.SubjectColor;
@@ -543,7 +546,9 @@ class AccountServiceTest {
           "ONBOARDING_ANSWER_FAILURE_CAUSES",
               new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
           "ONBOARDING_ANSWER_SUBJECT_LEVELS",
-              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"});
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
+          // 위험 예측(risk_forecasts)에 매달린 "위험하다고 본 이유" (이슈 #49)
+          "RISK_FORECAST_REASONS", new String[] {"RISK_FORECASTS", "RISK_FORECAST_ID"});
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
@@ -564,6 +569,13 @@ class AccountServiceTest {
       answer.pastFailureCauses = EnumSet.of(FailureCause.WEEKEND);
       answer.subjectLevels = List.of(new SubjectLevel(1L, 2, null, 4));
       entityManager.persist(new OnboardingAnswer(userId, NOW, answer));
+      // 위험 예측의 딸린 테이블(이유)도 같은 이유로 줄을 넣어 둡니다.
+      entityManager.persist(
+          new RiskForecast(
+              userId,
+              LocalDate.of(2026, 10, 12),
+              RiskLevel.WATCH,
+              EnumSet.of(RiskReason.LATE_SLEEP)));
     }
     entityManager.flush();
     callWith(tokenOfA);
