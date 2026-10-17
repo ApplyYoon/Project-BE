@@ -198,7 +198,8 @@ Claude 가 실행하는 명령은 강제 푸시·`reset --hard`·`--no-verify` �
 
 - **아무 설정 없이 켜면 지금처럼 H2** 로 켜집니다. Neon 은 필요할 때만 씁니다.
 - **테이블은 서버가 만들지 않습니다.** 사람이 [`db/schema.sql`](./db/schema.sql) 을 Neon 에서 한 번 실행해 만들고, 서버는 엔티티와 맞는지 **검사만** 합니다. (아래 "왜 이렇게 정했나")
-- ⚠️ Neon 가입·주소 확인은 **사람이 직접** 합니다. 접속 주소·비밀번호는 Claude 대화·이슈·PR·단체방·파일 어디에도 붙여 넣지 않습니다.
+- ⚠️ Neon 가입·주소 확인은 **사람이 직접** 합니다. 접속 주소·비밀번호·API 키는 Claude 대화·이슈·PR·단체방·파일 어디에도 붙여 넣지 않습니다.
+- SQL 실행은 사람이 SQL Editor 에서 합니다. 멘토가 [Neon MCP](#neon-mcp--claude-가-sql-을-대신-실행하게-하기-선택-멘토만) 를 연결해 두었으면 Claude 가 `db/migrations` 파일만 대신 실행할 수 있습니다.
 - ⚠️ `main` 브랜치에는 연습 쿼리를 돌리지 않습니다.
 
 ### 1. 가입 → 프로젝트 → 브랜치 (선생님·팀장이 처음 한 번)
@@ -290,6 +291,21 @@ export DATABASE_PASSWORD='<비밀번호>'
 `db/migrations/` 의 파일을 **01 부터 끝 번호까지 순서대로** SQL Editor 에 붙여 넣고 Run 합니다. `dev` 먼저, `main` 은 그다음.
 전에 어디까지 실행했는지 몰라도 처음부터 다시 돌리면 됩니다. 이미 있는 것은 건너뛰고 없는 것만 만들어집니다.
 빈 Neon 브랜치라면 이 파일들 대신 `db/schema.sql` 하나만 실행합니다.
+
+### Neon MCP — Claude 가 SQL 을 대신 실행하게 하기 (선택, 멘토만)
+
+Neon 은 이 팀 프로젝트의 **개발용 DB** 라서(실제 사용자 없음), 멘토가 연결해 두면 Claude 가 `db/migrations/` 파일을 Neon 에 직접 실행할 수 있습니다. 연결하지 않으면 위처럼 사람이 SQL Editor 에서 실행합니다.
+
+1. **본인 터미널에서** 아래 중 하나를 실행합니다. (Claude 대화창의 `!` 로 실행하지 않습니다 — 명령에 키가 들어가면 대화에 남습니다)
+   - 브라우저 로그인(OAuth): `claude mcp add --transport http neon https://mcp.neon.tech/mcp` → Claude Code 를 다시 켜고 `/mcp` 에서 로그인
+   - 팀 프로젝트가 **조직(organization)** 에 있어서 로그인으로 안 보이면 API 키: Neon 콘솔에서 키를 만들고
+     `claude mcp add --transport http neon https://mcp.neon.tech/mcp --header "Authorization: Bearer <키>"`
+2. **`-s project` 는 붙이지 않습니다.** 붙이면 설정이 `.mcp.json` 에 적혀 git 에 올라갑니다. 기본값(이 컴퓨터에만)으로 둡니다.
+3. Claude 가 할 수 있는 것과 먼저 물어야 하는 것은 CLAUDE.md 3장 "원격 DB(Neon)" 에 있습니다.
+   요약: `db/migrations` 실행과 읽기만 하는 확인 쿼리는 하고, 지우는 문장 · `db/migrations` 에 없는 SQL · 브랜치 만들기/지우기는 먼저 묻습니다.
+
+> Neon 문서도 MCP 서버는 "개발과 시험용" 이라고 안내합니다. 실제 사용자의 기록이 들어가기 시작하면 이 연결은 끊고 사람이 실행하는 방식으로 돌아갑니다.
+> 참고: [Neon — Connect MCP clients](https://neon.com/docs/ai/connect-mcp-clients-to-neon) · [Claude Code + Neon MCP](https://neon.com/guides/claude-code-mcp-neon)
 
 ### 왜 이렇게 정했나 — 서버가 아니라 사람이 테이블을 만듭니다
 
