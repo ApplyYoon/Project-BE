@@ -93,7 +93,7 @@ git config core.hooksPath .githooks
 테이블이 서로 어떻게 이어지는지는 [docs/DB.md](./docs/DB.md) 의 **다이어그램**으로 봅니다.
 테이블을 만들 때마다 Claude Code 에서 `/db` 를 치면 그림을 새로 그려 브라우저로 보여 줍니다.
 
-운영 DB(Neon) 는 다음 단계에서 연결합니다. 지금은 계정도, 접속 주소도 필요 없습니다.
+처음 시작할 때는 운영 DB(Neon) 계정도, 접속 주소도 필요 없습니다. 데이터를 남겨 두고 확인하고 싶을 때만 아래 **🗄️ 운영 DB (Neon)** 부분을 봅니다.
 
 ### 7. Claude Code 로 나머지 세팅
 
@@ -184,6 +184,112 @@ chore/hooks     ─┘   (개발 통합)       (최종본)
 
 Claude 가 실행하는 명령은 강제 푸시·`reset --hard`·`--no-verify` 같은 위험한 명령까지 추가로 막습니다.
 전체 목록은 [docs/AI-GUIDE.md](./docs/AI-GUIDE.md) 참고.
+
+---
+
+## 🗄️ 운영 DB (Neon)
+
+로컬 H2 는 서버를 끄면 비워지는 연습용입니다. 데이터가 남아야 하는 곳은 **Neon**(인터넷에 있는 PostgreSQL)을 씁니다. (이슈 #75)
+
+| Neon 브랜치 | 누가 쓰나                         | 켜는 법                                            |
+| ----------- | --------------------------------- | -------------------------------------------------- |
+| `main`      | 배포 서버(Render) 만              | 배포 서버의 환경변수 ([docs/DEPLOY.md](./docs/DEPLOY.md)) |
+| `dev`       | 내 컴퓨터에서 Neon 으로 시험할 때 | `SPRING_PROFILES_ACTIVE=local,neon` + 아래 4번      |
+
+- **아무 설정 없이 켜면 지금처럼 H2** 로 켜집니다. Neon 은 필요할 때만 씁니다.
+- **테이블은 서버가 만들지 않습니다.** 사람이 [`db/schema.sql`](./db/schema.sql) 을 Neon 에서 한 번 실행해 만들고, 서버는 엔티티와 맞는지 **검사만** 합니다. (아래 "왜 이렇게 정했나")
+- ⚠️ Neon 가입·주소 확인은 **사람이 직접** 합니다. 접속 주소·비밀번호는 Claude 대화·이슈·PR·단체방·파일 어디에도 붙여 넣지 않습니다.
+- ⚠️ `main` 브랜치에는 연습 쿼리를 돌리지 않습니다.
+
+### 1. 가입 → 프로젝트 → 브랜치 (선생님·팀장이 처음 한 번)
+
+1. [neon.com](https://neon.com) 에 가입합니다. (GitHub 계정으로 가입할 수 있습니다)
+2. **New Project** — 이름은 `project-be`, 지역(Region)은 배포 서버와 가까운 **Singapore** 를 고릅니다. (Render 서버가 싱가포르에 있습니다 — `render.yaml`) Postgres 버전은 기본값 그대로 둡니다.
+3. 프로젝트를 만들면 **`main` 브랜치**가 저절로 생깁니다. 이것이 배포용입니다.
+4. 왼쪽 **Branches → New branch** 에서 이름 `dev`, 부모(parent)는 `main` 으로 개발용 브랜치를 만듭니다.
+
+### 2. 테이블 만들기 (브랜치마다 한 번)
+
+1. 왼쪽 **SQL Editor** 를 열고, 위쪽에서 브랜치를 **`dev`** 로 고릅니다.
+2. [`db/schema.sql`](./db/schema.sql) 의 내용을 **전부** 붙여 넣고 **Run**.
+3. 왼쪽 **Tables** 에 테이블(지금은 20개)이 보이면 됩니다.
+4. `dev` 로 서버가 잘 켜지는 것(아래 4번)을 확인한 **뒤에** 같은 일을 `main` 에서 한 번 더 합니다.
+
+> 이미 테이블이 있는 브랜치에서 다시 Run 하면 `already exists` 에러가 나고 **아무것도 바뀌지 않습니다.** (지우는 문장은 없습니다)
+
+### 3. 접속 주소 찾기 — 모양을 바꿔야 합니다
+
+Neon 콘솔 → **Connect** → 브랜치 `dev` 고르기. **Connection pooling** 은 끄고(직접 연결) 나오는 문자열을 봅니다.
+
+```
+postgresql://아이디:비밀번호@호스트/DB이름?sslmode=require&channel_binding=require
+```
+
+Spring 은 이 모양을 그대로 못 읽습니다. 아래처럼 **세 개로 나눕니다.**
+
+| 환경변수            | 넣을 값                                                  | 예 (가짜 값)                                                         |
+| ------------------- | -------------------------------------------------------- | -------------------------------------------------------------------- |
+| `DATABASE_URL`      | `jdbc:postgresql://호스트/DB이름?sslmode=require`         | `jdbc:postgresql://ep-example-123456.ap-southeast-1.aws.neon.tech/neondb?sslmode=require` |
+| `DATABASE_USERNAME` | `postgresql://` 바로 뒤, `:` 앞의 아이디                  | `neondb_owner`                                                       |
+| `DATABASE_PASSWORD` | `:` 뒤, `@` 앞의 비밀번호                                  | (진짜 값은 어디에도 적지 않습니다)                                   |
+
+- 앞에 **`jdbc:`** 를 붙이고, 주소 안의 `아이디:비밀번호@` 는 **뺍니다.**
+- 끝은 `?sslmode=require` 만 남깁니다. (`channel_binding=...` 은 지웁니다)
+
+### 4. 내 컴퓨터에서 Neon(`dev`)으로 켜기
+
+지금은 **환경변수**로 넣습니다. 이슈 #76(시크릿 매니저)이 정해지면 그 방법으로 바뀝니다.
+환경변수는 **그 터미널 창에서만** 살아 있고, 창을 닫으면 사라집니다. 파일로 저장하지 않습니다.
+
+```powershell
+# Windows PowerShell — <> 자리에 3번에서 만든 값을 넣습니다
+$env:SPRING_PROFILES_ACTIVE = "local,neon"
+$env:DATABASE_URL = "jdbc:postgresql://<호스트>/<DB이름>?sslmode=require"
+$env:DATABASE_USERNAME = "<아이디>"
+$env:DATABASE_PASSWORD = "<비밀번호>"
+.\gradlew.bat bootRun
+```
+
+```bash
+# Mac / Git Bash
+export SPRING_PROFILES_ACTIVE=local,neon
+export DATABASE_URL='jdbc:postgresql://<호스트>/<DB이름>?sslmode=require'
+export DATABASE_USERNAME='<아이디>'
+export DATABASE_PASSWORD='<비밀번호>'
+./gradlew bootRun
+```
+
+확인하기:
+
+1. 로그에 `The following 2 profiles are active: "local", "neon"` 이 보입니다.
+2. http://localhost:8080/api/v1/health 가 `{"status":"ok","db":"connected"}` 입니다.
+3. Swagger 로 과목을 하나 만들고 → 서버를 껐다 켠 뒤 → 과목 목록에 **그대로 남아 있으면** 성공입니다.
+
+- `local,neon` 은 Swagger·테스트 토큰 같은 로컬 편의 기능은 그대로 쓰고 **DB 만** Neon 으로 바꿉니다. (`application-neon.yml`)
+- `dev` 브랜치는 팀이 같이 씁니다. 다른 사람이 만든 데이터가 보일 수 있고, 테스트 토큰의 1번 사용자도 같이 씁니다.
+- H2 화면(`/h2-console`)은 꺼집니다. 데이터는 Neon 콘솔의 **Tables** 에서 봅니다.
+
+| 이런 에러가 나면                                              | 원인과 해결                                                                 |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `'url' must start with "jdbc"`                                | `DATABASE_URL` 을 안 넣었거나 `postgresql://` 그대로 넣었습니다. 3번대로 바꿉니다. |
+| `Schema validation: missing table [...]` / `missing column`    | 그 브랜치에 `db/schema.sql` 을 안 돌렸거나, 엔티티가 바뀌었는데 Neon 에 반영 안 됐습니다. |
+| `password authentication failed`                              | 아이디·비밀번호가 틀렸습니다. Neon 의 **`dev`** 브랜치 것인지 확인합니다.     |
+| `연결이 거부되었습니다` / `Connection refused`                 | 호스트 이름이 틀렸습니다. `jdbc:postgresql://` 뒤를 다시 확인합니다.          |
+
+### 엔티티(테이블)를 바꿨을 때
+
+1. `db/schema.sql` 도 **같은 커밋**에서 고칩니다. 안 고치면 `./gradlew build` 의 `SchemaSqlTest` 가 실패합니다.
+   (PostgreSQL 문법이 헷갈리면 Hibernate 가 만들어 주는 SQL 을 참고합니다 — Claude 에게 "schema.sql 고쳐 줘" 라고 하면 됩니다)
+2. 이미 테이블이 있는 Neon 브랜치에는 **바뀐 부분만** `alter table ...` 로 SQL Editor 에서 실행합니다. `dev` 먼저, `main` 은 그다음.
+
+### 왜 이렇게 정했나 — 서버가 아니라 사람이 테이블을 만듭니다
+
+| 방법                                         | 좋은 점                                     | 아쉬운 점                                             |
+| -------------------------------------------- | ------------------------------------------- | ----------------------------------------------------- |
+| ✅ `db/schema.sql` 을 Neon SQL Editor 에서 실행 | SQL 이 눈에 보이고, 운영 DB 가 멋대로 안 바뀜 | 엔티티를 고칠 때마다 SQL 도 같이 고쳐야 함 → 테스트가 잊으면 알려 줌 |
+| 서버가 테이블을 만들게 하기 (`ddl-auto: update`) | 손이 덜 감                                  | 운영 DB 가 코드에 따라 자동으로 바뀌어 사고가 나기 쉬움 |
+
+미성년자의 기록이 담기는 DB 라서 **"코드 한 줄 실수로 운영 DB 가 바뀌는 일"이 없게** 하는 쪽을 골랐습니다.
 
 ---
 

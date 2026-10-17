@@ -48,6 +48,8 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// db/schema.sql 만 고쳐도 SchemaSqlTest 가 다시 돌도록 알려 줍니다. (이슈 #75)
+	inputs.file('db/schema.sql')
 }
 
 spotless {
