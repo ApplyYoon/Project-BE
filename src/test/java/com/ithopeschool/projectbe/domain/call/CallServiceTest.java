@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -16,6 +17,12 @@ import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
+import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
+import com.ithopeschool.projectbe.domain.exam.Exam;
+import com.ithopeschool.projectbe.domain.exam.ExamRepository;
+import com.ithopeschool.projectbe.domain.exam.ExamType;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
@@ -26,6 +33,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,6 +57,9 @@ class CallServiceTest {
 
   private final CallRecordRepository callRecordRepository = mock(CallRecordRepository.class);
   private final ThinkingTestRepository thinkingTestRepository = mock(ThinkingTestRepository.class);
+  // 체크인 · 시험은 기본으로 없습니다. (가짜 Repository 는 아무것도 정하지 않으면 빈 목록을 돌려줍니다)
+  private final CheckInRepository checkInRepository = mock(CheckInRepository.class);
+  private final ExamRepository examRepository = mock(ExamRepository.class);
   // 지금은 2026-10-11 오후 3시(한국 시간)입니다. 오늘 날짜는 2026-10-11 입니다.
   private static final Instant NOW = Instant.parse("2026-10-11T06:00:00Z");
   private static final LocalDate TODAY = LocalDate.of(2026, 10, 11);
@@ -61,6 +72,8 @@ class CallServiceTest {
           tokenHasher,
           callRecordRepository,
           thinkingTestRepository,
+          checkInRepository,
+          examRepository,
           Clock.fixed(NOW, ZoneOffset.UTC));
 
   private static final CallSessionRequest REQUEST =
@@ -384,6 +397,70 @@ class CallServiceTest {
     callService.startSession(REQUEST);
 
     assertThat(sentInstructions()).contains("[생각 습관]").doesNotContain("위로하고 응원하는 말만");
+  }
+
+  // daysAgo 일 전의 체크인 하나 (기분 · 약속 앞부분만)
+  private static CheckIn checkIn(int daysAgo, int mood, String promiseIf) {
+    return new CheckIn(
+        USER_ID,
+        TODAY.minusDays(daysAgo),
+        CheckInSource.MANUAL,
+        null,
+        mood,
+        null,
+        null,
+        null,
+        promiseIf,
+        promiseIf == null ? null : "물 한 잔 마신다",
+        null);
+  }
+
+  private void givenCheckIns(List<CheckIn> checkIns) {
+    given(
+            checkInRepository.findByUserIdAndCheckInDateBetweenOrderByCheckInDateAsc(
+                USER_ID, TODAY.minusDays(6), TODAY))
+        .willReturn(checkIns);
+  }
+
+  @Test
+  @DisplayName("최근 7일 체크인의 약속 글에 위기 표현이 있으면, 관리 강도와 상관없이 위로하는 통화로 한다")
+  void crisisTextInCheckInMeansSupportiveCall() {
+    givenCheckIns(List.of(checkIn(3, 3, "죽고 싶으면")));
+
+    callService.startSession(new CallSessionRequest(3, 5, REQUEST.card(), null, null));
+
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[생각 습관]");
+  }
+
+  @Test
+  @DisplayName("기분 1~2 가 오늘까지 6일 연속이면 위로하는 통화로 하고, 5일뿐이면 평소대로 한다")
+  void lowMoodForSixDaysMeansSupportiveCall() {
+    List<CheckIn> fiveDays = new ArrayList<>();
+    for (int daysAgo = 4; daysAgo >= 0; daysAgo--) {
+      fiveDays.add(checkIn(daysAgo, 2, null));
+    }
+    givenCheckIns(fiveDays);
+    callService.startSession(REQUEST);
+    assertThat(sentInstructions()).doesNotContain("위로하고 응원하는 말만");
+
+    List<CheckIn> sixDays = new ArrayList<>(fiveDays);
+    sixDays.add(0, checkIn(5, 1, null));
+    givenCheckIns(sixDays);
+    // 앞의 통화에서 보낸 지침을 지우고, 두 번째 통화의 지침만 봅니다.
+    clearInvocations(callKeyClient);
+    callService.startSession(REQUEST);
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만");
+  }
+
+  @Test
+  @DisplayName("서버에 저장한 시험이 이틀 뒤면 위로하는 통화로 한다")
+  void examNearMeansSupportiveCall() {
+    given(examRepository.findByUserIdOrderByExamDateDescIdDesc(USER_ID))
+        .willReturn(List.of(new Exam(USER_ID, "중간고사", ExamType.SCHOOL, TODAY.plusDays(2))));
+
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만");
   }
 
   // ---- 가입 테스트 ----
