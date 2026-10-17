@@ -27,6 +27,7 @@ import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
@@ -59,6 +60,7 @@ class CallServiceTest {
   // 하루 한도는 가짜로 둡니다. 진짜로 세는 것은 GptUsageGuardTest 가 확인합니다.
   // 기본은 "이번 통화는 300초까지 해도 된다" 입니다. (setUp)
   private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
+  private final SafetyService safetyService = mock(SafetyService.class);
 
   private final CallRecordRepository callRecordRepository = mock(CallRecordRepository.class);
   private final ThinkingTestRepository thinkingTestRepository = mock(ThinkingTestRepository.class);
@@ -83,7 +85,8 @@ class CallServiceTest {
           checkInRepository,
           examRepository,
           new CallCardLoader(studyPlanRepository, studySessionRepository, checkInRepository),
-          Clock.fixed(NOW, ZoneOffset.UTC));
+          Clock.fixed(NOW, ZoneOffset.UTC),
+          safetyService);
 
   private static final CallSessionRequest REQUEST =
       new CallSessionRequest(
@@ -393,6 +396,18 @@ class CallServiceTest {
 
     assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[생각 습관]", "[지난 통화]");
     assertThat(savedRecord().getAskedBias()).isNull();
+  }
+
+  @Test
+  @DisplayName("저장된 보호 조치가 켜져 있으면 최근 통화가 없어도 위로하는 통화로 한다")
+  void activeProtectionMeansSupportiveCall() {
+    given(safetyService.isActive(USER_ID)).willReturn(true);
+
+    callService.startSession(new CallSessionRequest(3, 5, REQUEST.card(), null, null));
+
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[생각 습관]");
+    assertThat(savedRecord().getAskedBias()).isNull();
+    verify(safetyService).isActive(USER_ID);
   }
 
   @Test

@@ -34,7 +34,8 @@ public class GptUsageGuard {
       List.of(GptUsageKind.CALL_REVIEW, GptUsageKind.COACH, GptUsageKind.PLAN_PARSE);
   // 작은 AI 기능(입력 칸을 AI 가 먼저 채우기, 이슈 #236·#237)의 종류입니다. 글 호출과 한도를 따로 셉니다. (하루 40번)
   //   카드를 만들 때마다 부르는 기능이라 자주 쓰입니다. 같이 세면 코치·통화 요약이 한도에 막힙니다.
-  static final List<GptUsageKind> ASSIST_KINDS = List.of(GptUsageKind.CHECKLIST);
+  static final List<GptUsageKind> ASSIST_KINDS =
+      List.of(GptUsageKind.CHECKLIST, GptUsageKind.ASSIST);
 
   private final GptUsageRepository gptUsageRepository;
   private final Clock clock;
