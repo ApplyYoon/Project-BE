@@ -458,6 +458,9 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/cards/parse",
               "/api/v1/ai/cards/parse",
               "{\"date\":\"2026-10-17\",\"text\":\"수학\"}"),
+          // 카드 폼 기본값 (내 카드 · 목표 · 기록을 봅니다. 이슈 #237)
+          new Api(
+              "POST", "/api/v1/ai/card-defaults", "/api/v1/ai/card-defaults", "{\"title\":\"수학\"}"),
           // AI 하루 계획 (내 고정 일정 · 카드 · 목표 · 기록 · 설문 · 심리검사를 봅니다. 이슈 #237)
           new Api(
               "POST", "/api/v1/ai/day-plan", "/api/v1/ai/day-plan", "{\"date\":\"2099-01-01\"}"));
