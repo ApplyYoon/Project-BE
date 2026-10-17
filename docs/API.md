@@ -2448,6 +2448,88 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 | --- | --- |
 | 401 | 로그인하지 않음 |
 
+#### 리듬·패턴
+
+`GET /api/v1/stats/rhythm` — 최근 30일(어제까지)의 **며칠째 무너지고 며칠 만에 회복하는지**, **요일·시간대 효율**, **시험·약속 다음 날 효과**를 돌려줍니다. **로그인이 필요합니다.** (이슈 #37 분석 ②)
+
+"3일째에 무너지는 편이야", "주말에는 평일보다 40분 덜 해" 같은 문장의 재료입니다. 첫 가설의 `rhythm`(주말·시험 후)을 확인하는 분석이기도 합니다.
+
+```json
+{
+  "from": "2026-09-17",
+  "to": "2026-10-16",
+  "collapse": {
+    "commonDay": 3,
+    "commonDayCount": 2,
+    "events": [
+      { "date": "2026-10-03", "dayNumber": 3 },
+      { "date": "2026-10-09", "dayNumber": 3 }
+    ],
+    "hypothesis": true
+  },
+  "recovery": {
+    "averageDays": 1.5,
+    "events": [
+      { "missedFrom": "2026-10-03", "recoveredOn": "2026-10-04", "days": 1 },
+      { "missedFrom": "2026-10-09", "recoveredOn": "2026-10-11", "days": 2 }
+    ],
+    "slumpSince": null,
+    "hypothesis": true
+  },
+  "byWeekday": [
+    { "weekday": "mon", "averageStudyMinutes": 75, "averageAchievementRate": 90, "dates": ["2026-09-21", "..."], "hypothesis": false },
+    "... tue ~ sun 까지 7칸"
+  ],
+  "weekdayVsWeekend": {
+    "weekday": { "averageStudyMinutes": 70, "averageAchievementRate": 88, "dates": ["..."], "hypothesis": false },
+    "weekend": { "averageStudyMinutes": 30, "averageAchievementRate": 40, "dates": ["..."], "hypothesis": false },
+    "hypothesis": false
+  },
+  "byTimeOfDay": [
+    { "timeOfDay": "morning", "sessionCount": 0, "averageSessionMinutes": null, "pauseRate": null, "dates": [], "hypothesis": true },
+    { "timeOfDay": "afternoon", "...": "..." },
+    { "timeOfDay": "evening", "...": "..." },
+    { "timeOfDay": "night", "sessionCount": 12, "averageSessionMinutes": 40, "pauseRate": 20, "dates": ["..."], "hypothesis": false }
+  ],
+  "afterEvents": {
+    "usual": { "averageStudyMinutes": 60, "averageAchievementRate": 100, "dates": ["..."], "hypothesis": false },
+    "byEvent": [
+      { "event": "exam", "nextDays": { "averageStudyMinutes": 20, "averageAchievementRate": 33, "dates": ["2026-10-11"], "hypothesis": true }, "studyMinutesDiff": -40, "achievementRateDiff": -67, "hypothesis": true },
+      { "event": "event", "nextDays": { "averageStudyMinutes": null, "averageAchievementRate": null, "dates": [], "hypothesis": true }, "studyMinutesDiff": null, "achievementRateDiff": null, "hypothesis": true }
+    ]
+  }
+}
+```
+
+**날짜 묶음** — `byWeekday`·`weekdayVsWeekend`·`afterEvents` 의 묶음은 모두 같은 모양입니다.
+
+| 필드 | 뜻 |
+| --- | --- |
+| `averageStudyMinutes` | 평균 순공(분). 셀 날이 없으면 `null` |
+| `averageAchievementRate` | 평균 달성률(%). **계획이 있던 날만**으로 냄. 없으면 `null` |
+| `dates` | 계산에 쓴 날 (근거, 오래된 날부터) |
+| `hypothesis` | 근거가 5일 미만이면 `true` |
+
+**규칙** (`domain/stats/CollapseCycle.java` · `RhythmEfficiency.java` · `AfterEventEffect.java`)
+
+- **채운 날 / 못 채운 날**은 실패 원인과 같습니다. (100% / 100% 미만, 계획이 없던 날은 어느 쪽도 아님)
+- **"쓴 날" 만 셉니다.** 계획도 공부도 없는 날은 "앱을 안 쓴 날" 이라 뺍니다. 계획만 있고 안 한 날은 0분으로 넣습니다. ([6. 평균을 낼 때 기록 없는 날](#6-평균을-낼-때-기록-없는-날)의 효과 판정과 같음)
+- **`collapse`** — 채운 날이 이어지다 처음 못 채운 날이 연속의 몇 번째 날인지(`dayNumber`). 계획이 없던 날은 건너뛰고 셉니다. `commonDay` 는 가장 많이 나온 날(같으면 더 빠른 날). 기간 첫 계획일부터 못 채웠으면 그 앞을 몰라서 세지 않습니다. 무너진 날이 5개 미만이면 가설.
+- **`recovery`** — 처음 못 채운 날부터 다시 채운 날까지의 달력 날짜 차이(`days`). 어제까지 회복하지 못했으면 `slumpSince` 에 그 첫날이 들어갑니다. 회복이 5번 미만이면 가설.
+- **`byWeekday`** — **월요일부터** 7칸이고, 칸마다 `weekday`(`mon` ~ `sun`) 이름표가 있습니다. ⚠️ 주간 리포트의 요일별 완주율은 일요일부터라 순서가 다릅니다. 이름표로 맞춰 쓰세요.
+- **`weekdayVsWeekend`** — 월~금 vs 토·일. 둘 중 하나라도 5일 미만이면 `hypothesis: true`.
+- **`byTimeOfDay`** — 기록을 **시작한 시각**으로 나눕니다. 주간 리포트와 같은 시각입니다. `morning` 05~12시 · `afternoon` 12~18시 · `evening` 18~22시 · `night` 22~05시. 노는 기록은 뺍니다.
+  - `averageSessionMinutes`: 기록 하나의 평균 순공 / `pauseRate`: (전체 길이 − 순공) ÷ 전체 길이 × 100
+- **`afterEvents`** — 이벤트 **다음 날**과 **평소 날**(이벤트 당일·다음 날을 모두 뺀 쓴 날)을 견줍니다. `...Diff` = 다음 날 − 평소 (음수면 덜 함). 둘 중 하나라도 5일 미만이면 가설.
+  - `exam`: 시험 점수에 등록한 시험 날짜
+  - `event`: 못 채운 이유로 '약속·행사' 를 고른 날 (체크인은 하루 전, 타이머는 그날)
+  - ⚠️ "학원 늦게 끝난 날" 은 기록하는 칸이 서버에 없어서 아직 없습니다.
+- **오늘은 넣지 않습니다.** 기록이 없어도 404 가 아니라 빈 목록과 `null` 입니다.
+
+| 상태 | 언제 |
+| --- | --- |
+| 401 | 로그인하지 않음 |
+
 ### 웹 푸시
 
 앱을 닫아 둬도 휴대폰 알림 칸에 뜨는 **푸시 알림**을 받을 기기를 등록합니다. 세 주소 모두 **로그인이 필요합니다.** (이슈 #32)
