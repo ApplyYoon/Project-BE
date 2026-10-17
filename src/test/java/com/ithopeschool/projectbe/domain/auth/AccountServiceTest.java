@@ -60,6 +60,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -515,8 +516,8 @@ class AccountServiceTest {
             .count();
     long allTables = entityManager.getMetamodel().getEntities().size();
 
-    // users 하나만 userId 가 없습니다.
-    assertThat(tablesWithUserId).isEqualTo(allTables - 1);
+    // users 와 학교 공개 자료(PUBLIC_TABLES)만 userId 가 없습니다.
+    assertThat(tablesWithUserId).isEqualTo(allTables - 1 - PUBLIC_TABLES.size());
   }
 
   @Test
@@ -608,6 +609,10 @@ class AccountServiceTest {
           Map.entry("RISK_FORECAST_REASONS", new String[] {"RISK_FORECASTS", "RISK_FORECAST_ID"}),
           // 심리검사(psych_tests)에 매달린 문장 14개의 답 (이슈 #219)
           Map.entry("PSYCH_TEST_ANSWERS", new String[] {"PSYCH_TESTS", "PSYCH_TEST_ID"}));
+
+  // 사람이 아니라 학교마다 한 벌인 공개 자료(NEIS 학사일정, 이슈 #282)입니다. 개인 정보가 없고
+  // 같은 학교 학생들이 같이 쓰므로 탈퇴해도 지우지 않습니다.
+  private static final Set<String> PUBLIC_TABLES = Set.of("SCHOOL_EVENTS", "SCHOOL_EVENT_FETCHES");
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
@@ -737,6 +742,9 @@ class AccountServiceTest {
         assertThat(nativeCount("select count(*) from " + table + " where user_id = :userId", idOfA))
             .as("%s 에 남은 에이의 줄", table)
             .isZero();
+      } else if (PUBLIC_TABLES.contains(table)) {
+        // 학교 공개 자료라 그 사람의 줄이 따로 없습니다.
+        continue;
       } else if (CHILD_TABLES.containsKey(table)) {
         String parent = CHILD_TABLES.get(table)[0];
         String parentIdColumn = CHILD_TABLES.get(table)[1];
