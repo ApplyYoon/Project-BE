@@ -71,6 +71,12 @@ create table care_settings (
     constraint ck_care_settings_pending_max_care_level check (pending_max_care_level is null or pending_max_care_level between 0 and 4)
 );
 
+create table checkin_emotions (
+    checkin_id bigint not null,
+    emotion varchar(20) not null check ((emotion in ('STUCK','ANXIOUS','TIRED','ANNOYED','CALM','MOTIVATED'))),
+    primary key (checkin_id, emotion)
+);
+
 create table checkins (
     check_in_date date not null,
     condition integer,
@@ -384,6 +390,11 @@ create index idx_study_sessions_user_id_started_at
 
 create index idx_thinking_tests_user_id_id
    on thinking_tests (user_id, id);
+
+alter table if exists checkin_emotions
+   add constraint fk_checkin_emotions_checkin_id
+   foreign key (checkin_id)
+   references checkins (id);
 
 alter table if exists onboarding_answer_failure_causes
    add constraint fk_onboarding_answer_failure_causes_onboarding_answer_id

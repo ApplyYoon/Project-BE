@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.checkin.dto;
 
 import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.EmotionTag;
 import com.ithopeschool.projectbe.domain.safety.HelpLine;
 import java.time.LocalDate;
 import java.util.List;
@@ -8,10 +9,12 @@ import java.util.List;
 // 체크인 하나를 FE 에 알려 주는 모양입니다. FE 의 CheckIn 타입과 같은 이름입니다.
 //   { "id": "3", "date": "2026-10-17", "source": "manual", "condition": 4, "mood": 3,
 //     "missReason": "etc", "missReasonNote": "동아리 발표", "expectedMinutes": 120,
-//     "promiseIf": "폰을 보고 싶으면", "promiseThen": "물 한 잔 마신다", "suggestionKept": true }
+//     "promiseIf": "폰을 보고 싶으면", "promiseThen": "물 한 잔 마신다", "suggestionKept": true,
+//     "emotions": ["STUCK", "TIRED"] }
 // - id 는 다른 API 와 같이 글자로 보냅니다.
 // - source · missReason 은 FE 글자("quick", "tooMuch")로 보냅니다.
-// - 답하지 않은 값은 null 입니다. (0 이 아닙니다)
+// - 답하지 않은 값은 null 입니다. (0 이 아닙니다) 감정 태그는 안 골랐으면 빈 배열 [] 입니다.
+// - 감정 태그는 이름 그대로(STUCK), EmotionTag 에 적힌 순서로 보냅니다. (이슈 #220)
 // - 누구의 체크인인지(userId)는 담지 않습니다.
 public record CheckInResponse(
     String id,
@@ -25,6 +28,7 @@ public record CheckInResponse(
     String promiseIf,
     String promiseThen,
     Boolean suggestionKept,
+    List<String> emotions,
     boolean showHelp,
     List<HelpLine> helpLines) {
 
@@ -45,7 +49,8 @@ public record CheckInResponse(
       Integer expectedMinutes,
       String promiseIf,
       String promiseThen,
-      Boolean suggestionKept) {
+      Boolean suggestionKept,
+      List<String> emotions) {
     this(
         id,
         date,
@@ -58,6 +63,7 @@ public record CheckInResponse(
         promiseIf,
         promiseThen,
         suggestionKept,
+        emotions,
         false,
         List.of());
   }
@@ -79,6 +85,8 @@ public record CheckInResponse(
         checkIn.getPromiseIf(),
         checkIn.getPromiseThen(),
         checkIn.getSuggestionKept(),
+        // EnumSet 이 아니어도 늘 같은 순서가 되도록 EmotionTag 순서로 다시 줄 세웁니다.
+        checkIn.getEmotions().stream().sorted().map(EmotionTag::name).toList(),
         showHelp,
         showHelp ? HelpLine.ALL : List.of());
   }
