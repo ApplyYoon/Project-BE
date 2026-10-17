@@ -17,6 +17,10 @@ import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
+import com.ithopeschool.projectbe.domain.psychtest.PsychItem;
+import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTest;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
@@ -50,6 +54,7 @@ class ChecklistServiceTest {
   private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
   private final StudyPlanRepository studyPlanRepository = mock(StudyPlanRepository.class);
   private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
+  private final PsychTestRepository psychTestRepository = mock(PsychTestRepository.class);
   private final ThinkingTestRepository thinkingTestRepository = mock(ThinkingTestRepository.class);
   private final AiClient aiClient = mock(AiClient.class);
   private final ChecklistService service =
@@ -57,6 +62,7 @@ class ChecklistServiceTest {
           currentUserProvider,
           studyPlanRepository,
           studySessionRepository,
+          psychTestRepository,
           thinkingTestRepository,
           aiClient,
           CLOCK);
@@ -125,6 +131,7 @@ class ChecklistServiceTest {
         .willReturn(List.of());
     given(thinkingTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
         .willReturn(Optional.empty());
+    given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID)).willReturn(Optional.empty());
   }
 
   @Test
@@ -177,7 +184,7 @@ class ChecklistServiceTest {
   }
 
   @Test
-  @DisplayName("가장 최근 생각 습관 테스트의 '계획할 때' 가 낙관이면 계획 성향 줄을 AI 에게 준다")
+  @DisplayName("심리검사가 없으면 예전 생각 습관 테스트의 '계획할 때' 가 낙관일 때 계획 성향 줄을 준다")
   void planOptimismFromThinkingTest() {
     ThinkingTest test =
         new ThinkingTest(
@@ -193,6 +200,48 @@ class ChecklistServiceTest {
     service.suggest(new ChecklistRequest("수학 문제집", null));
 
     assertThat(askedQuestion().input()).contains("계획 성향: 계획을 크게 잡는 편");
+  }
+
+  // 계획 낙관(P1 ~ P5)만 answer, 나머지는 4 인 심리검사
+  private void psychTestWithPlanOptimism(int answer) {
+    Map<PsychItem, Integer> answers = new java.util.EnumMap<>(PsychItem.class);
+    for (PsychItem item : PsychItem.values()) {
+      answers.put(item, item.scale() == PsychScale.PLAN_OPTIMISM ? answer : 4);
+    }
+    given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(
+            Optional.of(new PsychTest(USER_ID, Instant.parse("2026-10-16T00:00:00Z"), answers)));
+  }
+
+  @Test
+  @DisplayName("심리검사의 계획 낙관이 높음(5 이상)이면 계획 성향 줄을 준다")
+  void planOptimismFromPsychTest() {
+    psychTestWithPlanOptimism(5);
+    aiAnswers("하나", "둘", "셋");
+
+    service.suggest(new ChecklistRequest("수학 문제집", null));
+
+    assertThat(askedQuestion().input()).contains("계획 성향: 계획을 크게 잡는 편");
+  }
+
+  @Test
+  @DisplayName("심리검사가 있으면 그것만 본다: 계획 낙관이 보통이면 생각 습관 테스트가 낙관이어도 줄이 없다")
+  void psychTestWinsOverThinkingTest() {
+    psychTestWithPlanOptimism(4);
+    given(thinkingTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(
+            Optional.of(
+                new ThinkingTest(
+                    USER_ID,
+                    Instant.parse("2026-10-10T00:00:00Z"),
+                    2,
+                    Map.of(CognitiveBias.PLANNING_FALLACY, 6.0, CognitiveBias.FUTURE_SELF, 5.0),
+                    Set.of())));
+    aiAnswers("하나", "둘", "셋");
+
+    service.suggest(new ChecklistRequest("수학 문제집", null));
+
+    assertThat(askedQuestion().input()).doesNotContain("계획 성향");
   }
 
   @Test
