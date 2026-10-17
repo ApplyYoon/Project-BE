@@ -43,6 +43,8 @@ erDiagram
     users ||--o{ setting_changes : "user_id"
     users ||--o{ gpt_usages : "user_id"
     call_records ||--o| gpt_usages : "call_record_id"
+    users ||--o{ insights : "user_id"
+    insights ||--o{ insight_evidence_dates : "insight_id"
     users ||--o{ checkins : "user_id"
 
     users {
@@ -280,6 +282,19 @@ erDiagram
         varchar text_version "동의한 문구의 버전 (20자까지, 지금은 v1)"
         boolean age_confirmed_over14 "만 14세 이상 확인 (true 면 확인함, 비어 있으면 확인받은 적 없음)"
     }
+    insights {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 인사이트의 주인"
+        varchar sentence "카드에 보여 준 한 문장 (200자까지)"
+        varchar insight_key "인사이트의 종류, 같은 발견이면 같은 값 (예: morning-vs-night)"
+        boolean hypothesis "5일 미만이라 가설로 보여 줬는지"
+        date shown_date "보여 준 날"
+        varchar reaction "누른 반응 (SURPRISED, ALREADY_KNEW, WRONG 중 하나), 누르기 전에는 비어 있음"
+    }
+    insight_evidence_dates {
+        bigint insight_id FK "어느 인사이트의 근거인지"
+        date evidence_date "근거가 된 날짜 (한 인사이트 안에서 중복 불가)"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
@@ -314,6 +329,8 @@ erDiagram
 | `setting_changes` | 설정 칸 하나를 한 번 바꾼 것이 한 줄 (바꾼 시각, 칸 이름, 이전 값, 새 값) | #22 |
 | `gpt_usages` | GPT 를 한 번 부른 것이 한 줄 (종류, 부른 시각, 통화 번호·통화 시간, 대략적인 비용). 하루 한도는 이 기록을 세서 지킴 | #33 |
 | `checkins` | 한 사람의 하루치 체크인이 한 줄 (컨디션, 기분, 어제 못 채운 이유와 기타 글, 예상 순공시간, 약속 두 칸, 개선안 실천 여부, 어디서 했는지). 같은 날을 다시 보내면 덮어씀. 누구·날짜·source 말고는 다 비어도 됨 | #24 |
+| `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
+| `insight_evidence_dates` | 인사이트 하나의 근거 날짜가 한 줄씩 (`@ElementCollection`). 날짜로 찾기 쉽게 날짜로 저장 | #43 · #41 |
 
 > `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
 > 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.

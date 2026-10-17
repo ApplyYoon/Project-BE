@@ -18,6 +18,7 @@ import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallRecord;
 import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
 import com.ithopeschool.projectbe.domain.consent.ConsentService;
+import com.ithopeschool.projectbe.domain.insight.Insight;
 import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
 import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
@@ -543,7 +544,9 @@ class AccountServiceTest {
           "ONBOARDING_ANSWER_FAILURE_CAUSES",
               new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
           "ONBOARDING_ANSWER_SUBJECT_LEVELS",
-              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"});
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
+          // 보여 준 인사이트(insights)에 매달린 근거 날짜 (이슈 #43)
+          "INSIGHT_EVIDENCE_DATES", new String[] {"INSIGHTS", "INSIGHT_ID"});
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
@@ -564,6 +567,15 @@ class AccountServiceTest {
       answer.pastFailureCauses = EnumSet.of(FailureCause.WEEKEND);
       answer.subjectLevels = List.of(new SubjectLevel(1L, 2, null, 4));
       entityManager.persist(new OnboardingAnswer(userId, NOW, answer));
+      // 인사이트의 근거 날짜(딸린 테이블)에도 줄이 있어야 합니다.
+      entityManager.persist(
+          new Insight(
+              userId,
+              "오전에 더 오래 집중했어요",
+              "morning-vs-night",
+              false,
+              LocalDate.of(2026, 10, 17),
+              List.of(LocalDate.of(2026, 10, 3), LocalDate.of(2026, 10, 10))));
     }
     entityManager.flush();
     callWith(tokenOfA);
