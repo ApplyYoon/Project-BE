@@ -57,6 +57,7 @@ erDiagram
     thinking_tests ||--o{ thinking_test_scores : "thinking_test_id"
     thinking_tests ||--o{ thinking_test_weaknesses : "thinking_test_id"
     users ||--o{ psych_tests : "user_id"
+    users ||--o{ fixed_blocks : "user_id"
     psych_tests ||--o{ psych_test_answers : "psych_test_id"
     onboarding_answers ||--o{ onboarding_answer_failure_causes : "onboarding_answer_id"
     onboarding_answers ||--o{ onboarding_answer_subject_levels : "onboarding_answer_id"
@@ -186,6 +187,15 @@ erDiagram
     thinking_test_weaknesses {
         bigint thinking_test_id FK "어느 테스트의 약점인지"
         varchar weakness "내가 꼽은 약점 칩 (GAME, PHONE, VIDEO, SLEEP, LAZY, DELAY, FOCUS, FRIENDS, TIRED, MOOD, PLANNING 중 하나)"
+    }
+    fixed_blocks {
+        bigint id PK "고정 일정을 구분하는 고유 번호"
+        bigint user_id FK "일정의 주인"
+        varchar title "무슨 일정인지 (학교, 수학 학원 등 20자까지)"
+        varchar repeat_days "반복 요일을 쉼표로 이은 글자 (0 일요일 ~ 6 토요일, 예 1,2,3,4,5)"
+        time start_time "시작 시각"
+        time end_time "끝 시각 (하루 시작 새벽 4시 기준으로 시작보다 뒤)"
+        timestamptz created_at "일정을 만든 시각"
     }
     psych_tests {
         bigint id PK "심리검사 결과를 구분하는 고유 번호 (나중에 한 것일수록 큼)"
@@ -420,6 +430,7 @@ erDiagram
 | `thinking_test_weaknesses` | 테스트 한 번에서 고른 약점 칩이 한 줄씩 (`@ElementCollection`) | #35 |
 | `psych_tests` | 온보딩 심리검사 한 번이 한 줄 (마친 시각). 다시 하면 새 줄이 쌓임. 척도 7개 점수는 답으로 계산(저장 안 함) | #219 |
 | `psych_test_answers` | 검사 한 번의 문장마다의 답(1 ~ 7)이 한 줄씩. 지금 검사 35개 · 옛 검사 14개 (`@ElementCollection`) | #219 |
+| `fixed_blocks` | 학교 · 학원처럼 요일마다 정해진 시간 하나가 한 줄 (이름, 반복 요일, 시작 · 끝 시각). 카드가 아니라 타이머 · 의지력 계산에서 빠짐 | #223 |
 | `onboarding_answers` | 온보딩 설문 하나가 한 줄. 고칠 때마다 원래 줄을 두고 **새 줄이 쌓임** (처음 답한 자기 인식을 남기려고) | #21 |
 | `onboarding_answer_failure_causes` | 설문 하나에서 고른 "계획이 무너진 때" 가 한 줄씩 (`@ElementCollection`) | #21 |
 | `onboarding_answer_subject_levels` | 설문 하나의 과목별 최근 성적·자신감이 과목마다 한 줄씩 (`@ElementCollection`) | #21 |
@@ -500,6 +511,8 @@ erDiagram
 > - 처음 값은 FE 와 같습니다 (전화 시간 21:00 은 학생이 정함). FE 의 `allowOffHoursCall`(정해진 시간 외 독촉 전화 허용)은 이슈에 없어서 담지 않았습니다.
 
 > `gpt_usages` 는 2026-10-17 에 이슈 #33 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 돕고 영어 이름만 같이 정했습니다)
+
+> `fixed_blocks` 는 2026-10-17 에 이슈 #223 을 따라 **AI(Claude)가 만든** 테이블입니다. AI 하루 계획이 학교 · 학원 시간을 보려면 서버에 있어야 해서, 멘토가 AI 가 만들기로 정했습니다. (그전에는 FE 의 localStorage 에만 있었습니다) 칸은 FE 의 `FixedBlock` 과 같은 이름이고, 반복 요일은 카드(`cards.repeat_days`)와 같은 모양으로 한 칸에 적었습니다.
 
 > `psych_tests` · `psych_test_answers` 는 2026-10-17 에 이슈 #219 · 최종 기획서 6장을 따라 **AI(Claude)가 만든** 테이블입니다. 멘토가 "데이터가 쌓여야 AI 가 분석한다" 며 심리검사 결과를 서버에 쌓자고 정했고, 칸은 생각 습관 테스트(`thinking_tests`)와 같은 모양으로 했습니다. 문장마다의 답을 그대로 남기고 척도 점수는 저장하지 않습니다.
 > - **GPT 를 한 번 부른 것 = 한 줄.** 하루 한도(통화 횟수 · 통화 시간 · 글 호출 횟수)는 이 기록을 세서 지킵니다. 예전에는 서버 메모리에서 세서 서버가 다시 켜지면 0 이 됐습니다.
