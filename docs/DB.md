@@ -77,6 +77,9 @@ erDiagram
     users ||--o{ insights : "user_id"
     insights ||--o{ insight_evidence_dates : "insight_id"
     users ||--o{ checkins : "user_id"
+    users ||--o{ cards : "user_id"
+    cards ||--o{ card_checklist_items : "card_id"
+    cards ||--o{ card_expected_fail_causes : "card_id"
     checkins ||--o{ checkin_emotions : "checkin_id"
     users ||--o{ reflection_prescriptions : "user_id"
     users ||--o{ risk_forecasts : "user_id"
@@ -343,6 +346,36 @@ erDiagram
         varchar text_version "동의한 문구의 버전 (20자까지, 지금은 v1)"
         boolean age_confirmed_over14 "만 14세 이상 확인 (true 면 확인함, 비어 있으면 확인받은 적 없음)"
     }
+    cards {
+        bigint id PK "카드를 구분하는 고유 번호"
+        bigint user_id FK "이 카드의 주인"
+        varchar title "무엇을 하는지 (100자까지)"
+        date card_date "1회성 카드면 그 날짜, 반복 카드면 반복을 시작한 날짜"
+        varchar repeat_days "반복 요일을 쉼표로 이은 글자 (0 일 ~ 6 토, 예 1,3,5). 1회성 카드면 비어 있음"
+        time start_time "시작 시각, 몇 시 몇 분 (옛 계획에서 옮긴 카드만 비어 있음)"
+        int duration_minutes "길이(분), 1 ~ 600"
+        bigint goal_id "연결한 목표 번호 (목표 없음이면 비어 있음, 목표 테이블은 아직 없음 #221)"
+        varchar priority "우선순위 (ABSOLUTE 절대, FLEXIBLE 유연 중 하나)"
+        varchar type "유형 (SELF 자습, LECTURE 인강 중 하나)"
+        int expected_done "예상 달성 개수 (비어 있으면 체크리스트 전부)"
+        varchar expected_done_reason "예상 달성 개수를 낮춘 이유 태그 (30자까지), 비어도 됨"
+        varchar alert_method "알림 방법 (MESSAGE, CALL 중 하나). 알림 칸이 모두 비면 기본 알림"
+        int alert_minutes_before "시작 몇 분 전에 알릴지 (0 ~ 120)"
+        varchar alert_text "알림 문구 (100자까지, 비어 있으면 기본 문구)"
+        bigint planning_ms "카드 편집 화면을 열고 저장할 때까지 걸린 시간(밀리초), 비어도 됨"
+        timestamptz created_at "카드를 만든 시각"
+    }
+    card_checklist_items {
+        bigint card_id FK "어느 카드의 항목인지"
+        int position "카드 안에서 몇 번째 항목인지 (0 부터)"
+        varchar item_key "항목을 구분하는 글자 (FE 의 ChecklistItem.id, 40자까지)"
+        varchar text "할 일 (100자까지)"
+    }
+    card_expected_fail_causes {
+        bigint card_id FK "어느 카드의 예상 실패 원인인지"
+        int position "몇 번째 원인인지 (0 부터)"
+        varchar cause "예상 실패 원인 글 (100자까지)"
+    }
     insights {
         bigint id PK "줄을 구분하는 고유 번호"
         bigint user_id FK "이 인사이트의 주인"
@@ -432,6 +465,9 @@ erDiagram
 | `setting_changes` | 설정 칸 하나를 한 번 바꾼 것이 한 줄 (바꾼 시각, 칸 이름, 이전 값, 새 값) | #22 |
 | `gpt_usages` | GPT 를 한 번 부른 것이 한 줄 (종류, 부른 시각, 통화 번호·통화 시간, 대략적인 비용). 하루 한도는 이 기록을 세서 지킴 | #33 |
 | `checkins` | 한 사람의 하루치 체크인이 한 줄 (컨디션, 기분, 어제 못 채운 이유와 기타 글, 예상 순공시간, 약속 두 칸, 개선안 실천 여부, 어디서 했는지). 같은 날을 다시 보내면 덮어씀. 누구·날짜·source 말고는 다 비어도 됨 | #24 |
+| `cards` | 카드 한 장이 한 줄 (제목, 날짜, 반복 요일, 시작 시각, 길이, 목표, 절대/유연, 자습/인강, 예상 달성 개수와 낮춘 이유, 알림, 계획에 쓴 시간). 반복 카드도 **한 장**이고 날마다 복사하지 않음 | #222 |
+| `card_checklist_items` | 카드 하나의 체크리스트 항목이 한 줄씩 (`@ElementCollection`, 보낸 순서대로) | #222 |
+| `card_expected_fail_causes` | 카드 하나의 예상 실패 원인 글이 한 줄씩 (`@ElementCollection`, 5개까지) | #222 |
 | `checkin_emotions` | 체크인 하나에서 고른 감정 태그가 한 줄씩 (`@ElementCollection`). 안 골랐으면 줄이 없음 | #220 |
 | `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
 | `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
@@ -507,6 +543,14 @@ erDiagram
 > - **통화 번호(`call_record_id`)** 는 "통화가 끝났을 때 어느 줄을 채울지" 알려고 더했습니다. 같은 날 통화가 여러 번이면 이것 없이는 구별할 수 없습니다.
 > - **비용은 원 단위 정수**의 어림값입니다. (읽기 쉬워서 학생이 정함) 환산 기준은 `application.yml` 의 `cost-won-*` 설정에 있습니다.
 > - 종류는 지금 GPT 를 부르는 세 곳(통화 · 통화 요약 · 코치)만 있습니다. 인사이트 · 개선안 · 일기 분석이 생기면 하나씩 더합니다.
+
+> `cards` 와 딸린 테이블 두 개는 2026-10-17 에 이슈 #222 에서 **AI 가 만든 테이블**입니다. (칸 이름은 FE 의 `Card` 타입과 최종 기획서 「4.3 카드」 를 그대로 따랐습니다. **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - 처음 이슈는 `study_plans` 에 칸을 더하는 것이었지만, **새 테이블 `cards`** 로 바꿨습니다. (#222 댓글) 반복 카드는 한 장이라 "날짜마다 한 줄" 인 `study_plans` 와 모양이 다르고, 옛 화면이 쓰는 `/study-plans` 를 깨지 않으려고 입니다.
+> - **반복 요일은 한 칸(`repeat_days`)에 `"1,3,5"` 처럼** 적습니다. 요일은 7개뿐이라 딸린 테이블로 빼지 않았습니다. 그날 하는 카드인지는 `Card.isOnDate` 가 FE 의 `isCardOnDate` 와 같은 규칙으로 봅니다.
+> - **체크리스트 · 예상 실패 원인은 여러 개라서 딸린 테이블**에 담았습니다. `position` 은 보낸 순서입니다. 체크했는지(`doneAt`)는 카드가 아니라 **그날의 세션 기록**(#224)에 남깁니다.
+> - `goal_id` 는 목표 테이블(#221)이 아직 없어서 **번호만 적고, 그림에 선도 없습니다.** 목표 테이블이 생기면 "내 목표인지" 검사를 더합니다.
+> - 알림 세 칸(`alert_*`)이 모두 비어 있으면 **기본 알림**(정각 · 메시지 · 기본 문구)입니다.
+> - 모든 줄에 `user_id` 가 있어서(딸린 테이블은 카드를 따라) 탈퇴하면 같이 지워집니다.
 
 > `checkin_emotions` 는 2026-10-17 에 이슈 #220(최종 기획서 4.2 「홈」의 하루 첫 태그)에서 **AI 가 만든 딸린 테이블**입니다. (체크인은 선생님이 AI 에게 맡긴 범위)
 > - 하루 첫 태그 = 컨디션(1~5) + 감정 태그 여러 개. 감정은 한 체크인에 여러 개라서 `thinking_test_weaknesses` 처럼 딸린 테이블에 담았습니다. 엔티티는 `CheckIn` 하나입니다.
