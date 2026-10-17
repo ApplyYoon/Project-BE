@@ -56,6 +56,7 @@ src/main/java/com/ithopeschool/projectbe/
     └── health/                 예시: Controller + Service + 응답 DTO
 src/main/resources/             설정 파일 (application.yml, -local.yml, -neon.yml, -prod.yml)
 db/schema.sql                   운영 DB(Neon)의 테이블을 만드는 SQL (사람이 Neon SQL Editor 에서 실행)
+db/migrations/                  이미 있는 Neon 을 다음 배포 상태로 올리는 SQL (번호 순서대로, 여러 번 실행해도 됨)
 src/test/java/                  테스트 (main 과 같은 폴더 구조로)
 build.gradle                    라이브러리 목록과 빌드 설정
 gradlew, gradlew.bat, gradle/   Gradle 실행 파일 (고치지 않음)
@@ -132,7 +133,8 @@ AI 는 테이블·컬럼을 **먼저 정해 주지 않습니다.** 질문으로 
 - 운영 DB 의 테이블은 서버가 만들거나 바꾸지 않습니다. (`ddl-auto: update` 는 쓰지 않습니다 — 운영 DB 가 코드에 따라 멋대로 바뀌어 사고가 나기 쉽습니다)
   배포 설정이 검사(`validate`)까지 빼고 `none` 인 이유: DB 주소가 틀려도 서버가 꺼지지 않게 하려고 켜질 때 DB 에 접속하지 않습니다. (이슈 #4)
 - **엔티티를 만들거나 고치면 `db/schema.sql` 도 같은 커밋에서 고칩니다.** 안 고치면 `SchemaSqlTest` 가 실패합니다.
-  이미 만든 Neon 브랜치에는 바뀐 부분만 `alter table` 로 사람이 실행합니다. (dev 먼저, main 은 그다음)
+  이미 만든 Neon 브랜치에는 바뀐 부분만 사람이 실행합니다. (dev 먼저, main 은 그다음)
+  그 SQL 은 `db/migrations/NN-설명.sql` 파일로 남기고, **여러 번 실행해도 되게** 씁니다. (`if not exists` · `drop … if exists` → `add`, `MigrationSqlTest` 가 검사)
 - `create-drop`·`update` 를 `neon`·`prod` 설정에 넣지 않습니다. `create-drop` 은 서버를 끌 때 Neon 의 테이블을 전부 지웁니다.
 - 접속 정보는 지금은 **환경변수**로 받습니다. 시크릿 매니저로 받는 방법은 이슈 #76 에서 정하면 이 문단을 고칩니다.
   Neon 주소·비밀번호를 대화·이슈·PR·파일에 붙여 넣지 않습니다. Claude 에게도 주지 않습니다.
