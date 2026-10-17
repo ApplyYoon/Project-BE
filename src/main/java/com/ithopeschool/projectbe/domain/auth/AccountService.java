@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.auth;
 
+import com.ithopeschool.projectbe.domain.auth.GoogleIdTokenVerifier.GoogleProfile;
 import com.ithopeschool.projectbe.domain.auth.dto.PasswordChangeRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.ProfileResponse;
 import com.ithopeschool.projectbe.domain.auth.dto.ProfileUpdateRequest;
@@ -35,6 +36,8 @@ public class AccountService {
   private final AccountRepository accountRepository;
   private final LoginTokenRepository loginTokenRepository;
   private final PasswordHasher passwordHasher;
+  // 구글로 가입한 사람이 탈퇴할 때, 구글 로그인을 한 번 더 했는지 확인합니다.
+  private final GoogleIdTokenVerifier googleIdTokenVerifier;
   // 탈퇴할 때 "userId 가 있는 모든 테이블" 을 찾아 지우는 데 씁니다.
   private final EntityManager entityManager;
 
@@ -90,11 +93,22 @@ public class AccountService {
     }
   }
 
-  // 탈퇴: 비밀번호를 확인한 뒤, 이 사람의 데이터를 모두 지웁니다. 되돌릴 수 없습니다.
+  // 탈퇴: 본인이 맞는지 한 번 더 확인한 뒤, 이 사람의 데이터를 모두 지웁니다. 되돌릴 수 없습니다. (이슈 #69)
+  //   이메일 계정: 비밀번호   /   구글 계정: 구글 로그인을 한 번 더 해서 받은 구글 ID 토큰
+  // 구글 계정은 accounts 의 줄(google_subject)이 지워지면서 우리 서비스와 구글의 연결도 끊깁니다.
+  // (서버는 구글의 토큰을 갖고 있지 않아서, 사용자의 구글 계정 설정에 남은 "앱 연결" 은 서버가 지울 수 없습니다)
   @Transactional
   public void withdraw(WithdrawRequest request) {
     Long userId = currentUserProvider.getCurrentUserId();
-    checkPassword(request.password(), findAccount(userId));
+    Account account = findAccount(userId);
+    if (account.hasPassword()) {
+      if (request.password() == null || request.password().isBlank()) {
+        throw new ApiException(ErrorCode.VALIDATION_ERROR, "비밀번호를 입력해 주세요");
+      }
+      checkPassword(request.password(), account);
+    } else {
+      checkSameGoogleAccount(request.credential(), account);
+    }
 
     // 이 프로젝트의 규칙: users 를 뺀 모든 테이블에는 "누구의 것인지" 를 적는 userId 가 있습니다.
     // 그 규칙 덕분에, userId 가 있는 테이블을 전부 돌면서 이 사람의 줄을 지우면 빠뜨리는 것이 없습니다.
@@ -120,12 +134,34 @@ public class AccountService {
   // 401 이 아니라 400 인 이유: FE 는 401 을 받으면 "로그인이 풀렸다" 고 보고 로그인 화면으로 보냅니다.
   // 비밀번호 한 번 틀렸다고 로그인까지 풀리면 안 되기 때문입니다.
   private void checkPassword(String rawPassword, Account account) {
-    // 구글로 가입한 계정은 비밀번호가 없습니다. (비밀번호 바꾸기 · 탈퇴는 아직 이메일 계정만 됩니다, 이슈 #19)
+    // 구글로 가입한 계정은 비밀번호가 없습니다. (비밀번호 바꾸기는 이메일 계정만 됩니다. 구글 계정의 탈퇴는 checkSameGoogleAccount)
     if (!account.hasPassword()) {
       throw new ApiException(ErrorCode.VALIDATION_ERROR, "구글로 가입한 계정은 비밀번호가 없어요");
     }
     if (!passwordHasher.matches(rawPassword, account.getPasswordHash())) {
       throw new ApiException(ErrorCode.VALIDATION_ERROR, WRONG_PASSWORD_MESSAGE);
+    }
+  }
+
+  // 구글 계정의 탈퇴 확인: 보낸 구글 ID 토큰이 진짜이고, 가입할 때 쓴 바로 그 구글 계정인지 봅니다.
+  // 다른 사람의 구글 계정으로 로그인해서 내 계정을 지우는 일을 막으려고 고유 번호(google_subject)까지 비교합니다.
+  // 401 이 아니라 400 인 이유는 checkPassword 와 같습니다. (확인 실패로 로그인까지 풀리면 안 됨)
+  private void checkSameGoogleAccount(String credential, Account account) {
+    if (credential == null || credential.isBlank()) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "구글 확인 정보를 보내 주세요");
+    }
+    if (!googleIdTokenVerifier.isEnabled()) {
+      throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "구글 로그인이 아직 켜져 있지 않아요");
+    }
+    GoogleProfile profile =
+        googleIdTokenVerifier
+            .verify(credential)
+            .orElseThrow(
+                () ->
+                    new ApiException(
+                        ErrorCode.VALIDATION_ERROR, "구글 확인에 실패했어요. 다시 Google로 확인해 주세요"));
+    if (!profile.subject().equals(account.getGoogleSubject())) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "가입할 때 쓴 구글 계정으로 확인해 주세요");
     }
   }
 
