@@ -2,8 +2,10 @@ package com.ithopeschool.projectbe.domain.session;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -254,5 +256,17 @@ class StudySessionControllerTest {
     send("{" + VALID + "}")
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+  }
+
+  @Test
+  @DisplayName("모두 지우기는 204(본문 없음)이고, 로그인하지 않았으면 401 이다")
+  void deletesAll() throws Exception {
+    mockMvc.perform(delete("/api/v1/study-sessions")).andExpect(status().isNoContent());
+    verify(studySessionService).deleteAll();
+
+    willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"))
+        .given(studySessionService)
+        .deleteAll();
+    mockMvc.perform(delete("/api/v1/study-sessions")).andExpect(status().isUnauthorized());
   }
 }
