@@ -2377,6 +2377,52 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 | --- | --- |
 | 401 | 로그인하지 않음 |
 
+#### 반응 버튼
+
+인사이트 카드의 반응 버튼 3개를 저장하고, **[몰랐는데 맞아] 비율**(이 앱의 핵심 지표)을 봅니다. **로그인이 필요합니다.** (이슈 #43, FE#84)
+반응은 다음 인사이트를 고를 때 쓰입니다. 몰랐는데 맞아 → 같은 종류 총점 +10 · 틀렸어 → 다시 고르지 않음 (#41, `docs/INSIGHT-PICK.md`)
+
+`POST /api/v1/insights/{id}/reaction` — 내 인사이트에 반응 누르기. **다시 누르면 바뀝니다.** (새로 눌러도, 바꿔도 **200**)
+
+```json
+{ "response": "surprised" }
+```
+
+| `response` | 버튼 |
+| --- | --- |
+| `surprised` | 몰랐는데 맞아 |
+| `alreadyKnew` | 이미 알던 거야 |
+| `wrong` | 틀렸어 |
+
+**응답 200**
+
+```json
+{ "id": "3", "response": "surprised" }
+```
+
+`GET /api/v1/insights/stats` — 내 [몰랐는데 맞아] 비율. **응답 200**
+
+```json
+{ "reactedCount": 4, "surprisedCount": 3, "surprisedPercent": 75 }
+```
+
+| 필드 | 무엇 |
+| --- | --- |
+| `reactedCount` | 반응을 누른 인사이트 수 (세 가지 중 무엇이든) |
+| `surprisedCount` | 그중 [몰랐는데 맞아] 를 누른 수 |
+| `surprisedPercent` | `surprisedCount ÷ reactedCount × 100`, 소수점은 **버립니다**. 아직 하나도 안 눌렀으면 `null` (0% 와 구별) |
+
+- **반응을 누른 것 중에서** 셉니다. 안 누른 인사이트는 "모름" 이라 빼고 셉니다. (담당 학생이 정함)
+- 인사이트는 서버가 매일 밤 골라서 저장합니다(`insights` 테이블, `docs/DB.md`). 그 작업과 인사이트 목록 API 는 아직 없습니다. (공용 Project#5)
+
+| 상태 | `code` | 언제 | `message` |
+| --- | --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `response` 가 없거나 비었음 | `"반응을 골라 주세요"` |
+| 400 | `VALIDATION_ERROR` | 세 가지가 아님 (`"like"`, `"SURPRISED"` 등) | `"반응은 surprised, alreadyKnew, wrong 중에서 골라 주세요"` |
+| 400 | `VALIDATION_ERROR` | 주소의 `{id}` 가 숫자가 아님 | `"보낸 값을 다시 확인해 주세요"` |
+| 401 | `UNAUTHORIZED` | 로그인하지 않음 | `"로그인이 필요해요"` |
+| 404 | `NOT_FOUND` | 없는 인사이트, **또는 남의 인사이트** (둘은 구별하지 않습니다) | `"인사이트를 찾을 수 없어요"` |
+
 ### 분석
 
 #### 실패 원인

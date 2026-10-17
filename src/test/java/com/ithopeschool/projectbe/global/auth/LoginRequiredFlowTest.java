@@ -261,6 +261,13 @@ class LoginRequiredFlowTest {
               "{\"terms\":true,\"privacy\":true,\"over14\":true,\"version\":\"v1\"}"),
           // 첫 가설 (설문 답으로 만든 문장이라 학생의 정보입니다)
           new Api("GET", "/api/v1/insights/hypotheses", "/api/v1/insights/hypotheses", null),
+          // 인사이트 반응 버튼 (내 인사이트에만 반응할 수 있습니다)
+          new Api(
+              "POST",
+              "/api/v1/insights/{id}/reaction",
+              "/api/v1/insights/1/reaction",
+              "{\"response\":\"surprised\"}"),
+          new Api("GET", "/api/v1/insights/stats", "/api/v1/insights/stats", null),
           // 실패 원인 분석 (못 채운 날과 그 이유라서 학생의 정보입니다)
           new Api("GET", "/api/v1/stats/miss-reasons", "/api/v1/stats/miss-reasons", null),
           // 리듬·패턴 분석 (공부한 날·시간대·시험 날이라 학생의 정보입니다)
