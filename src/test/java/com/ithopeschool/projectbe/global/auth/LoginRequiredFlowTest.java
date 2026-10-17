@@ -63,6 +63,10 @@ class LoginRequiredFlowTest {
   private static final String PLAN_BODY =
       "{\"date\":\"2026-10-12\",\"subjectId\":\"1\",\"content\":\"수학 문제집\",\"targetMinutes\":60}";
 
+  private static final String CARD_BODY =
+      "{\"title\":\"수학 문제집\",\"date\":\"2026-10-12\",\"durationMinutes\":60,"
+          + "\"checklist\":[{\"text\":\"42쪽\"}]}";
+
   private static final String EXAM_BODY =
       "{\"type\":\"mock\",\"name\":\"10월 모의고사\",\"date\":\"2026-10-20\","
           + "\"subjectScores\":[{\"subjectId\":\"1\",\"expectedScore\":85}]}";
@@ -118,6 +122,11 @@ class LoginRequiredFlowTest {
               "{\"date\":\"2026-10-12\",\"text\":\"수학 문제집 2시간\"}"),
           new Api("PATCH", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", "{\"done\":true}"),
           new Api("DELETE", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", null),
+          // 카드 (이슈 #222)
+          new Api("GET", "/api/v1/cards", "/api/v1/cards?date=2026-10-12", null),
+          new Api("POST", "/api/v1/cards", "/api/v1/cards", CARD_BODY),
+          new Api("PATCH", "/api/v1/cards/{id}", "/api/v1/cards/1", "{\"title\":\"수학\"}"),
+          new Api("DELETE", "/api/v1/cards/{id}", "/api/v1/cards/1", null),
           // 관리 설정
           new Api("GET", "/api/v1/settings", "/api/v1/settings", null),
           new Api("PATCH", "/api/v1/settings", "/api/v1/settings", "{\"maxHarshness\":5}"),

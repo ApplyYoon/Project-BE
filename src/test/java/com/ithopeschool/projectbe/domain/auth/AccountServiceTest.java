@@ -16,6 +16,8 @@ import com.ithopeschool.projectbe.domain.auth.dto.WithdrawRequest;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallRecord;
+import com.ithopeschool.projectbe.domain.card.Card;
+import com.ithopeschool.projectbe.domain.card.ChecklistItem;
 import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
 import com.ithopeschool.projectbe.domain.consent.ConsentService;
 import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
@@ -543,7 +545,10 @@ class AccountServiceTest {
           "ONBOARDING_ANSWER_FAILURE_CAUSES",
               new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
           "ONBOARDING_ANSWER_SUBJECT_LEVELS",
-              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"});
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
+          // 카드(cards)에 매달린 체크리스트와 예상 실패 원인 (이슈 #222)
+          "CARD_CHECKLIST_ITEMS", new String[] {"CARDS", "CARD_ID"},
+          "CARD_EXPECTED_FAIL_CAUSES", new String[] {"CARDS", "CARD_ID"});
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
@@ -564,6 +569,16 @@ class AccountServiceTest {
       answer.pastFailureCauses = EnumSet.of(FailureCause.WEEKEND);
       answer.subjectLevels = List.of(new SubjectLevel(1L, 2, null, 4));
       entityManager.persist(new OnboardingAnswer(userId, NOW, answer));
+      Card card =
+          new Card(
+              userId,
+              "수학",
+              LocalDate.of(2026, 10, 12),
+              60,
+              List.of(new ChecklistItem("i1", "42쪽")),
+              NOW);
+      card.changeExpectedFailCauses(List.of("폰을 볼 것 같다"));
+      entityManager.persist(card);
     }
     entityManager.flush();
     callWith(tokenOfA);
