@@ -2,6 +2,8 @@ package com.ithopeschool.projectbe.domain.ai;
 
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -21,11 +23,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class AiController {
 
   private final ChecklistService checklistService;
+  private final FirstStepService firstStepService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
   @PostMapping("/checklist")
   public ChecklistResponse checklist(@Valid @RequestBody ChecklistRequest request) {
     return checklistService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "첫 준비 행동: 체크리스트 첫 항목 → 아주 작은 행동 하나 ([더 작게] 는 level 1·2 · 저장 안 함 · 못 만들면 step: null · 토큰 필요)")
+  @PostMapping("/first-step")
+  public FirstStepResponse firstStep(@Valid @RequestBody FirstStepRequest request) {
+    return firstStepService.suggest(request);
   }
 }
