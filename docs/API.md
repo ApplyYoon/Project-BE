@@ -1172,6 +1172,128 @@ Authorization: Bearer 로그인할 때 받은 토큰
 | 401  | `UNAUTHORIZED`     | 로그인하지 않음 / 토큰이 틀림                                               | `"로그인이 필요해요"`           |
 | 404  | `NOT_FOUND`        | 없는 카드 번호, **또는 남의 카드** (둘은 구별하지 않습니다)                 | `"카드를 찾을 수 없어요"`       |
 
+### 미루기 · 실패 · 사후 입력
+
+카드 하루치(그 카드 · 그 날짜)를 사람이 직접 처리합니다. **모든 주소가 로그인이 필요합니다.** (이슈 #225 · 최종 기획서 「4.4 타이머」 · FE #400 · #402)
+한도와 기한은 **서버가 검사**합니다. 화면에서만 막으면 조작할 수 있기 때문입니다. 남의 카드 번호를 보내면 404 입니다.
+
+| 주소                                                    | 하는 일                                                  |
+| ------------------------------------------------------- | -------------------------------------------------------- |
+| `GET /api/v1/cards/{id}/postpone-limit?date=YYYY-MM-DD`  | 그 카드 · 그 날짜를 몇 번 더 미룰 수 있는지 (`[미루기 (n회 남음)]` 버튼) |
+| `POST /api/v1/cards/{id}/postpone`                       | 미루기 — 이유 100자 이상 + 새 날짜 · 시각                 |
+| `POST /api/v1/cards/{id}/fail`                           | 실패로 기록 — 원인 태그 필수                              |
+| `POST /api/v1/cards/{id}/late-entry`                     | 사후 입력 — 끝난 뒤에 세션을 적음 (`mode: "selfReport"`)   |
+| `GET /api/v1/card-day-marks?from=YYYY-MM-DD&to=YYYY-MM-DD` | 기간 안의 내 미루기 · 실패 표시 (31일까지)                 |
+
+표시 하나의 모양 (FE `cardResult.ts` 의 `CardDayMark` 가 이 `mark` 를 씁니다)
+
+```json
+{ "id": "3", "cardId": "7", "date": "2026-10-12", "mark": "postponed", "reason": "…(100자 이상)…",
+  "cause": null, "newDate": "2026-10-13", "newStartTime": "20:00", "createdAt": 1790000000000 }
+```
+
+| 필드           | 무엇                                                                                   |
+| -------------- | -------------------------------------------------------------------------------------- |
+| `date`         | 어느 날의 카드인지 (반복 카드는 한 장이라 날짜로 구별)                                 |
+| `mark`         | `postponed`(미루기) / `failed`(실패). 휴식은 카드가 아니라 하루에 붙어서 [휴식 처리](#휴식-처리) 에 따로 있습니다 |
+| `reason`       | 사유 글. **위기 표현이 감지된 글은 저장하지 않아서 `null`** 입니다                       |
+| `cause`        | 실패 원인 (실패일 때만). `tired` `event` `phone` `tooMuch` `unwilling` `sick` `procrastinated`(미루다 보니) `etc` |
+| `newDate` · `newStartTime` | 미룬 새 날짜 · 시각 (미루기일 때만)                                          |
+
+**같은 카드 · 같은 날짜에는 한 번만** 처리할 수 있습니다. (미루고 다시 실패로 기록하거나 두 번 미룰 수 없음 → 409)
+
+#### 미루기
+
+`POST /api/v1/cards/7/postpone` — **응답 201**
+
+```json
+{ "date": "2026-10-12", "reason": "(왜 미루는지 + 어떻게 할지, 앞뒤 공백을 뺀 100 ~ 500자)", "newDate": "2026-10-13", "newStartTime": "20:00" }
+```
+
+```json
+{ "mark": { 표시 하나 }, "postponesLeft": 4, "safetyBrake": false }
+```
+
+- **한도** (서버 상수 `PostponeRule`, 숫자는 출발값)
+
+  | 카드 | 한도 | 세는 법 |
+  | --- | --- | --- |
+  | 반복 카드 | 카드별 **한 달에 5회** | 미루는 날짜(`date`)가 있는 달(1일 ~ 말일)의 미루기 표시 수 |
+  | 1회성 카드 | 장당 **2회** | 그 카드의 미루기 표시 수 (기간 상관없이) |
+  | 절대 카드(`priority: "absolute"`) | **0회** | 미루기가 없습니다 |
+
+- **1회성 카드는 카드 자체가 새 날짜 · 시각으로 옮겨집니다.** (원래 날짜에는 "미룸" 표시가 남음) 반복 카드는 카드는 그대로이고 표시에만 새 날짜 · 시각이 남습니다.
+- 새 날짜 · 시각은 **지금보다 뒤**여야 합니다. (00:00 ~ 03:59 는 그 날짜의 밤 = 달력으로 다음 날 새벽. FE `getPlannedStartAt` 과 같음)
+- `postponesLeft` 는 이번 미루기를 센 뒤에 남은 횟수입니다.
+- **`safetyBrake`**: 이유 글에 위기 표현(#56, `CrisisText`)이 있으면 `true` 입니다. 미루기는 그대로 저장하되 이유 글은 남기지 않고, FE 는 도움 연결 안내(1388 · 109)를 먼저 보여 줍니다. (말로 계획 세우기의 `showHelp` 와 같은 뜻)
+- ⚠️ "관리 4단계에서는 미루기가 잠긴다" 는 아직 없습니다. 지금 관리 단계가 서버에 저장되지 않기 때문입니다.
+
+`GET /api/v1/cards/7/postpone-limit?date=2026-10-12` — **응답 200** `{ "postponesLeft": 2, "blockReason": null }` · 절대 카드는 `{ "postponesLeft": 0, "blockReason": "절대 카드는 미룰 수 없어요" }`
+
+#### 실패로 기록
+
+`POST /api/v1/cards/7/fail` — **응답 201** `{ "mark": { 표시 하나 }, "postponesLeft": null, "safetyBrake": false }`
+
+```json
+{ "date": "2026-10-12", "cause": "procrastinated", "reason": "유튜브 보다가 시간이 지났다" }
+```
+
+- `cause` 필수. 위 8가지 중 하나입니다. (체크인의 못 채운 이유와 같은 값에 **'미루다 보니'(`procrastinated`)** 를 더했습니다)
+- `reason` 선택, 500자까지. 위기 표현이 있으면 `safetyBrake: true` 이고 글은 남기지 않습니다.
+- **아직 오지 않은 날**(새벽 4시 기준 오늘보다 뒤)은 400 입니다.
+- 원인의 성격(내 쪽 / 어쩔 수 없음 / 계획 과다·피곤 / 모름)은 서버 상수 `MissReason.causeKind()` 에 있습니다. FE `careStage.ts` 의 `getCauseKind` 와 같습니다. (폰·SNS · 하기 싫음 · 미루다 보니 = 내 쪽)
+
+#### 사후 입력
+
+`POST /api/v1/cards/7/late-entry` — **응답 201**: 저장된 공부 기록 하나 ([공부 기록](#공부-기록) 의 모양, `mode: "selfReport"`)
+
+```json
+{ "date": "2026-10-12", "startedAt": 1790000000000, "endedAt": 1790003000000,
+  "endReport": { "checked": { "i1": 1790003000000 }, "proof": { "link": "https://…" } } }
+```
+
+| 규칙 | 안 맞으면 |
+| --- | --- |
+| 그날 하는 카드 | 400 `"그날 하는 카드가 아니에요"` |
+| `startedAt` 이 그날(새벽 4시 기준) 안 · 끝이 시작보다 뒤 | 400 |
+| **카드 예정 시간 이하** (60분 카드면 시작 ~ 끝이 60분 이하) | 400 `"카드 예정 시간(60분)보다 길게 적을 수 없어요"` |
+| **미리 만든 카드** (카드를 만든 시각이 그날 예정 시작보다 앞) | 409 `"미리 만들어 둔 카드에만 사후 입력할 수 있어요"` |
+| **카드 시간이 지난 뒤, 그날 다음 통화 전까지** | 409 `"사후 입력은 카드 시간이 지난 뒤, 그날 다음 통화 전까지만 할 수 있어요"` |
+| 공부 기록 저장 규칙 (1분 이상 · 미래 아님 · 겹치지 않음) | 400 / 409 |
+
+- **"다음 통화 전까지"** 는 이렇게 정했습니다 (`LateEntryRule`): ① 지금이 그 카드의 날(새벽 4시 기준)이고 ② 그날 **카드 예정 시작 뒤에 시작한 AI 통화가 없을 때**. 시작 시각이 없는 옛 카드는 그날 04:00 를 시작으로 봅니다.
+- 저장되는 기록은 **`mode: "selfReport"`**, 과목 없음(`""`), 일시정지 0번, 목표 시간 = 카드 길이입니다.
+- **증빙(`endReport.proof`)이 있어도 `mode` 는 `selfReport`** 입니다. 증빙이 있으면 일반 실행과 똑같이, 없으면 실행률 50% 로 계산하는 일은 FE `cardResult.getRunRate` 가 합니다.
+- 일반 저장 주소(`POST /api/v1/study-sessions`)는 `mode: "selfReport"` 를 받지 않습니다. 사후 입력은 이 주소로만 보냅니다.
+
+#### 표시 목록
+
+`GET /api/v1/card-day-marks?from=2026-10-01&to=2026-10-31` — **응답 200**: 표시의 배열 (날짜 순). 없으면 `[]`. from ~ to 는 둘 다 포함, **31일까지**.
+
+#### 에러 (공통)
+
+| 상태 | `code` | 언제 | `message` 예시 |
+| --- | --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | 필수 칸이 없음 / 이유가 100자 미만이거나 500자 초과 / 새 시각 모양이 틀림 / 그날 하는 카드가 아님 / 새 시각이 지금보다 앞 / 원인이 8가지가 아님 / 아직 오지 않은 날의 실패 / 사후 입력 시각·길이가 틀림 / 기간이 31일 초과 | `"왜 미루는지와 어떻게 할지를 100자 이상 500자 이하로 적어 주세요"` · `"그날 하는 카드가 아니에요"` · `"새 시각은 지금보다 뒤로 정해 주세요"` · `"실패 원인을 골라 주세요"` |
+| 401 | `UNAUTHORIZED` | 로그인하지 않음 | `"로그인이 필요해요"` |
+| 404 | `NOT_FOUND` | 없는 카드, **또는 남의 카드** | `"카드를 찾을 수 없어요"` |
+| 409 | `CONFLICT` | 미루기 한도를 넘음 / 이미 처리한 날 / 사후 입력 기한이 지남 / 나중에 만든 카드 / 이미 있는 기록과 겹침 | `"절대 카드는 미룰 수 없어요"` · `"이번 달에는 이 카드를 더 미룰 수 없어요 (반복 카드는 한 달에 5번까지)"` · `"이 카드는 더 미룰 수 없어요 (1회성 카드는 2번까지)"` · `"이미 미루거나 실패로 기록한 날이에요"` |
+
+### 휴식 처리
+
+불가항력(번아웃 · 아픔)으로 못 한 날을 **지난 뒤에** "휴식" 으로 처리합니다. 미리 "오늘 쉴게" 는 없습니다. **두 주소 모두 로그인이 필요합니다.** (이슈 #225 · 최종 기획서 「4.5 상담」 휴식 처리 · FE #407)
+휴식한 날의 카드는 실패 집계와 의지력 계산에서 빠집니다. (FE `cardResult.ts` 의 `rest`)
+
+| 주소 | 하는 일 |
+| --- | --- |
+| `POST /api/v1/rest-days/{date}` | 그날을 휴식으로 처리 — **응답 201** `{ "date": "2026-10-12", "createdAt": 1790000000000 }` |
+| `GET /api/v1/rest-days?from=YYYY-MM-DD&to=YYYY-MM-DD` | 기간 안의 내 휴식 날 (날짜 순, 31일까지) — **응답 200** `[{ "date", "createdAt" }]`, 없으면 `[]` |
+
+- **지난 날과 오늘만** 됩니다. (오늘은 새벽 4시 기준) 내일은 400 `"휴식 처리는 지난 날이나 오늘만 할 수 있어요"`
+- **한 달(1일 ~ 말일)에 4번까지**입니다. 넘으면 409 `"휴식 처리는 한 달에 4번까지예요"` (서버 상수 `RestDayRule.MONTHLY_LIMIT`)
+- 같은 날을 다시 처리하면 409 `"이미 휴식으로 처리한 날이에요"`
+- 주소의 `{date}` 모양이 틀리면(`2026-13-01`) 400 입니다.
+
 ### 공부 기록
 
 타이머로 한 번 잰 기록(시작 ~ 정지)을 저장하고, 기간별로 보고, 오늘 순공시간과 계획별 실제 시간을 셉니다. **네 주소 모두 로그인이 필요합니다.** (이슈 #13 · #14 · FE `StudySession` 타입)
@@ -1230,7 +1352,7 @@ Authorization: Bearer 로그인할 때 받은 토큰
 | `pausedMs`      | 일시정지해 있던 시간의 합(밀리초). 없으면 `0`. **순공 = `endedAt − startedAt − pausedMs`** |
 | `planId`        | 어느 계획을 하려고 켠 타이머인지 (계획의 `id`). 계획 없이 켰으면 `null`                  |
 | `targetMinutes` | 시작할 때 약속한 목표 시간(분). 목표 없이 켰으면 `null`                                  |
-| `stopReason`    | 목표 전에 그만둔 이유. 체크인의 못 채운 이유 7가지와 같은 글자 (`tired` `event` `phone` `tooMuch` `unwilling` `sick` `etc`). 안 골랐으면 `null` |
+| `stopReason`    | 목표 전에 그만둔 이유. 체크인의 못 채운 이유 8가지와 같은 글자 (`tired` `event` `phone` `tooMuch` `unwilling` `sick` `procrastinated` `etc`). 안 골랐으면 `null` |
 | `kind`          | **소문자** `study`(공부) / `play`(노는 기록)                                             |
 
 **카드 기준으로 넓힌 칸** (이슈 #224 · 최종 기획서 「4.4 타이머」 · FE `StudySession`). 옛 기록에는 비어 있습니다.
@@ -1298,10 +1420,10 @@ Authorization: Bearer 로그인할 때 받은 토큰
 | `pausedMs`      | 선택 (안 보내면 `0`). **0 이상이고 `endedAt − startedAt` 보다 작아야** 합니다                     |
 | `planId`        | 선택. 보내면 **내 계획**이어야 합니다 (남의 계획·없는 계획은 404). `""` 는 안 보낸 것과 같습니다 |
 | `targetMinutes` | 선택. 1 ~ 600 (분)                                                                                |
-| `stopReason`    | 선택. 위 7가지 글자 중 하나                                                                       |
+| `stopReason`    | 선택. 위 8가지 글자 중 하나                                                                       |
 | `kind`          | 선택. `"study"` / `"play"` (소문자). 안 보내면 `"study"`                                          |
 | `cardId`        | 선택. 보내면 **내 카드**여야 합니다 (남의 카드·없는 카드는 404). 숫자만, 18자리까지. `""` 는 안 보낸 것과 같습니다 |
-| `mode`          | 선택. `"normal"` / `"offline"`. 안 보내면 `"normal"`. **`"selfReport"` 는 여기서 받지 않습니다** (사후 입력은 기한·한도가 있어서 따로 받습니다) |
+| `mode`          | 선택. `"normal"` / `"offline"`. 안 보내면 `"normal"`. **`"selfReport"` 는 여기서 받지 않습니다** (사후 입력은 기한·한도가 있어서 [사후 입력](#사후-입력) 주소로만 받습니다) |
 | `pauses`        | 선택. 200개까지. 한 줄은 `startedAt` · `endedAt`(필수, **기록의 시작 ~ 끝 사이**) · `tag`(필수, 위 7가지) · `note`(100자까지). **보내면 `pauseCount` · `pausedMs` 는 보낸 값 대신 이 목록으로 계산해 저장합니다** (횟수 = 줄 수, 시간 = 각 줄 `max(0, 끝 − 시작)` 의 합. FE `summarizePauses` 와 같음) |
 | `endedEarly`    | 선택. 안 보내면 `false`                                                                           |
 | `endReport`     | 선택. 보내면 "팝업에 답했음" 으로 남습니다 (빈 `{}` 도). `checked` 는 20개까지 · 항목 `id` 1 ~ 40자 · 시각은 2020년 이후이고 미래가 아님. `shortfallReason` · `withWhat` · `goodReasons`(6개까지) 는 위 값 중 하나. `proof.link` · `proof.summary` 는 300자까지 (`""` 는 없는 것) |
@@ -1322,8 +1444,8 @@ Authorization: Bearer 로그인할 때 받은 토큰
 | 400  | `VALIDATION_ERROR` | 끝 시각이 미래                                                         | `"미래 시각은 저장할 수 없어요"`             |
 | 400  | `VALIDATION_ERROR` | 일시정지 시간이 기록 길이와 같거나 김                                  | `"일시정지 시간은 기록 길이보다 짧아야 해요"` |
 | 400  | `VALIDATION_ERROR` | 순공이 1분 미만                                                        | `"1분 미만의 기록은 저장하지 않아요"`        |
-| 400  | `VALIDATION_ERROR` | 종류가 study·play 가 아님 / 그만둔 이유가 7가지가 아님 / 공부 기록인데 과목도 카드도 없음 | `"기록 종류는 study, play 중에서 골라 주세요"` · `"공부 기록은 과목이나 카드를 골라 주세요"` |
-| 400  | `VALIDATION_ERROR` | (카드 칸) 카드 번호 모양이 틀림 / 방법이 normal·offline 이 아님 / 사후 입력을 보냄 / 일시정지가 기록 밖이거나 이유가 7가지가 아님 / 종료 팝업 값이 정해진 값이 아님 / 체크·메모 시각이 말이 안 됨 / 노는 종류가 6가지가 아님 | `"카드 번호가 올바르지 않아요"` · `"세션 방법은 normal, offline 중에서 골라 주세요"` · `"사후 입력(selfReport)은 여기서 저장할 수 없어요"` · `"일시정지 시각은 기록의 시작과 끝 사이여야 해요"` · `"같이 한 것은 music, video, none 중에서 골라 주세요"` · `"체크한 시각이 올바르지 않아요"` |
+| 400  | `VALIDATION_ERROR` | 종류가 study·play 가 아님 / 그만둔 이유가 8가지가 아님 / 공부 기록인데 과목도 카드도 없음 | `"기록 종류는 study, play 중에서 골라 주세요"` · `"공부 기록은 과목이나 카드를 골라 주세요"` |
+| 400  | `VALIDATION_ERROR` | (카드 칸) 카드 번호 모양이 틀림 / 방법이 normal·offline 이 아님 / 사후 입력을 보냄 / 일시정지가 기록 밖이거나 이유가 7가지가 아님 / 종료 팝업 값이 정해진 값이 아님 / 체크·메모 시각이 말이 안 됨 / 노는 종류가 6가지가 아님 | `"카드 번호가 올바르지 않아요"` · `"세션 방법은 normal, offline 중에서 골라 주세요"` · `"사후 입력은 카드의 사후 입력(late-entry)으로 보내 주세요"` · `"일시정지 시각은 기록의 시작과 끝 사이여야 해요"` · `"같이 한 것은 music, video, none 중에서 골라 주세요"` · `"체크한 시각이 올바르지 않아요"` |
 | 401  | `UNAUTHORIZED`     | 로그인하지 않음 / 토큰이 틀림                                          | `"로그인이 필요해요"`                        |
 | 404  | `NOT_FOUND`        | `subjectId` 가 없는 과목, **또는 남의 과목**                            | `"과목을 찾을 수 없어요"`                    |
 | 404  | `NOT_FOUND`        | `planId` 가 없는 계획, **또는 남의 계획**                               | `"계획을 찾을 수 없어요"`                    |
@@ -2055,7 +2177,7 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 | `selfReportedWeaknesses`     | 선택. 테스트 마지막에 고른 "내가 생각하는 나의 약점" 칩 이름. 예: `["GAME", "SLEEP"]` (`GAME` `PHONE` `VIDEO` `SLEEP` `LAZY` `DELAY` `FOCUS` `FRIENDS` `TIRED` `MOOD` `PLANNING` 중). "기타" 에 직접 쓴 글은 받지 않습니다 |
 | `card.yesterdayStudyMinutes` | 어제의 순공시간(분). 0 ~ 1440                                                          |
 | `card.yesterdayPlanMinutes`  | 어제 계획의 목표 시간 합계(분). 계획이 없었으면 `0`                                    |
-| `card.yesterdayMissReason`   | 어제 못 채운 이유. `tired` `event` `phone` `tooMuch` `unwilling` `sick` `etc` 중 하나 (FE 의 `MissReason`) |
+| `card.yesterdayMissReason`   | 어제 못 채운 이유. `tired` `event` `phone` `tooMuch` `unwilling` `sick` `procrastinated` `etc` 중 하나 (FE 의 `MissReason`) |
 | `card.todayPlanCount`        | 오늘 계획의 개수. 0 ~ 50                                                               |
 | `card.todayPlanMinutes`      | 오늘 계획의 목표 시간 합계(분)                                                         |
 | `card.todayFirstStart`       | 오늘 첫 계획의 시작 시각 `'HH:MM'`                                                     |
@@ -2189,7 +2311,7 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 | `bias`            | 대답에서 보인 생각 습관. 뚜렷하지 않았으면 `null`. 이름은 **생각에 붙이는 이름**입니다 ("너는 ~형" 이 아님) |
 | `bias.evidence`   | 그 습관이 보인 근거 한 줄 (학생 말의 요지). 없으면 `null`                                 |
 | `bias.solution`   | 알아차린 뒤 해 볼 행동 하나 (목록에 정해 둔 문장. AI 가 지어내지 않음)                    |
-| `missReason`      | 어제 못 채운 이유. 학생 카드와 같은 글자 (`tired` `event` `phone` `tooMuch` `unwilling` `sick` `etc`) |
+| `missReason`      | 어제 못 채운 이유. 학생 카드와 같은 글자 (`tired` `event` `phone` `tooMuch` `unwilling` `sick` `procrastinated` `etc`) |
 | `promiseIf` · `promiseThen` | 오늘의 약속 "만약 ~하면 → ~한다". 둘 다 있을 때만 채움                       |
 | `promiseKept`     | 지난 약속을 지켰다고 했는지. 이야기가 없었으면 `null`                                    |
 | `mood` · `expectedMinutes` | 말한 기분(1~5)과 오늘 공부하겠다고 한 시간(분). 통화 기록에는 없고, **그날 체크인**에 남습니다 |
@@ -2647,7 +2769,7 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 | --- | --- |
 | `from`, `to` | 계산한 기간 (둘 다 포함). `to` 는 **어제**입니다 |
 | `missedDayCount` | 기간 안에서 계획을 못 채운 날 수 (이유를 안 고른 날도 셈) |
-| `reasons[].reason` | 원인 글자. 체크인의 `missReason` 과 같은 글자 (`tired` `event` `phone` `tooMuch` `unwilling` `sick` `etc`) |
+| `reasons[].reason` | 원인 글자. 체크인의 `missReason` 과 같은 글자 (`tired` `event` `phone` `tooMuch` `unwilling` `sick` `procrastinated` `etc`) |
 | `reasons[].dayCount` | 그 원인이 나온 못 채운 날 수 |
 | `reasons[].weekdayCounts` | 요일별 날 수. 7칸, **0번째 = 월요일** … 6번째 = 일요일 |
 | `reasons[].averageRecoveryDays` | 평균 회복 속도(일, 소수 첫째 자리). 회복한 날이 없으면 `null` |
