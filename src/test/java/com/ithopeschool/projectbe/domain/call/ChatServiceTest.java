@@ -18,6 +18,7 @@ import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.safety.HelpLine;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -54,6 +55,7 @@ class ChatServiceTest {
   private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
   // 대본을 기억하는 곳은 진짜 코드를 씁니다.
   private final ChatScriptStore chatScriptStore = new ChatScriptStore(clock);
+  private final SafetyService safetyService = mock(SafetyService.class);
   private final ChatService service =
       new ChatService(
           currentUserProvider,
@@ -63,6 +65,7 @@ class ChatServiceTest {
           callRecordService,
           callRecordRepository,
           chatScriptStore,
+          safetyService,
           clock);
 
   @BeforeEach
@@ -185,6 +188,8 @@ class ChatServiceTest {
     assertThat(chat.isFinished()).isTrue();
     verify(callRecordRepository).save(chat);
     assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).isEmpty();
+    // 통화 마무리와 같은 보호 조치(관리 한도 0 · 회복 메시지)를 합니다.
+    verify(safetyService).activate(USER_ID);
   }
 
   @Test

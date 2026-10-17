@@ -9,6 +9,7 @@ import com.ithopeschool.projectbe.domain.care.ToneGuide;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.safety.CrisisText;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -56,6 +57,8 @@ public class ChatService {
   private final CallRecordService callRecordService;
   private final CallRecordRepository callRecordRepository;
   private final ChatScriptStore chatScriptStore;
+  // 위기 표현이 감지되면 통화 마무리와 같은 보호 조치를 합니다. (관리 한도 0 · 앱 잠금 끄기 · 회복 메시지, 이슈 #56)
+  private final SafetyService safetyService;
   private final Clock clock;
 
   // 채팅을 엽니다. 요청 모양은 통화 시작(POST /realtime/session)과 같습니다.
@@ -100,6 +103,7 @@ public class ChatService {
       chat.finishWithCrisis(clock.instant());
       callRecordRepository.save(chat);
       chatScriptStore.remove(chatId);
+      safetyService.activate(userId);
       return ChatReplyResponse.crisis(chatId, CRISIS_REPLY);
     }
 
