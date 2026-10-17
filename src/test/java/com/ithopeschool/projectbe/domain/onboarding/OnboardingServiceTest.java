@@ -107,7 +107,7 @@ class OnboardingServiceTest {
   // ---- 저장(PUT) ----
 
   @Test
-  @DisplayName("꼭 있어야 하는 네 개만 보내도 저장되고, 나머지는 null · 목록은 [] 이다")
+  @DisplayName("학년 · 목표 시험 · 시험 날짜 · 하루 공부 시간만 보내도 저장되고, 나머지는 null · 목록은 [] 이다")
   void savesOnlyRequired() {
     OnboardingResponse response = service.save(put(""));
 
@@ -124,6 +124,24 @@ class OnboardingServiceTest {
     assertThat(response.pastFailureCauses()).isEmpty();
     assertThat(response.firstSelfAwareness())
         .isEqualTo(new OnboardingResponse.SelfAwareness(null, null, null, 180));
+  }
+
+  @Test
+  @DisplayName("새 온보딩처럼 목표 시험 · 시험 날짜 없이 학년 · 하루 공부 시간 · 취침/기상 · 아침형/밤형만 보내도 저장된다")
+  void savesNewOnboardingWithoutExam() {
+    OnboardingResponse response =
+        service.save(
+            JSON.readValue(
+                "{\"grade\":\"고2\",\"targetExam\":\" \",\"dailyAvailableMinutes\":120,"
+                    + "\"wakeUpTime\":\"07:00\",\"sleepTime\":\"23:30\",\"chronotype\":\"night\"}",
+                OnboardingSaveRequest.class));
+
+    assertThat(rows).hasSize(1);
+    assertThat(rows.getFirst().getTargetExam()).isNull();
+    assertThat(rows.getFirst().getTargetExamDate()).isNull();
+    assertThat(response.targetExam()).isNull();
+    assertThat(response.sleepTime()).isEqualTo("23:30");
+    assertThat(response.chronotype()).isEqualTo("night");
   }
 
   @Test
