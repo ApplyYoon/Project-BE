@@ -157,6 +157,8 @@ class LoginRequiredFlowTest {
               "{\"source\":\"manual\"}"),
           new Api(
               "GET", "/api/v1/checkins", "/api/v1/checkins?from=2026-10-01&to=2026-10-07", null),
+          new Api(
+              "GET", "/api/v1/checkins/today/questions", "/api/v1/checkins/today/questions", null),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
