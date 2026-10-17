@@ -64,7 +64,10 @@ erDiagram
     users ||--o{ setting_changes : "user_id"
     users ||--o{ gpt_usages : "user_id"
     call_records ||--o| gpt_usages : "call_record_id"
+    users ||--o{ insights : "user_id"
+    insights ||--o{ insight_evidence_dates : "insight_id"
     users ||--o{ checkins : "user_id"
+    checkins ||--o{ checkin_emotions : "checkin_id"
     users ||--o{ reflection_prescriptions : "user_id"
 
     users {
@@ -135,6 +138,7 @@ erDiagram
         bigint user_id FK "이 통화를 한 사람"
         date call_date "통화한 날 (새벽 4시에 날짜가 바뀜)"
         timestamptz started_at "통화를 시작한 시각 (임시 키를 받은 시각)"
+        varchar channel "음성 통화(VOICE)인지 상담 채팅(CHAT)인지 (이 칸이 생기기 전 기록은 VOICE)"
         varchar asked_bias "이번 통화에서 확인하려던 생각 습관 (PLANNING_FALLACY, FUTURE_SELF, WHAT_THE_HELL, EMOTIONAL_REASONING, EXTERNAL_BLAME, ALL_OR_NOTHING, MORAL_LICENSING, OVERGENERALIZING 중 하나, 없으면 비어 있음)"
         varchar asked_question_key "고른 기본 질문의 이름 (예: PLANNING_FALLACY-1)"
         timestamptz finished_at "통화를 마무리한 시각 (마무리 전이면 비어 있음)"
@@ -275,7 +279,7 @@ erDiagram
     gpt_usages {
         bigint id PK "기록 한 줄을 구분하는 고유 번호 (나중에 부른 것일수록 큼)"
         bigint user_id FK "GPT 를 부르게 한 사람"
-        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE, CHECKLIST, ASSIST 중 하나)"
+        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE, CHAT, CHECKLIST, ASSIST 중 하나)"
         timestamptz called_at "부른 시각 (통화는 시작한 시각)"
         bigint call_record_id FK "어느 통화인지 (통화일 때만, 그 외엔 비어 있음)"
         int call_seconds "통화한 시간(초) (통화가 아니거나 아직 안 끝났으면 비어 있음)"
@@ -295,6 +299,10 @@ erDiagram
         varchar promise_then "오늘의 약속 ~한다 (100자까지), 비어도 됨"
         boolean suggestion_kept "개선안을 실천했는지, 비어도 됨"
     }
+    checkin_emotions {
+        bigint checkin_id FK "어느 체크인의 감정인지"
+        varchar emotion "하루 첫 태그에서 고른 감정 (STUCK, ANXIOUS, TIRED, ANNOYED, CALM, MOTIVATED 중 하나)"
+    }
     reflection_prescriptions {
         bigint id PK "처방을 구분하는 고유 번호 (나중에 내린 것일수록 큼)"
         bigint user_id FK "처방을 받은 사람"
@@ -312,6 +320,19 @@ erDiagram
         timestamptz agreed_at "동의한 시각"
         varchar text_version "동의한 문구의 버전 (20자까지, 지금은 v1)"
         boolean age_confirmed_over14 "만 14세 이상 확인 (true 면 확인함, 비어 있으면 확인받은 적 없음)"
+    }
+    insights {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 인사이트의 주인"
+        varchar sentence "카드에 보여 준 한 문장 (200자까지)"
+        varchar insight_key "인사이트의 종류, 같은 발견이면 같은 값 (예: morning-vs-night)"
+        boolean hypothesis "5일 미만이라 가설로 보여 줬는지"
+        date shown_date "보여 준 날"
+        varchar reaction "누른 반응 (SURPRISED, ALREADY_KNEW, WRONG 중 하나), 누르기 전에는 비어 있음"
+    }
+    insight_evidence_dates {
+        bigint insight_id FK "어느 인사이트의 근거인지"
+        date evidence_date "근거가 된 날짜 (한 인사이트 안에서 중복 불가)"
     }
 ```
 
@@ -374,7 +395,10 @@ erDiagram
 | `setting_changes` | 설정 칸 하나를 한 번 바꾼 것이 한 줄 (바꾼 시각, 칸 이름, 이전 값, 새 값) | #22 |
 | `gpt_usages` | GPT 를 한 번 부른 것이 한 줄 (종류, 부른 시각, 통화 번호·통화 시간, 대략적인 비용). 하루 한도는 이 기록을 세서 지킴 | #33 |
 | `checkins` | 한 사람의 하루치 체크인이 한 줄 (컨디션, 기분, 어제 못 채운 이유와 기타 글, 예상 순공시간, 약속 두 칸, 개선안 실천 여부, 어디서 했는지). 같은 날을 다시 보내면 덮어씀. 누구·날짜·source 말고는 다 비어도 됨 | #24 |
+| `checkin_emotions` | 체크인 하나에서 고른 감정 태그가 한 줄씩 (`@ElementCollection`). 안 골랐으면 줄이 없음 | #220 |
 | `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
+| `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
+| `insight_evidence_dates` | 인사이트 하나의 근거 날짜가 한 줄씩 (`@ElementCollection`). 날짜로 찾기 쉽게 날짜로 저장 | #43 · #41 |
 
 > `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
 > 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.
@@ -397,6 +421,7 @@ erDiagram
 > - **대화 원문(자막)과 녹음은 저장하지 않습니다.** 요약과 정해진 분류값만 남깁니다. 위기 표현이 감지된 통화는 내용 칸을 비우고 `crisis_detected` 만 남깁니다.
 > - 다음 통화는 최근 2주 기록을 읽어 자주 보인 생각 습관을 다시 확인하고, 지난 약속을 지켰는지 묻습니다. 최근 7일 안에 위기 표현이 있었으면 위로하는 통화로 합니다.
 > - 체크인(#24) 테이블과 겹치는 칸(못 채운 이유·약속)이 있습니다. 체크인 테이블이 생기면 합칠지 정해 주세요.
+> - 2026-10-17 에 `channel` 을 더했습니다. 상담 채팅(#238)은 "글로 하는 통화" 라서 같은 테이블에 남기고 이 칸으로만 구분합니다. 채팅도 대화 원문은 저장하지 않습니다.
 
 > `thinking_tests` 와 딸린 테이블 두 개는 2026-10-15 에 같은 기능(인지편향 잡기)에서 AI 가 만들었습니다.
 > - **문장별 답은 저장하지 않고 습관 8개의 평균만** 저장합니다. 테스트 문장은 앞으로 바뀔 수 있어서(선생님 말씀), 문장이 바뀌어도 테이블은 그대로 쓰게 하려는 것입니다.
@@ -441,6 +466,11 @@ erDiagram
 > - **통화 번호(`call_record_id`)** 는 "통화가 끝났을 때 어느 줄을 채울지" 알려고 더했습니다. 같은 날 통화가 여러 번이면 이것 없이는 구별할 수 없습니다.
 > - **비용은 원 단위 정수**의 어림값입니다. (읽기 쉬워서 학생이 정함) 환산 기준은 `application.yml` 의 `cost-won-*` 설정에 있습니다.
 > - 종류는 지금 GPT 를 부르는 세 곳(통화 · 통화 요약 · 코치)만 있습니다. 인사이트 · 개선안 · 일기 분석이 생기면 하나씩 더합니다.
+
+> `checkin_emotions` 는 2026-10-17 에 이슈 #220(최종 기획서 4.2 「홈」의 하루 첫 태그)에서 **AI 가 만든 딸린 테이블**입니다. (체크인은 선생님이 AI 에게 맡긴 범위)
+> - 하루 첫 태그 = 컨디션(1~5) + 감정 태그 여러 개. 감정은 한 체크인에 여러 개라서 `thinking_test_weaknesses` 처럼 딸린 테이블에 담았습니다. 엔티티는 `CheckIn` 하나입니다.
+> - 감정 이름은 이슈에 적힌 6개(`EmotionTag`)이고, DB 에도 이름 그대로 저장합니다.
+> - 감정 태그를 보내면 그날의 감정이 **전부 바뀝니다.** 다른 칸과 달리 **안 보내면 그대로 둡니다**(감정 태그를 모르는 화면이 다시 보내도 지워지지 않게). 체크인 줄이 지워지면(탈퇴) 같이 지워집니다.
 
 > `reflection_prescriptions` 는 2026-10-17 에 **선생님이 "FE·BE·테이블까지 AI 가 만들라" 고 맡긴 기능**(통화 기록·회고·성찰)에서 AI 가 만든 테이블입니다. (이슈 #61)
 > - **처방 한 번 = 한 줄.** 언제 처방하는지는 `ReflectionRule` 과 docs/API.md "성찰일기 처방" 에 있습니다.
