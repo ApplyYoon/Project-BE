@@ -40,7 +40,9 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 // ⚠️ 새 API 를 만들면 이 테스트가 실패합니다. 아래 LOGIN_REQUIRED 표에 한 줄을 더해 주세요.
 //    그 한 줄이 "이 API 는 토큰 없이 부르면 401 이다" 를 확인해 줍니다.
 //    401 이 안 나오면 Service 에서 currentUserProvider.getCurrentUserId() 를 부르지 않은 것입니다. (CLAUDE.md 3장)
-@SpringBootTest
+// 다른 테스트의 create-drop이 이 테스트의 테이블을 지우지 않도록 DB 이름을 분리합니다.
+@SpringBootTest(
+    properties = "spring.datasource.url=jdbc:h2:mem:login-required-flow;MODE=PostgreSQL")
 @AutoConfigureMockMvc
 class LoginRequiredFlowTest {
 
@@ -242,6 +244,7 @@ class LoginRequiredFlowTest {
   private static final List<String> PUBLIC =
       List.of(
           "GET /api/v1/health",
+          "GET /api/v1/ping",
           "POST /api/v1/auth/signup",
           "POST /api/v1/auth/login",
           "POST /api/v1/auth/google",
