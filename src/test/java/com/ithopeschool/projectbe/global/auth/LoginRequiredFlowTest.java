@@ -337,8 +337,13 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/classify-text",
               "{\"kind\":\"memo\",\"text\":\"문자 보내기\"}"),
           // 즉석 카드 (내 과목·최근 카드 제목을 봅니다. 이슈 #237)
+          new Api("POST", "/api/v1/ai/quick-card", "/api/v1/ai/quick-card", "{\"text\":\"수학 하자\"}"),
+          // 말로 설정 바꾸기 (내 관리 설정을 봅니다. 바꾸지는 않습니다. 이슈 #237)
           new Api(
-              "POST", "/api/v1/ai/quick-card", "/api/v1/ai/quick-card", "{\"text\":\"수학 하자\"}"));
+              "POST",
+              "/api/v1/ai/settings-from-text",
+              "/api/v1/ai/settings-from-text",
+              "{\"text\":\"아침엔 알림 꺼 줘\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

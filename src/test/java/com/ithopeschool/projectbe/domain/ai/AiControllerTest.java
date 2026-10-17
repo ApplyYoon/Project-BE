@@ -15,6 +15,7 @@ import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.SettingsFromTextResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.TextLabelResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -40,6 +41,7 @@ class AiControllerTest {
   @MockitoBean private ExamNextStepService examNextStepService;
   @MockitoBean private TextLabelService textLabelService;
   @MockitoBean private QuickCardService quickCardService;
+  @MockitoBean private SettingsFromTextService settingsFromTextService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -336,5 +338,49 @@ class AiControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("한 줄은 100자 이하로 적어 주세요"));
     verifyNoInteractions(quickCardService);
+  }
+
+  // ---- 말로 설정 바꾸기 ----
+
+  private ResultActions settingsFromText(String body) throws Exception {
+    return mockMvc.perform(
+        post("/api/v1/ai/settings-from-text")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
+  }
+
+  @Test
+  @DisplayName("말로 설정 바꾸기: 200 과 변경안(바뀌는 칸만), 못 만들면 proposal: null")
+  void settingsFromTextSuggests() throws Exception {
+    given(settingsFromTextService.suggest(any()))
+        .willReturn(
+            SettingsFromTextResponse.of(
+                new SettingsFromTextResponse.Proposal(
+                    null, null, null, "09:00", "연락 금지 끝을 09:00 으로 바꿔요")));
+    settingsFromText("{\"text\":\"아침엔 알림 꺼 줘\"}")
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .json(
+                    "{\"showHelp\":false,\"proposal\":{\"callTime\":null,\"dailyCount\":null,"
+                        + "\"quietStart\":null,\"quietEnd\":\"09:00\",\"summary\":\"연락 금지 끝을 09:00 으로 바꿔요\"}}",
+                    true));
+
+    given(settingsFromTextService.suggest(any())).willReturn(SettingsFromTextResponse.of(null));
+    settingsFromText("{\"text\":\"수위 5로\"}")
+        .andExpect(status().isOk())
+        .andExpect(content().json("{\"showHelp\":false,\"proposal\":null}", true));
+  }
+
+  @Test
+  @DisplayName("말로 설정 바꾸기: 부탁이 비었거나 100자를 넘으면 400 이고 서비스를 부르지 않는다")
+  void settingsFromTextRejectsBadRequests() throws Exception {
+    settingsFromText("{\"text\":\"\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("바꾸고 싶은 것을 적어 주세요"));
+    settingsFromText("{\"text\":\"" + "가".repeat(101) + "\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("부탁은 100자 이하로 적어 주세요"));
+    verifyNoInteractions(settingsFromTextService);
   }
 }

@@ -27,6 +27,13 @@ class AiSchemaTest {
   }
 
   @Test
+  @DisplayName("없을 수도(null) 있는 글 · 정수 칸의 모양")
+  void nullable() {
+    assertThat(AiSchema.nullableString()).isEqualTo(Map.of("type", List.of("string", "null")));
+    assertThat(AiSchema.nullableInteger()).isEqualTo(Map.of("type", List.of("integer", "null")));
+  }
+
+  @Test
   @DisplayName("정해진 글 중 하나의 모양")
   void enumOf() {
     assertThat(AiSchema.enumOf(List.of("inner", "outer")))
