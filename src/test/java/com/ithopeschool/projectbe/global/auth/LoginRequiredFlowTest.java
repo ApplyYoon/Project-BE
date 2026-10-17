@@ -294,7 +294,13 @@ class LoginRequiredFlowTest {
               "POST",
               "/api/v1/ai/exam-next-step",
               "/api/v1/ai/exam-next-step",
-              "{\"examId\":\"1\"}"));
+              "{\"examId\":\"1\"}"),
+          // 글에 이름표 붙이기 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #237)
+          new Api(
+              "POST",
+              "/api/v1/ai/classify-text",
+              "/api/v1/ai/classify-text",
+              "{\"kind\":\"memo\",\"text\":\"문자 보내기\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

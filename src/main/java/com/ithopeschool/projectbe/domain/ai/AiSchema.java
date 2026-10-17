@@ -2,6 +2,7 @@ package com.ithopeschool.projectbe.domain.ai;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 // GPT 가 답할 JSON 의 칸 모양(JSON schema)을 짧게 만드는 도구입니다. (이슈 #237)
@@ -14,7 +15,7 @@ import java.util.Map;
 //        "required": ["items"], "additionalProperties": false }
 //
 // OpenAI 의 strict 모드는 "모든 칸이 required" 이고 "모르는 칸은 금지(additionalProperties: false)" 여야 합니다.
-// object 가 이 두 가지를 알아서 붙입니다. 기능이 늘어 다른 모양(숫자·정해진 글 중 하나 등)이 필요하면 여기에 더합니다.
+// object 가 이 두 가지를 알아서 붙입니다. 기능이 늘어 다른 모양(숫자 등)이 필요하면 여기에 더합니다.
 public final class AiSchema {
 
   private AiSchema() {}
@@ -34,6 +35,12 @@ public final class AiSchema {
   // 글 한 칸.   →  { "type": "string" }
   public static Map<String, Object> string() {
     return Map.of("type", "string");
+  }
+
+  // 정해진 글 중 하나.   enumOf(List.of("inner", "outer"))  →  { "type": "string", "enum": ["inner",
+  // "outer"] }
+  public static Map<String, Object> enumOf(List<String> values) {
+    return Map.of("type", "string", "enum", values);
   }
 
   // 글 목록.   →  { "type": "array", "items": { "type": "string" } }

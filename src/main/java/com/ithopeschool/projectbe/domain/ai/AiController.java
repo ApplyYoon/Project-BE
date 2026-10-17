@@ -8,6 +8,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.FailCauseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.TextLabelRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.TextLabelResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -30,6 +32,7 @@ public class AiController {
   private final FirstStepService firstStepService;
   private final FailCauseService failCauseService;
   private final ExamNextStepService examNextStepService;
+  private final TextLabelService textLabelService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -60,5 +63,13 @@ public class AiController {
   @PostMapping("/exam-next-step")
   public ExamNextStepResponse examNextStep(@Valid @RequestBody ExamNextStepRequest request) {
     return examNextStepService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "글에 이름표 붙이기: '기타' 사유 → 내 행동/바깥 일, 딴생각 메모 → 연락·다른과제·걱정·생활 (참고 칸 · 못 붙이면 label: null · 토큰 필요)")
+  @PostMapping("/classify-text")
+  public TextLabelResponse textLabel(@Valid @RequestBody TextLabelRequest request) {
+    return textLabelService.label(request);
   }
 }
