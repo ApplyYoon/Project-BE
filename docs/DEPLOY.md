@@ -3,8 +3,11 @@
 BE 를 인터넷에 올려서 FE(Vercel) 가 부를 수 있게 하는 방법입니다. (이슈 #8)
 왜 Render 인지는 [README 의 "배포"](../README.md#-배포-무료-서버) 에 적혀 있습니다.
 
-> ⚠️ **이 문서는 공식 문서와 코드로 확인한 내용으로 썼고, 실제로 한 번 배포해 본 것은 아닙니다.**
-> 첫 배포에서 막히면 아래 [막혔을 때](#막혔을-때) 를 보고, 풀린 방법은 이 문서에 추가해 주세요.
+> **2026-10-17 배포 확인:** [#194](https://github.com/Tmax-IT-Hope-School/Project-BE/issues/194)의
+> `https://project-be-mxxc.onrender.com/api/v1/health` 에서 HTTP 200과
+> `{"status":"ok","db":"connected"}` 를 직접 확인했습니다.
+> 이는 서버와 DB 연결 확인입니다. 실제 Neon 브랜치가 `main`인지, 모든 테이블이 있는지,
+> 비밀값이 Render 설정에만 있는지는 헬스 응답으로 알 수 없으므로 관리자가 별도로 확인합니다.
 
 ---
 
@@ -22,7 +25,7 @@ BE 를 인터넷에 올려서 FE(Vercel) 가 부를 수 있게 하는 방법입�
 
 ## 1. 시작 전에 확인할 것
 
-- [ ] **`main` 에 코드가 있다.** 지금 `main` 은 "저장소 시작" 커밋뿐이라 `Dockerfile` 도 `/api/v1/health` 도 없습니다.
+- [ ] **배포할 `main` 에 코드가 있다.** Render 에서 선택한 브랜치와 배포 커밋에 `Dockerfile` 과 `/api/v1/health` 가 있는지 확인합니다.
       `develop → main` PR 은 **선생님/팀장이** 엽니다. (AI 는 열지 않습니다)
 - [ ] **Neon 에 운영 DB(`main` 브랜치)가 있고 테이블이 만들어져 있다.** 배포 설정은 서버가 켜질 때 테이블을 만들지 않습니다(`ddl-auto: none`). 테이블은 [`db/schema.sql`](../db/schema.sql) 을 Neon SQL Editor 에서 실행해 만듭니다. (README "운영 DB(Neon)", 이슈 #75)
 - [ ] **가입·로그인 테이블도 만들어져 있다.** `accounts`, `login_tokens` 두 테이블이 없으면 가입·로그인이 500 으로 실패합니다. 컬럼은 [DB.md](./DB.md) 의 그림과 같아야 합니다. (#97)
