@@ -277,6 +277,18 @@ class LoginRequiredFlowTest {
               "/api/v1/chats/{id}/finish",
               "/api/v1/chats/1/finish",
               "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
+          // 목표 만들기 대화 (이슈 #239)
+          new Api("POST", "/api/v1/goal-chats", "/api/v1/goal-chats", null),
+          new Api(
+              "POST",
+              "/api/v1/goal-chats/{id}/messages",
+              "/api/v1/goal-chats/abc/messages",
+              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
+          new Api(
+              "POST",
+              "/api/v1/goal-chats/{id}/finish",
+              "/api/v1/goal-chats/abc/finish",
+              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
           // 웹 푸시 (내 기기를 알림 받을 곳으로 등록합니다)
           new Api("GET", "/api/v1/push/public-key", "/api/v1/push/public-key", null),
           new Api(
