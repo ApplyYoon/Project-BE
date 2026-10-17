@@ -40,7 +40,7 @@ class AccountFlowTest {
           "nickname": "티맥이",
           "schoolCode": "7530560",
           "schoolName": "한국디지털미디어고등학교",
-          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false }
+          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false, "over14": true, "version": "v1" }
         }
         """
         .formatted(EMAIL, password);
