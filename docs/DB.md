@@ -33,6 +33,7 @@ erDiagram
     users ||--o| care_settings : "user_id"
     users ||--o{ focus_lock_apps : "user_id"
     users ||--o{ setting_changes : "user_id"
+    users ||--o{ checkins : "user_id"
 
     users {
         bigint id PK "사용자를 구분하는 고유 번호"
@@ -189,6 +190,20 @@ erDiagram
         varchar old_value "바꾸기 전 값 (글자, 1000자까지)"
         varchar new_value "바꾼 뒤 값 (글자, 1000자까지)"
     }
+    checkins {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 체크인의 주인"
+        date check_in_date "어느 날의 체크인인지 (같은 사람 안에서 날짜 중복 불가)"
+        varchar source "어디서 만든 체크인인지 (MANUAL, CALL, QUICK 중 하나)"
+        int condition "오늘 컨디션 (1 ~ 5), 안 골랐으면 비어 있음"
+        int mood "오늘 기분 (1 ~ 5), 안 골랐으면 비어 있음"
+        varchar miss_reason "어제 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, ETC 중 하나), 비어도 됨"
+        varchar miss_reason_note "기타 이유 한 줄 (50자까지, ETC 일 때만)"
+        int expected_minutes "오늘 예상 순공시간(분), 비어도 됨"
+        varchar promise_if "오늘의 약속 만약 ~하면 (100자까지), 비어도 됨"
+        varchar promise_then "오늘의 약속 ~한다 (100자까지), 비어도 됨"
+        boolean suggestion_kept "개선안을 실천했는지, 비어도 됨"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
@@ -215,6 +230,7 @@ erDiagram
 | `care_settings` | 사용자 한 명의 관리 설정이 한 줄 (전화 시간, 메시지 횟수, 연락 금지, 독설 수위, 앱 잠금, 제재 한도와 바뀔 한도) | #22 |
 | `focus_lock_apps` | 한 사용자가 고른 잠금 대상 앱 하나가 한 줄. 같은 사용자 안에서 같은 앱은 한 번만 | #22 |
 | `setting_changes` | 설정 칸 하나를 한 번 바꾼 것이 한 줄 (바꾼 시각, 칸 이름, 이전 값, 새 값) | #22 |
+| `checkins` | 한 사람의 하루치 체크인이 한 줄 (컨디션, 기분, 어제 못 채운 이유와 기타 글, 예상 순공시간, 약속 두 칸, 개선안 실천 여부, 어디서 했는지). 같은 날을 다시 보내면 덮어씀. 누구·날짜·source 말고는 다 비어도 됨 | #24 |
 
 > `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
 > 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.
