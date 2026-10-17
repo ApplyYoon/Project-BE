@@ -2,6 +2,7 @@ package com.ithopeschool.projectbe.domain.ai;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 // GPT 가 답할 JSON 의 칸 모양(JSON schema)을 짧게 만드는 도구입니다. (이슈 #237)
@@ -39,5 +40,16 @@ public final class AiSchema {
   // 글 목록.   →  { "type": "array", "items": { "type": "string" } }
   public static Map<String, Object> stringList() {
     return Map.of("type", "array", "items", string());
+  }
+
+  // 정해진 글 중 하나.   enumOf(List.of("inner", "outer"))  →  { "type": "string", "enum": ["inner",
+  // "outer"] }
+  public static Map<String, Object> enumOf(List<String> values) {
+    return Map.of("type", "string", "enum", values);
+  }
+
+  // 같은 모양 여러 개.   list(object(…))  →  { "type": "array", "items": { … } }
+  public static Map<String, Object> list(Map<String, Object> item) {
+    return Map.of("type", "array", "items", item);
   }
 }

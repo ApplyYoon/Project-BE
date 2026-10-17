@@ -33,4 +33,13 @@ class AiSchemaTest {
     assertThat(AiSchema.stringList())
         .isEqualTo(Map.of("type", "array", "items", Map.of("type", "string")));
   }
+
+  @Test
+  @DisplayName("정해진 글 중 하나와 같은 모양 여러 개의 모양")
+  void enumOfAndList() {
+    assertThat(AiSchema.enumOf(List.of("A", "B")))
+        .isEqualTo(Map.of("type", "string", "enum", List.of("A", "B")));
+    assertThat(AiSchema.list(AiSchema.string()))
+        .isEqualTo(Map.of("type", "array", "items", Map.of("type", "string")));
+  }
 }
