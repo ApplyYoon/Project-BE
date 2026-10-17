@@ -10,9 +10,8 @@ import jakarta.validation.constraints.Size;
 // 검사 규칙은 SignupRequest 와 같습니다.
 public record GoogleSignupRequest(
     @NotBlank(message = "구글 확인 정보를 보내 주세요") String credential,
-    // 실명. 구글 이름으로 미리 채워 두지만 고칠 수 있습니다.
-    @NotNull(message = "이름을 입력해 주세요") @Size(min = 2, max = 20, message = "이름은 2자 이상 20자 이하로 적어 주세요")
-        String name,
+    // 실명. 선택입니다. 안 보내도 가입됩니다. (SignupRequest 와 같음. 이슈 #71)
+    @Size(min = 2, max = 20, message = "이름은 2자 이상 20자 이하로 적어 주세요") String name,
     // 앱에서 부르는 이름 (users.nickname 에 저장합니다)
     @NotNull(message = "닉네임을 입력해 주세요")
         @Size(min = 2, max = 10, message = "닉네임은 2자 이상 10자 이하로 적어 주세요")
@@ -24,7 +23,7 @@ public record GoogleSignupRequest(
 
   // 값이 들어오는 순간에 앞뒤 공백을 지웁니다. 그래서 위의 검사는 공백을 지운 값으로 돌아갑니다.
   public GoogleSignupRequest {
-    name = name == null ? null : name.trim();
+    name = name == null || name.isBlank() ? null : name.trim();
     nickname = nickname == null ? null : nickname.trim();
   }
 }

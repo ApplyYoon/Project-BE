@@ -16,6 +16,8 @@ import com.ithopeschool.projectbe.domain.auth.dto.WithdrawRequest;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallRecord;
+import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
+import com.ithopeschool.projectbe.domain.consent.ConsentService;
 import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
 import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
@@ -57,6 +59,7 @@ class AccountServiceTest {
   @Autowired private UserRepository userRepository;
   @Autowired private AccountRepository accountRepository;
   @Autowired private LoginTokenRepository loginTokenRepository;
+  @Autowired private ConsentRecordRepository consentRecordRepository;
   @Autowired private EntityManager entityManager;
 
   // 테스트가 빨리 끝나게 되풀이 횟수는 가장 작은 값으로 둡니다.
@@ -81,7 +84,8 @@ class AccountServiceTest {
     request = new MockHttpServletRequest();
     Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
     CurrentUserProvider currentUserProvider =
-        new CurrentUserProvider(request, loginTokenRepository, tokenHasher, clock, "");
+        new CurrentUserProvider(
+            request, loginTokenRepository, consentRecordRepository, tokenHasher, clock, "");
     authService =
         new AuthService(
             userRepository,
@@ -91,6 +95,7 @@ class AccountServiceTest {
             tokenHasher,
             currentUserProvider,
             googleIdTokenVerifier,
+            new ConsentService(currentUserProvider, consentRecordRepository, clock),
             clock);
     accountService =
         new AccountService(
@@ -117,7 +122,7 @@ class AccountServiceTest {
         nickname,
         "7530560",
         "한국디지털미디어고등학교",
-        new SignupRequest.Consents(true, true, false));
+        new SignupRequest.Consents(true, true, false, true, "v1"));
   }
 
   // 이 토큰으로 부른 요청인 것처럼 만듭니다. null 이면 로그인하지 않은 요청입니다.
@@ -355,7 +360,7 @@ class AccountServiceTest {
                     "씨씨",
                     null,
                     null,
-                    new SignupRequest.Consents(true, true, false)))
+                    new SignupRequest.Consents(true, true, false, true, "v1")))
             .token();
     callWith(token);
     return accountRepository.findByGoogleSubject(GOOGLE_SUBJECT).orElseThrow().getUserId();

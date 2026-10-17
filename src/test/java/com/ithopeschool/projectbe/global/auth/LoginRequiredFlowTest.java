@@ -252,6 +252,13 @@ class LoginRequiredFlowTest {
               "/api/v1/onboarding/initial-plan",
               "/api/v1/onboarding/initial-plan",
               "{\"dailyMinutes\":180,\"daysPerWeek\":5}"),
+          // 개인정보 동의 (동의 문구가 바뀌었을 때 다시 동의하는 API. 이슈 #71)
+          new Api("GET", "/api/v1/auth/consent", "/api/v1/auth/consent", null),
+          new Api(
+              "POST",
+              "/api/v1/auth/consent",
+              "/api/v1/auth/consent",
+              "{\"terms\":true,\"privacy\":true,\"over14\":true,\"version\":\"v1\"}"),
           // 첫 가설 (설문 답으로 만든 문장이라 학생의 정보입니다)
           new Api("GET", "/api/v1/insights/hypotheses", "/api/v1/insights/hypotheses", null),
           // 실패 원인 분석 (못 채운 날과 그 이유라서 학생의 정보입니다)
@@ -314,7 +321,7 @@ class LoginRequiredFlowTest {
           "nickname": "%s",
           "schoolCode": null,
           "schoolName": null,
-          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false }
+          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false, "over14": true, "version": "v1" }
         }
         """
             .formatted(email, PASSWORD, nickname);
