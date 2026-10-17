@@ -32,6 +32,7 @@ cron-job.org (알람 시계)                         Render 의 BE 서버
 | `domain/job/JobRunner.java` | 이름으로 작업을 찾아 실행. **같은 작업이 겹쳐 돌지 않게** 막고, 실패해도 서버는 그대로 둠 |
 | `domain/job/ScheduledJob.java` | 작업 하나의 "약속" (이름 + 실행). 새 작업은 이걸 구현 |
 | `domain/job/PracticeJob.java` | 연습 작업. 로그 한 줄을 남김 |
+| `domain/push/HabitNudgeJob.java` | `habit-nudge` 작업. 하루 한 번 "오늘의 작전" 알림 (아래 6-4) |
 | `domain/job/JobResultStore.java` | 결과를 "작업 이름 + 날짜" 한 칸에 **덮어써서** 저장 (연습용 메모리 저장소) |
 | `global/time/DayRule.java` | **하루의 기준(새벽 4시, 한국 시간)** 계산기. 날짜별로 세는 곳은 모두 이걸 씀 |
 | `global/config/ClockConfig.java` | 시계. 테스트에서 시간을 고정하려고 따로 둠 |
@@ -128,7 +129,7 @@ public class DailySummaryJob implements ScheduledJob {
 1. 위 [키 만들기](#키-만들기)로 키를 만듭니다.
 2. Render 대시보드 → 서비스 `project-be` → **Environment** → **Add Environment Variable**
    - Key: `JOB_SECRET_KEY` / Value: 방금 만든 키
-3. 저장하면 서버가 다시 시작됩니다. (`render.yaml` 에는 이 줄이 아직 없어서 **화면에서 직접 추가**해야 합니다)
+3. 저장하면 서버가 다시 시작됩니다. (`render.yaml` 에 `JOB_SECRET_KEY` 칸이 있어서 **Blueprint 를 처음 만들 때** 넣었다면 이 단계는 건너뜁니다. 그 뒤에는 Render 가 `render.yaml` 의 비밀 칸을 다시 묻지 않으므로 **화면에서 직접 추가**합니다)
 4. 확인: 키 없이 불러 보면 **401**, 키를 넣으면 **200** 이어야 합니다.
 
 ```bash
@@ -208,7 +209,7 @@ curl -i -X POST http://localhost:8080/api/v1/jobs/habit-nudge -H "X-Job-Key: loc
 | ---- | ---------------- |
 | `401` | 헤더 이름이 정확히 `X-Job-Key` 인지, 값이 Render 의 `JOB_SECRET_KEY` 와 **글자 하나까지 같은지**(앞뒤 공백·줄바꿈 주의), Render 에 키를 넣고 서버가 다시 시작됐는지 |
 | 서버 로그에 "JOB_SECRET_KEY 가 비어 있어서 … 전부 거절" | Render 환경변수에 `JOB_SECRET_KEY` 가 없습니다. 6-1 을 하세요 |
-| `404` | 주소 끝의 작업 이름이 맞는지. 지금은 `practice` 뿐입니다 |
+| `404` | 주소 끝의 작업 이름이 맞는지. 지금 있는 작업은 `practice`, `habit-nudge` 두 개입니다 |
 | `405` | `POST` 로 불러야 합니다 (브라우저 주소창으로 열면 `GET` 이라 안 됩니다) |
 | `500` | 작업이 실패했습니다. 서버 로그에서 `[작업] … 실행에 실패했습니다` 를 찾으세요 (예외의 **종류**만 나옵니다) |
 | 로그에 줄이 안 쌓임 | cron-job.org 실행 기록에서 응답 코드를 확인. 서버가 자고 있었다면 첫 요청이 시간 초과일 수 있습니다 |

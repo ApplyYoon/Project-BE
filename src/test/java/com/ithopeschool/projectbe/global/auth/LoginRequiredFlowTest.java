@@ -219,7 +219,29 @@ class LoginRequiredFlowTest {
               "POST",
               "/api/v1/calls/{id}/finish",
               "/api/v1/calls/1/finish",
-              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"));
+              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
+          // 온보딩 설문 · 처음 계획 (학년·생활 리듬·자기 인식 같은 학생의 정보입니다)
+          new Api("GET", "/api/v1/onboarding", "/api/v1/onboarding", null),
+          new Api(
+              "PUT",
+              "/api/v1/onboarding",
+              "/api/v1/onboarding",
+              "{\"grade\":\"고2\",\"targetExam\":\"수능\",\"targetExamDate\":\"2027-11-18\","
+                  + "\"dailyAvailableMinutes\":180}"),
+          new Api(
+              "PATCH", "/api/v1/onboarding", "/api/v1/onboarding", "{\"chronotype\":\"night\"}"),
+          new Api(
+              "GET", "/api/v1/onboarding/initial-plan", "/api/v1/onboarding/initial-plan", null),
+          new Api(
+              "POST",
+              "/api/v1/onboarding/initial-plan",
+              "/api/v1/onboarding/initial-plan",
+              "{\"dailyMinutes\":180,\"daysPerWeek\":5}"),
+          new Api(
+              "PUT",
+              "/api/v1/onboarding/initial-plan",
+              "/api/v1/onboarding/initial-plan",
+              "{\"dailyMinutes\":180,\"daysPerWeek\":5}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

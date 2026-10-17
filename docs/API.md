@@ -1961,6 +1961,163 @@ AI 문단이 없을 때도 **200** 이고, 값만 `null` 입니다. FE 는 `null
 
 > **AI 통화와 이어집니다.** 통화를 걸 때 서버에 저장된 테스트가 있으면 그것을 씁니다(없으면 FE 가 보낸 `selfReportedBiases`). 통화가 3번 넘게 쌓였고 생각과 실제가 다르면, 그 문장을 지침에 넣어 AI 가 하나 골라 학생이 스스로 알아차리게 묻게 합니다.
 
+### 온보딩
+
+첫 실행 설문(FE `/onboarding`)의 답과 "처음 계획"(FE `/onboarding/plan`)을 저장·조회합니다. 여섯 주소 모두 **로그인이 필요합니다.** (이슈 #21)
+
+| 주소 | 하는 일 |
+| --- | --- |
+| `GET /api/v1/onboarding` | 내 설문 답 보기 (지금 답 + 처음 답한 자기 인식) |
+| `PUT /api/v1/onboarding` | 설문 답 저장 (전체) |
+| `PATCH /api/v1/onboarding` | 나중에 답한 항목만 저장 (부분 수정) |
+| `GET /api/v1/onboarding/initial-plan` | 내 처음 계획 보기 |
+| `POST /api/v1/onboarding/initial-plan` | 처음 계획 세우기 (한 번만) |
+| `PUT /api/v1/onboarding/initial-plan` | 처음 계획 "다시 세우기" |
+
+> 주소가 복수형(`/onboardings`)이 아닌 이유: 한 사람에게 "지금 내 설문" 은 하나뿐이라서, 이슈에 적힌 `/onboarding` 을 그대로 썼습니다.
+
+#### 설문 답 저장 · 일부만 고치기
+
+`PUT /api/v1/onboarding` — 보낸 답으로 설문을 저장합니다. 응답은 `GET` 과 같은 모양입니다 (**200**).
+
+```json
+{
+  "grade": "고2",
+  "targetExam": "수능",
+  "targetExamDate": "2027-11-18",
+  "dailyAvailableMinutes": 180
+}
+```
+
+- **꼭 보내는 것은 위 네 개뿐**입니다. 나머지는 보내지 않아도 저장되고, 비어 있는 채로(`null` · `[]`) 남습니다. (FE #239)
+- `PUT` 은 "설문 전체를 이 답으로" 라는 뜻이라서, 보내지 않은 항목은 비어 있는 것으로 저장됩니다.
+- **저장할 때마다 새로 쌓입니다.** 원래 답을 고치지 않고 새 답을 더하기 때문에, 처음 답한 자기 인식이 남습니다. (아래 `firstSelfAwareness`)
+
+`PATCH /api/v1/onboarding` — 보낸 항목만 바꿉니다. 안 보낸 항목은 **바로 전 답 그대로**입니다. 설문을 아직 안 했으면 **404** 입니다. ("내 정보 더 알려주기" 에서 답한 것만 보낼 때 씁니다)
+
+```json
+{ "chronotype": "night", "maxFocusMinutes": 50 }
+```
+
+- 아무 항목도 안 보내거나 빈 글자뿐이면 **400** `"바꿀 답을 하나 이상 보내 주세요"`
+- 목록(`subjectLevels` · `pastFailureCauses`)은 보내면 **통째로** 바뀝니다. 빈 목록 `[]` 을 보내면 "없음" 이 됩니다.
+- 학년·목표 시험·시험 날짜·하루 공부 가능 시간은 **바꿀 수는 있지만 지울 수는 없습니다.**
+
+| 필드 | 규칙 |
+| --- | --- |
+| `grade` | 필수. `고1` `고2` `고3` `N수` `대학생` 중 하나 |
+| `targetExam` | 필수. 앞뒤 공백을 지운 뒤 1 ~ 30자 (예: `수능`) |
+| `targetExamDate` | 필수. `'YYYY-MM-DD'`. 오늘이나 그 뒤여야 합니다 ("오늘" 은 새벽 4시에 바뀝니다) |
+| `dailyAvailableMinutes` | 필수. `60` `120` `180` `240` `300` 중 하나 (300 = 5시간 이상) |
+| `targetUniversity` · `targetScore` | 선택. 30자까지 |
+| `wakeUpTime` · `sleepTime` · `schoolEndTime` · `academyEndTime` | 선택. `'07:00'` 처럼 두 자리:두 자리, `00:00` ~ `23:59` |
+| `studyPlace` | 선택. `집` `학교` `학원` `독서실·도서관` `카페` `기타` 중 하나 |
+| `subjectLevels` | 선택. 과목별 최근 성적·자신감 (아래 표). 50개까지 |
+| `pastFailureCauses` | 선택. 계획이 무너졌던 때, 여러 개. `afterExam` `weekend` `lateAcademy` `phone` `tooMuchPlan` 중에서. 같은 것을 두 번 보내면 하나로 칩니다 |
+| `chronotype` | 선택. `morning` `night` 중 하나 |
+| `maxFocusMinutes` | 선택. 한 번에 집중 가능한 시간(분). `30` `50` `90` `120` 중 하나 |
+| `biggestDistraction` | 선택. `폰·SNS` `졸림` `잡생각` `친구·가족` `소음·주변 환경` `기타` 중 하나 |
+| `motivationReason` · `goalReward` | 선택. 한 줄, 50자까지 |
+
+`subjectLevels` 의 한 칸:
+
+```json
+{ "subjectId": "3", "grade": 2, "confidence": 4 }
+```
+
+| 필드 | 규칙 |
+| --- | --- |
+| `subjectId` | 필수. **내 과목**의 번호 (글자). 없는 번호이거나 남의 과목이면 **404** |
+| `grade` · `score` | **둘 중 하나만.** 등급 `1 ~ 9` 또는 점수 `0 ~ 100`. 둘 다 보내거나 둘 다 빼면 400 |
+| `confidence` | 필수. 자신감 `1 ~ 5` |
+
+- 같은 과목을 두 번 보내면 400 입니다. (어느 쪽이 맞는지 알 수 없어서)
+- **선택지 항목은 FE 가 보내는 글자 그대로**(`고2` · `독서실·도서관` · `afterExam`)만 받습니다. 대문자(`MORNING`)나 비슷하게 생긴 글자는 400 입니다.
+- **숫자 칸은 정수만** 받습니다. `180.5` · `180.0` · `"180"`(따옴표) 는 400 입니다. 소수를 잘라서 저장하지 않습니다.
+- 선택 항목에 `null` 이나 빈 글자(`""`)를 보내면 "안 보냄" 으로 봅니다.
+
+#### 내 설문 답 보기
+
+`GET /api/v1/onboarding` — 지금 내 설문 답입니다. 아직 안 했으면 **404** `"아직 온보딩 설문을 하지 않았어요"`
+
+```json
+{
+  "id": "3",
+  "answeredAt": 1792204469467,
+  "grade": "고2",
+  "targetExam": "수능",
+  "targetExamDate": "2027-11-18",
+  "targetUniversity": null,
+  "targetScore": null,
+  "wakeUpTime": "07:00",
+  "sleepTime": null,
+  "schoolEndTime": null,
+  "academyEndTime": null,
+  "studyPlace": "독서실·도서관",
+  "subjectLevels": [ { "subjectId": "3", "grade": 2, "score": null, "confidence": 4 } ],
+  "pastFailureCauses": ["weekend", "phone"],
+  "chronotype": "night",
+  "maxFocusMinutes": 50,
+  "biggestDistraction": "폰·SNS",
+  "dailyAvailableMinutes": 180,
+  "motivationReason": null,
+  "goalReward": null,
+  "firstSelfAwareness": {
+    "chronotype": "morning",
+    "maxFocusMinutes": 50,
+    "biggestDistraction": "폰·SNS",
+    "dailyAvailableMinutes": 240
+  }
+}
+```
+
+- 요청에 없던 칸: `id`(이 설문의 번호) · `answeredAt`(답한 시각, 밀리초 **숫자**) · `firstSelfAwareness`
+- **`firstSelfAwareness` = 처음 답한 자기 인식.** 나중에 고쳐도 처음 값이 남아 있습니다. (완료 조건) "처음엔 아침형이라고 했는데 기록을 보니 밤에 더 집중하네요" 같은 비교(#40)에 씁니다.
+  - 항목마다 **"처음으로 답이 있는 때"** 의 값입니다. 온보딩이 짧아져서 아침형/밤형 같은 것은 나중에 "내 정보 더 알려주기" 에서 처음 답할 수 있기 때문입니다. 아직 한 번도 답하지 않은 항목은 `null` 입니다.
+  - 자기 인식 네 가지: `chronotype` · `maxFocusMinutes` · `biggestDistraction` · `dailyAvailableMinutes`
+- 값이 없는 칸은 빼지 않고 `null` 로, 목록은 비어 있으면 `[]` 로 나갑니다.
+- `subjectLevels` 는 과목 번호 순서입니다. **지운 과목의 수준은 나오지 않습니다.**
+- 누구의 설문인지(`userId`)는 담지 않습니다.
+
+#### 처음 계획
+
+온보딩 마지막에 하는 약속(하루에 몇 시간, 일주일에 며칠)입니다. **설문 답과 규칙이 다릅니다.** (FE #240)
+
+- **한 사람에 한 줄**입니다. 한 번 세우면 온보딩을 다시 해도 덮어쓰지 않습니다.
+- 사용자가 **"다시 세우기"** 를 눌렀을 때만 `PUT` 으로 바꿉니다. 그때 `createdDate` 도 오늘로 바뀝니다.
+
+`POST /api/v1/onboarding/initial-plan` — 세우기 (**201**). 이미 세웠으면 **409** `"처음 계획은 이미 세웠어요. 바꾸려면 다시 세우기를 해 주세요"`
+
+`PUT /api/v1/onboarding/initial-plan` — 다시 세우기 (**200**). 아직 안 세웠으면 **404** `"아직 처음 계획을 세우지 않았어요"`
+
+```json
+{ "dailyMinutes": 180, "daysPerWeek": 5 }
+```
+
+| 필드 | 규칙 |
+| --- | --- |
+| `dailyMinutes` | 필수. `60` `120` `180` `240` `300` 중 하나 (1 ~ 5시간) |
+| `daysPerWeek` | 필수. `3` `5` `6` `7` 중 하나 |
+
+- 세운 날짜(`createdDate`)는 **보내지 않습니다.** 서버가 오늘(새벽 4시 기준)로 정합니다. 보내도 무시합니다.
+- 정수만 받습니다. (`180.5` 는 400)
+
+`GET /api/v1/onboarding/initial-plan` — 내 처음 계획. 아직 안 세웠으면 **404**. FE 의 `InitialPlan` 과 똑같은 모양입니다.
+
+```json
+{ "createdDate": "2026-10-17", "dailyMinutes": 180, "daysPerWeek": 5 }
+```
+
+| 상태 | 언제 |
+| --- | --- |
+| 400 | 요청 모양이 틀림 · 꼭 있어야 하는 값이 빠짐 · 정해진 값이 아님 · 소수를 보냄 · 시험 날짜가 어제 이전 · 등급과 점수를 둘 다 보내거나 둘 다 뺌 · 같은 과목을 두 번 보냄 |
+| 401 | 로그인하지 않음 |
+| 404 | 설문·처음 계획을 아직 안 함 (`GET` · `PATCH` · 다시 세우기) · 내 과목이 아닌 번호를 `subjectLevels` 에 보냄 |
+| 409 | 처음 계획을 이미 세웠는데 `POST` 로 또 세움 |
+
+> **탈퇴하면** 설문 답(딸린 테이블 포함)과 처음 계획이 모두 지워집니다. (`/auth/withdraw`)
+> **녹음은 서버로 오지 않습니다.** 처음의 다짐 녹음은 기기에만 저장합니다. (FE #241)
+
 ### 웹 푸시
 
 앱을 닫아 둬도 휴대폰 알림 칸에 뜨는 **푸시 알림**을 받을 기기를 등록합니다. 세 주소 모두 **로그인이 필요합니다.** (이슈 #32)

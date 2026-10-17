@@ -30,6 +30,17 @@ services:
       # 음성 통화에 쓸 모델 이름. 글 모델보다 훨씬 비쌉니다. 비워 두면 통화만 꺼진 채로 돌아갑니다. (docs/DEPLOY.md "AI 통화 켜기")
       - key: OPENAI_REALTIME_MODEL
         sync: false
+      # 예약 작업 주소(/api/v1/jobs/**)를 부를 때 쓰는 비밀 키. 비어 있으면 예약 작업 요청을 전부 거절합니다. (docs/JOBS.md)
+      - key: JOB_SECRET_KEY
+        sync: false
+      # 구글로 시작하기에 쓰는 클라이언트 ID. 비밀값은 아니지만 계정마다 달라서 화면에서 넣습니다. (docs/DEPLOY.md "구글 로그인 켜기")
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      # 웹 푸시 키 한 쌍. 둘 중 하나라도 비어 있으면 푸시만 꺼집니다. (docs/DEPLOY.md "웹 푸시 켜기")
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
 
       # ── 비밀이 아닌 값은 여기에 적어도 됩니다. ──
       # 자바가 메모리를 쓰는 방식입니다. 무료 서버는 메모리가 512MB 뿐이라 자바에게 알려 줘야 합니다.
