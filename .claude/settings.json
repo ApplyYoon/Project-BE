@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew build*)",
+      "Bash(./gradlew test*)",
+      "Bash(./gradlew bootRun*)",
+      "Bash(./gradlew spotlessApply*)",
+      "Bash(./gradlew spotlessCheck*)",
+      "Bash(java -version)",
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch)",
+      "Bash(git branch *)",
+      "Bash(git switch *)",
+      "Bash(git checkout *)",
+      "Bash(git pull *)",
+      "Bash(git add *)",
+      "Bash(git fetch *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh issue view *)",
+      "Bash(gh issue list *)",
+      "Read"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git push --mirror*)",
+      "Bash(git push --delete*)",
+      "Bash(git push --prune*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git filter-branch*)",
+      "Bash(git filter-repo*)",
+      "Bash(git reflog expire*)",
+      "Bash(git gc --prune*)",
+      "Bash(git update-ref -d*)",
+      "Bash(git stash clear*)",
+      "Bash(git stash drop*)",
+      "Bash(git remote remove*)",
+      "Bash(git remote set-url*)",
+      "Bash(pip *)",
+      "Bash(pip3 *)",
+      "Bash(python -m pip *)",
+      "Bash(python3 -m pip *)",
+      "Bash(uv pip *)",
+      "Bash(poetry *)",
+      "Read(./.env)"
+    ],
+    "ask": [
+      "Bash(uv add *)",
+      "Bash(uv remove *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh repo *)",
+      "Bash(git rebase *)",
+      "Bash(git commit --amend*)",
+      "Bash(git branch -d *)",
+      "Bash(git branch -D *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-git.sh\"",
+            "timeout": 10,
+            "statusMessage": "위험한 명령인지 검사 중..."
+          }
+        ]
+      }
+    ]
+  }
+}
