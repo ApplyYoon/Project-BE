@@ -102,6 +102,15 @@ class LoginRequiredFlowTest {
               "{\"name\":\"수학\",\"color\":\"red\"}"),
           new Api("PATCH", "/api/v1/subjects/{id}", "/api/v1/subjects/1", "{\"name\":\"수학\"}"),
           new Api("DELETE", "/api/v1/subjects/{id}", "/api/v1/subjects/1", null),
+          // 계획 루틴
+          new Api("GET", "/api/v1/routines", "/api/v1/routines", null),
+          new Api(
+              "POST",
+              "/api/v1/routines",
+              "/api/v1/routines",
+              "{\"weekdays\":[1],\"kind\":\"play\",\"content\":\"rest\",\"targetMinutes\":20}"),
+          new Api("PATCH", "/api/v1/routines/{id}", "/api/v1/routines/1", "{\"targetMinutes\":20}"),
+          new Api("DELETE", "/api/v1/routines/{id}", "/api/v1/routines/1", null),
           // 공부 계획
           new Api("GET", "/api/v1/study-plans", "/api/v1/study-plans?date=2026-10-12", null),
           new Api("POST", "/api/v1/study-plans", "/api/v1/study-plans", PLAN_BODY),
