@@ -96,4 +96,26 @@ class ExamPeriodTest {
     // 10월 12일 04:00 부터 10월 12일 = 시험 3일 전 → 시험 기간
     assertThat(ExamPeriod.isNearExam(atFour, List.of(EXAM))).isTrue();
   }
+
+  // ---- 낮춘 이유 문장 (이슈 #58) ----
+
+  @Test
+  void reasonOnlyDuringTheExamPeriod() {
+    // 시험 기간에는 이유 문장이 있고, 기간이 끝나면(시험 3일 후) 없어집니다.
+    assertThat(ExamPeriod.reasonFor(LocalDate.of(2026, 10, 13), List.of(EXAM)))
+        .isEqualTo("시험 기간이라 독촉은 쉬어갈게. 컨디션 챙기면서 할 수 있는 만큼만 하자.");
+    assertThat(ExamPeriod.reasonFor(LocalDate.of(2026, 10, 17), List.of(EXAM)))
+        .isEqualTo(ExamPeriod.REASON);
+    assertThat(ExamPeriod.reasonFor(LocalDate.of(2026, 10, 18), List.of(EXAM))).isNull();
+    assertThat(ExamPeriod.reasonFor(LocalDate.of(2026, 10, 11), List.of(EXAM))).isNull();
+    assertThat(ExamPeriod.reasonFor(LocalDate.of(2026, 10, 13), List.of())).isNull();
+  }
+
+  @Test
+  void reasonDoesNotBlameTheStudent() {
+    // AI 가 하는 말에는 깎아내리는 말이 없어야 합니다. (CLAUDE.md 4장) 이유 문장은 쉬어 간다는 것만 말합니다.
+    for (String word : new String[] {"왜", "못", "게으", "한심", "실망", "또"}) {
+      assertThat(ExamPeriod.REASON).as("'%s' 가 없어야 함", word).doesNotContain(word);
+    }
+  }
 }

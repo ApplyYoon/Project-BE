@@ -25,6 +25,11 @@ public final class ExamPeriod {
   // 시험 며칠 뒤까지 시험 기간으로 보는지
   public static final int DAYS_AFTER = 2;
 
+  // 시험 기간이라 관리 강도를 낮췄을 때, 학생에게 "왜" 를 알려 주는 한 줄입니다. (이슈 #58 "낮춘 이유를 말할 문장")
+  // 시험 기간은 안전 브레이크라서 관리 강도가 0(회복)이 됩니다. (CareLevel.of, 2026-10-11 FE·BE 가 확정한 규칙)
+  // 그날은 CareDecision.reason 대신 이 문장을 보여 주면 됩니다. 혼내지 않고, 쉬어 가는 이유만 담담하게 말합니다.
+  public static final String REASON = "시험 기간이라 독촉은 쉬어갈게. 컨디션 챙기면서 할 수 있는 만큼만 하자.";
+
   // 값만 계산하는 도구라서 객체를 만들 일이 없습니다.
   private ExamPeriod() {}
 
@@ -45,5 +50,14 @@ public final class ExamPeriod {
       }
     }
     return false;
+  }
+
+  // 오늘이 시험 기간이면 이유 문장(REASON)을, 아니면 null 을 돌려줍니다.
+  // 기간이 끝나면 null 이 되어서, 관리 강도와 이유 문장 모두 원래대로 돌아갑니다.
+  //
+  //   오늘 10/15, 시험 10/17  →  "시험 기간이라 독촉은 쉬어갈게. …"
+  //   오늘 10/20, 시험 10/17  →  null  (시험 3일 후, 기간이 끝남)
+  public static String reasonFor(LocalDate today, List<LocalDate> examDates) {
+    return isNearExam(today, examDates) ? REASON : null;
   }
 }
