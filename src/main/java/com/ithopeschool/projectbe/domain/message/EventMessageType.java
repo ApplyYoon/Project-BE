@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.message;
 
+import com.ithopeschool.projectbe.domain.safety.QuietPolicy;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
@@ -12,16 +13,19 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum EventMessageType {
-  // 계획 시간이 지났는데 타이머가 꺼져 있음 → 담백한 알림 (넛지)
-  PLAN_LATE("계획 시간 지남", 2),
-  // 오늘 목표를 달성함 → 칭찬 (당근)
-  GOAL_DONE("목표 달성", 1),
-  // 3일 연속 목표 미달 → 회복. 독촉(채찍)이 아닙니다
-  MISSED_3_DAYS("3일 연속 미달", 0);
+  // 계획 시간이 지났는데 타이머가 꺼져 있음 → 담백한 알림 (넛지). 아침에 받으면 엉뚱해서 버립니다
+  PLAN_LATE("계획 시간 지남", 2, QuietPolicy.DROP),
+  // 오늘 목표를 달성함 → 칭찬 (당근). 아침에 받아도 뜻이 있어서 미룹니다
+  GOAL_DONE("목표 달성", 1, QuietPolicy.DELAY),
+  // 3일 연속 목표 미달 → 회복. 독촉(채찍)이 아닙니다. 아침에 받아도 뜻이 있어서 미룹니다
+  MISSED_3_DAYS("3일 연속 미달", 0, QuietPolicy.DELAY);
 
   // 메시지 말풍선 아래에 붙는 짧은 이름
   private final String label;
 
   // 이 메시지를 보낼 때의 관리 강도 (0 회복 · 1 당근 · 2 넛지). 3일 연속 미달은 채찍이 아니라 회복(0)입니다.
   private final int careLevel;
+
+  // 연락 금지 시간에 걸리면 미룰지(DELAY) 버릴지(DROP). (이슈 #57, QuietHours.decide)
+  private final QuietPolicy quietPolicy;
 }

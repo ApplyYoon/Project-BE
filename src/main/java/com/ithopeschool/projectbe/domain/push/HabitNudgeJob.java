@@ -10,6 +10,7 @@ import com.ithopeschool.projectbe.domain.message.MessageKind;
 import com.ithopeschool.projectbe.domain.message.MessageRepository;
 import com.ithopeschool.projectbe.domain.message.MessageService;
 import com.ithopeschool.projectbe.domain.safety.QuietHours;
+import com.ithopeschool.projectbe.domain.settings.QuietHoursSettings;
 import com.ithopeschool.projectbe.domain.thinkingtest.StudyStyle;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
 import com.ithopeschool.projectbe.global.time.DayRule;
@@ -23,13 +24,14 @@ import org.springframework.stereotype.Component;
 // cron-job.org 가 POST /api/v1/jobs/habit-nudge 를 부릅니다. (예: 매일 저녁 7시)
 //
 // 학생마다 아래를 차례로 따지고, 하나라도 걸리면 그 학생은 건너뜁니다.
-//   1. 연락 금지 시간(밤 11시 ~ 아침 7시)이면 아무에게도 보내지 않습니다.   (QuietHours, 작업 전체)
+//   1. 그 학생의 연락 금지 시간이면 보내지 않습니다.                     (관리 설정 #22, 안 정했으면 23 ~ 7시)
+//      "오늘의 작전" 은 미룰 메시지(QuietPolicy.DELAY)지만, 미뤄 두었다 보내는 대기 목록이 아직 없어서 그날은 보내지 않습니다. (#57)
 //   2. 오늘(새벽 4시 기준) 이미 보냈으면 보내지 않습니다.                 (같은 작업이 두 번 불려도 한 번만)
 //   3. 최근 7일 안에 위기 표현이 감지된 통화가 있으면 보내지 않습니다.      (안전이 먼저. 공부 재촉을 멈춤)
 //   4. 생각 습관에 맞춘 한 줄을 고릅니다: 저장된 테스트에서 가장 높은 습관 → 최근 2주 통화에서 가장 최근에 보인 습관 → 없으면 기본 문장
 //   5. 앱의 알림 목록(messages)에 남기고, 그 학생의 모든 기기에 푸시를 보냅니다.
 //
-// ⚠️ 학생이 설정에서 정한 연락 금지 시간·메시지 빈도는 아직 서버에 없어서(#22) 기본값(23 ~ 7시, 하루 한 번)을 씁니다.
+// ⚠️ 메시지 빈도(관리 설정의 dailyCount)는 아직 보지 않습니다. 이 작업은 하루 한 번만 보냅니다.
 // ⚠️ 체크인의 기분·시험 기간은 아직 브라우저에만 있어서, 안전 브레이크 중 "위기 표현" 만 봅니다.
 // ⚠️ 알림 내용은 로그에 찍지 않습니다. 몇 명에게 보냈는지 숫자만 남깁니다.
 @Component
@@ -52,6 +54,8 @@ public class HabitNudgeJob implements ScheduledJob {
   private final ThinkingTestRepository thinkingTestRepository;
   private final CallRecordRepository callRecordRepository;
   private final JobResultStore resultStore;
+  // 학생마다 관리 설정의 연락 금지 시간을 읽어 옵니다. (#22, #57)
+  private final QuietHoursSettings quietHoursSettings;
 
   @Override
   public String name() {
@@ -60,13 +64,6 @@ public class HabitNudgeJob implements ScheduledJob {
 
   @Override
   public void run(JobContext context) {
-    // 1) 연락 금지 시간
-    if (QuietHours.isQuiet(context.startedAt())) {
-      resultStore.save(NAME, context.date(), "연락 금지 시간이라 보내지 않음");
-      log.info("[오늘의 작전] 연락 금지 시간이라 보내지 않았어요.");
-      return;
-    }
-
     int sentUsers = 0;
     int skipped = 0;
     for (Long userId : pushSubscriptionRepository.findSubscribedUserIds()) {
@@ -83,6 +80,15 @@ public class HabitNudgeJob implements ScheduledJob {
 
   // 한 학생에게 보냅니다. 보냈으면(앱 목록에 남겼으면) true
   private boolean sendTo(Long userId, JobContext context) {
+    // 1) 그 학생의 연락 금지 시간 (보내도 될 때만 SEND)
+    QuietHours.Decision decision =
+        QuietHours.decide(
+            context.startedAt(),
+            quietHoursSettings.windowOf(userId),
+            MessageKind.NUDGE.quietPolicy());
+    if (decision.action() != QuietHours.Action.SEND) {
+      return false;
+    }
     // 2) 오늘 이미 보냈는지 (새벽 4시부터)
     if (messageRepository.existsByUserIdAndKindAndSentAtGreaterThanEqual(
         userId, MessageKind.NUDGE, DayRule.startOf(context.date()))) {
