@@ -3,9 +3,12 @@ package com.ithopeschool.projectbe.domain.subject;
 import com.ithopeschool.projectbe.domain.subject.dto.SubjectCreateRequest;
 import com.ithopeschool.projectbe.domain.subject.dto.SubjectResponse;
 import com.ithopeschool.projectbe.domain.subject.dto.SubjectUpdateRequest;
+import com.ithopeschool.projectbe.domain.user.User;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -25,6 +28,7 @@ public class SubjectService {
 
   private final CurrentUserProvider currentUserProvider;
   private final SubjectRepository subjectRepository;
+  private final EntityManager entityManager;
 
   // 내 과목 목록 (만든 순서). 하나도 없으면 빈 목록입니다.
   @Transactional(readOnly = true)
@@ -96,10 +100,15 @@ public class SubjectService {
   @Transactional
   public void delete(Long id) {
     Long userId = currentUserProvider.getCurrentUserId();
+    // 루틴 생성과 같은 사용자 행을 잠가서 검사 직후 과목이 삭제되는 경쟁을 막습니다.
+    entityManager.find(User.class, userId, LockModeType.PESSIMISTIC_WRITE);
     Subject subject = findMySubject(userId, id);
 
     if (subjectRepository.hasPlans(userId, id) || subjectRepository.hasStudySessions(userId, id)) {
       throw new ApiException(ErrorCode.CONFLICT, "이 과목으로 만든 계획이나 공부 기록이 있어서 지울 수 없어요");
+    }
+    if (subjectRepository.hasRoutines(userId, id)) {
+      throw new ApiException(ErrorCode.CONFLICT, "이 과목으로 만든 루틴이 있어서 지울 수 없어요");
     }
     subjectRepository.delete(subject);
   }

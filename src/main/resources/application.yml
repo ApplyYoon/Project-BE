@@ -27,6 +27,9 @@ app:
     # 한 사람이 하루에 글을 받는 AI(통화 요약 + 코치 문단 + 말로 계획 세우기)를 부를 수 있는 횟수입니다.
     # 넘으면 코치는 AI 글 없이 기본 문장만 나가고, 통화 요약은 429 입니다.
     daily-limit-per-user: ${AI_DAILY_LIMIT_PER_USER:20}
+    # 한 사람이 하루에 작은 AI 기능(카드 체크리스트 추천 등, 이슈 #237)을 부를 수 있는 횟수입니다. 위의 글 호출과 따로 셉니다.
+    # 카드를 만들 때마다 불러서 넉넉하게 잡았습니다. 넘으면 AI 칸이 비고(null) FE 가 기본값을 씁니다.
+    assist-daily-limit-per-user: ${AI_ASSIST_DAILY_LIMIT_PER_USER:40}
     # 한 사람이 하루에 AI 통화를 걸 수 있는 횟수입니다. 음성은 분 단위로 돈이 나가서 작게 잡았습니다. 넘으면 429 입니다.
     call-daily-limit-per-user: ${AI_CALL_DAILY_LIMIT_PER_USER:3}
     # 한 사람이 하루에 AI 와 통화할 수 있는 시간(분)입니다. 다 쓰면 429, 조금 남았으면 이번 통화를 그만큼만 합니다.
