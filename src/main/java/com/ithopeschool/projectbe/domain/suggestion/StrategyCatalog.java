@@ -9,7 +9,8 @@ import java.util.Optional;
 // 개선안 제안(#51)은 여기서 학생의 못 채운 이유에 맞는 전략을 쉬움 · 보통 · 강함 하나씩 고르고, GPT 는 문장만 다듬습니다.
 //
 // 이유 6가지 × 강도 3가지 × 2개씩입니다.
-//   피곤·수면(TIRED) · 약속·행사(EVENT) · 폰·SNS(PHONE) · 계획 과다(TOO_MUCH) · 하기 싫음(UNWILLING) · 기타(ETC)
+//   피곤·수면(TIRED) · 약속·행사(EVENT) · 폰·SNS(PHONE) · 계획 과다(TOO_MUCH) · 하기 싫음(UNWILLING) · 미루다
+// 보니(PROCRASTINATED, #225) · 기타(ETC)
 //   - "시작 지연(미루기)" 은 이유 버튼에 따로 없고 '하기 싫음' 에 들어가서(Weakness 의 미루기 → 하기 싫음), 하기 싫음 전략에 같이 넣었습니다.
 //   - 아픔(SICK)은 전략이 없습니다. 아플 때는 방법을 바꾸기보다 쉬고 목표를 낮추는 것이 먼저입니다. (CareDecision 의 목표 하향)
 //
@@ -113,6 +114,43 @@ public final class StrategyCatalog {
               "미루고 싶은 과제가 생기면",
               "그날 가장 먼저 그 과제부터 한다"),
           // 기타 (이유를 잘 모를 때)
+          // 미루다 보니 (#225 에서 더한 이유): 시작 문턱을 낮추고, 미루기 쉬운 공부를 앞에 둡니다.
+          strategy(
+              MissReason.PROCRASTINATED,
+              SuggestionLevel.EASY,
+              1,
+              "공부를 미루고 싶어지면",
+              "타이머를 2분만 켜고 첫 줄만 읽는다"),
+          strategy(
+              MissReason.PROCRASTINATED,
+              SuggestionLevel.EASY,
+              2,
+              "시작 시각 10분 전이 되면",
+              "책과 필기구를 책상에 펴 둔다"),
+          strategy(
+              MissReason.PROCRASTINATED,
+              SuggestionLevel.NORMAL,
+              1,
+              "딴 일을 먼저 하고 싶어지면",
+              "공부 25분을 먼저 하고 그 일을 한다"),
+          strategy(
+              MissReason.PROCRASTINATED,
+              SuggestionLevel.NORMAL,
+              2,
+              "하루 계획을 세울 때면",
+              "가장 미루기 쉬운 공부를 맨 앞에 둔다"),
+          strategy(
+              MissReason.PROCRASTINATED,
+              SuggestionLevel.HARD,
+              1,
+              "카드 시작 시각이 되면",
+              "하던 일을 멈추고 바로 타이머를 켠다"),
+          strategy(
+              MissReason.PROCRASTINATED,
+              SuggestionLevel.HARD,
+              2,
+              "같은 공부를 두 번 미루면",
+              "다음 날 아침 첫 일정으로 옮긴다"),
           strategy(MissReason.ETC, SuggestionLevel.EASY, 1, "공부가 끝나면", "오늘 잘 안 된 순간을 한 줄 적는다"),
           strategy(MissReason.ETC, SuggestionLevel.EASY, 2, "계획을 세울 때면", "시작 시각을 같이 정해 둔다"),
           strategy(MissReason.ETC, SuggestionLevel.NORMAL, 1, "저녁을 먹고 나면", "바로 25분 타이머를 켠다"),

@@ -211,6 +211,7 @@ public final class CallCard {
       case TOO_MUCH -> "tooMuch";
       case UNWILLING -> "unwilling";
       case SICK -> "sick";
+      case PROCRASTINATED -> "procrastinated";
       case ETC -> "etc";
     };
   }
