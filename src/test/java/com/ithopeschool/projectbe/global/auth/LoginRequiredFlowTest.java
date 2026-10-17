@@ -342,6 +342,14 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/routine-cards",
               "/api/v1/ai/routine-cards",
               "{\"goal\":\"영단어장 1회독\",\"plan\":\"폰을 다른 방에 두기\"}"),
+          // 즉석 카드 (내 과목·최근 카드 제목을 봅니다. 이슈 #237)
+          new Api("POST", "/api/v1/ai/quick-card", "/api/v1/ai/quick-card", "{\"text\":\"수학 하자\"}"),
+          // 말로 설정 바꾸기 (내 관리 설정을 봅니다. 바꾸지는 않습니다. 이슈 #237)
+          new Api(
+              "POST",
+              "/api/v1/ai/settings-from-text",
+              "/api/v1/ai/settings-from-text",
+              "{\"text\":\"아침엔 알림 꺼 줘\"}"),
           // 위험 예측 (무너질 가능성이 높은 날과 그 이유라서 학생의 정보입니다. 이슈 #49)
           new Api(
               "POST",

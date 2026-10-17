@@ -8,8 +8,12 @@ import com.ithopeschool.projectbe.domain.ai.dto.FailCauseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.QuickCardRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.SettingsFromTextRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.SettingsFromTextResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.TextLabelRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.TextLabelResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,6 +40,8 @@ public class AiController {
   private final ExamNextStepService examNextStepService;
   private final TextLabelService textLabelService;
   private final RoutineCardService routineCardService;
+  private final QuickCardService quickCardService;
+  private final SettingsFromTextService settingsFromTextService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -82,5 +88,22 @@ public class AiController {
   @PostMapping("/routine-cards")
   public RoutineCardResponse routineCards(@Valid @RequestBody RoutineCardRequest request) {
     return routineCardService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "즉석 카드: 한 줄 → 카드 제목 + 체크리스트 2~4개 (평소 쓰던 제목으로 맞춤 · 저장 안 함 · 못 만들면 card: null · 토큰 필요)")
+  @PostMapping("/quick-card")
+  public QuickCardResponse quickCard(@Valid @RequestBody QuickCardRequest request) {
+    return quickCardService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "말로 설정 바꾸기: 부탁 한 줄 → 관리 설정 변경안 (바꾸지 않음 · 전화 시각·메시지 수·연락 금지만 · 수위·한도·잠금은 못 바꿈 · 토큰 필요)")
+  @PostMapping("/settings-from-text")
+  public SettingsFromTextResponse settingsFromText(
+      @Valid @RequestBody SettingsFromTextRequest request) {
+    return settingsFromTextService.suggest(request);
   }
 }

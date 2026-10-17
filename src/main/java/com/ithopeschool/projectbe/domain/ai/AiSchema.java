@@ -37,6 +37,16 @@ public final class AiSchema {
     return Map.of("type", "string");
   }
 
+  // 글 한 칸, 없으면 null.   →  { "type": ["string", "null"] }
+  public static Map<String, Object> nullableString() {
+    return Map.of("type", List.of("string", "null"));
+  }
+
+  // 정수 한 칸, 없으면 null.   →  { "type": ["integer", "null"] }
+  public static Map<String, Object> nullableInteger() {
+    return Map.of("type", List.of("integer", "null"));
+  }
+
   // 정해진 글 중 하나.   enumOf(List.of("inner", "outer"))  →  { "type": "string", "enum": ["inner",
   // "outer"] }
   public static Map<String, Object> enumOf(List<String> values) {
