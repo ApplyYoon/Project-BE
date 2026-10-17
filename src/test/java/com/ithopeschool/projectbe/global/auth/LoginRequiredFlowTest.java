@@ -108,6 +108,12 @@ class LoginRequiredFlowTest {
               "/api/v1/study-plans/batch",
               "/api/v1/study-plans/batch",
               "{\"plans\":[" + PLAN_BODY + "]}"),
+          // 말로 계획 세우기 (아무나 부르면 GPT 비용이 나갑니다)
+          new Api(
+              "POST",
+              "/api/v1/study-plans/parse",
+              "/api/v1/study-plans/parse",
+              "{\"date\":\"2026-10-12\",\"text\":\"수학 문제집 2시간\"}"),
           new Api("PATCH", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", "{\"done\":true}"),
           new Api("DELETE", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", null),
           // 관리 설정
