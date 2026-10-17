@@ -19,10 +19,13 @@ import com.ithopeschool.projectbe.domain.job.JobResultStore;
 import com.ithopeschool.projectbe.domain.message.MessageKind;
 import com.ithopeschool.projectbe.domain.message.MessageRepository;
 import com.ithopeschool.projectbe.domain.message.MessageService;
+import com.ithopeschool.projectbe.domain.safety.QuietHours;
+import com.ithopeschool.projectbe.domain.settings.QuietHoursSettings;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
@@ -51,6 +54,8 @@ class HabitNudgeJobTest {
   private final ThinkingTestRepository thinkingTests = mock(ThinkingTestRepository.class);
   private final CallRecordRepository callRecords = mock(CallRecordRepository.class);
   private final JobResultStore resultStore = new JobResultStore();
+  // 학생마다의 연락 금지 시간 (관리 설정 #22). 기본은 23:00 ~ 07:00 입니다. (setUp)
+  private final QuietHoursSettings quietHoursSettings = mock(QuietHoursSettings.class);
 
   private final HabitNudgeJob job =
       new HabitNudgeJob(
@@ -60,7 +65,8 @@ class HabitNudgeJobTest {
           messageService,
           thinkingTests,
           callRecords,
-          resultStore);
+          resultStore,
+          quietHoursSettings);
 
   @BeforeEach
   void setUp() {
@@ -73,6 +79,7 @@ class HabitNudgeJobTest {
             callRecords.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
                 anyLong(), any()))
         .willReturn(List.of());
+    given(quietHoursSettings.windowOf(anyLong())).willReturn(QuietHours.Window.DEFAULT);
   }
 
   private static ThinkingTest testWithTop(CognitiveBias top) {
@@ -134,13 +141,41 @@ class HabitNudgeJobTest {
   }
 
   @Test
-  @DisplayName("연락 금지 시간이면 아무에게도 보내지 않는다")
+  @DisplayName("기본 연락 금지 시간(23~7시)이면 보내지 않는다")
   void quietHours() {
     job.run(LATE_NIGHT);
 
     verify(messageService, never()).save(anyLong(), any(), any());
     verify(pushService, never()).sendToUser(anyLong(), any());
-    assertThat(resultStore.find(HabitNudgeJob.NAME, TODAY)).contains("연락 금지 시간이라 보내지 않음");
+    assertThat(resultStore.find(HabitNudgeJob.NAME, TODAY)).contains("보냄 0명 · 건너뜀 1명");
+  }
+
+  @Test
+  @DisplayName("학생이 관리 설정에서 정한 연락 금지 시간을 따른다: 18~7시로 정한 학생에게는 저녁 7시에도 안 보낸다 (#57)")
+  void followsEachStudentsQuietHours() {
+    given(subscriptions.findSubscribedUserIds()).willReturn(List.of(7L, 8L));
+    // 7번은 18:00 ~ 07:00 로 정했고, 8번은 기본값입니다.
+    given(quietHoursSettings.windowOf(7L))
+        .willReturn(new QuietHours.Window(LocalTime.of(18, 0), LocalTime.of(7, 0)));
+
+    job.run(EVENING);
+
+    verify(messageService, never()).save(eq(7L), any(), any());
+    verify(messageService).save(eq(8L), eq(MessageKind.NUDGE), any());
+    assertThat(resultStore.find(HabitNudgeJob.NAME, TODAY)).contains("보냄 1명 · 건너뜀 1명");
+  }
+
+  @Test
+  @DisplayName("기본값보다 늦게 금지를 시작한 학생(23시30분~)에게는 밤 11시 30분 직전까지 보낸다")
+  void laterQuietStart() {
+    // 밤 11시 10분(한국 시간) = 14:10Z — 기본값(23시~)이면 금지지만, 이 학생은 23:30 부터 금지
+    JobContext elevenTen = new JobContext(TODAY, Instant.parse("2026-10-15T14:10:00Z"));
+    given(quietHoursSettings.windowOf(7L))
+        .willReturn(new QuietHours.Window(LocalTime.of(23, 30), LocalTime.of(7, 0)));
+
+    job.run(elevenTen);
+
+    verify(messageService).save(eq(7L), eq(MessageKind.NUDGE), any());
   }
 
   @Test
