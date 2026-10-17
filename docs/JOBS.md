@@ -129,7 +129,7 @@ public class DailySummaryJob implements ScheduledJob {
 1. 위 [키 만들기](#키-만들기)로 키를 만듭니다.
 2. Render 대시보드 → 서비스 `project-be` → **Environment** → **Add Environment Variable**
    - Key: `JOB_SECRET_KEY` / Value: 방금 만든 키
-3. 저장하면 서버가 다시 시작됩니다. (`render.yaml` 에는 이 줄이 아직 없어서 **화면에서 직접 추가**해야 합니다)
+3. 저장하면 서버가 다시 시작됩니다. (`render.yaml` 에 `JOB_SECRET_KEY` 칸이 있어서 **Blueprint 를 처음 만들 때** 넣었다면 이 단계는 건너뜁니다. 그 뒤에는 Render 가 `render.yaml` 의 비밀 칸을 다시 묻지 않으므로 **화면에서 직접 추가**합니다)
 4. 확인: 키 없이 불러 보면 **401**, 키를 넣으면 **200** 이어야 합니다.
 
 ```bash
