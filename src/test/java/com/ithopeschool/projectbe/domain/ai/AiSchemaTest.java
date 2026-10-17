@@ -27,6 +27,13 @@ class AiSchemaTest {
   }
 
   @Test
+  @DisplayName("정해진 글 중 하나의 모양")
+  void enumOf() {
+    assertThat(AiSchema.enumOf(List.of("inner", "outer")))
+        .isEqualTo(Map.of("type", "string", "enum", List.of("inner", "outer")));
+  }
+
+  @Test
   @DisplayName("글 한 칸과 글 목록의 모양")
   void stringAndStringList() {
     assertThat(AiSchema.string()).isEqualTo(Map.of("type", "string"));

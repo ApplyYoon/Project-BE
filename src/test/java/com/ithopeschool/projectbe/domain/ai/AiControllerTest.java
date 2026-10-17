@@ -14,6 +14,7 @@ import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.TextLabelResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.util.List;
@@ -36,6 +37,7 @@ class AiControllerTest {
   @MockitoBean private FirstStepService firstStepService;
   @MockitoBean private FailCauseService failCauseService;
   @MockitoBean private ExamNextStepService examNextStepService;
+  @MockitoBean private TextLabelService textLabelService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -253,5 +255,44 @@ class AiControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("시험 번호가 올바르지 않아요"));
     verifyNoInteractions(examNextStepService);
+  }
+
+  // ---- 글에 이름표 붙이기 ----
+
+  private ResultActions classifyText(String body) throws Exception {
+    return mockMvc.perform(
+        post("/api/v1/ai/classify-text").contentType(MediaType.APPLICATION_JSON).content(body));
+  }
+
+  @Test
+  @DisplayName("글에 이름표 붙이기: 200 과 이름표, 못 붙이면 label: null")
+  void classifyTextLabels() throws Exception {
+    given(textLabelService.label(any())).willReturn(TextLabelResponse.of("outer"));
+    classifyText("{\"kind\":\"reason\",\"text\":\"동생이 떠들었다\"}")
+        .andExpect(status().isOk())
+        .andExpect(content().json("{\"showHelp\":false,\"label\":\"outer\"}", true));
+
+    given(textLabelService.label(any())).willReturn(TextLabelResponse.of(null));
+    classifyText("{\"kind\":\"memo\",\"text\":\"문자 보내기\"}")
+        .andExpect(status().isOk())
+        .andExpect(content().json("{\"showHelp\":false,\"label\":null}", true));
+  }
+
+  @Test
+  @DisplayName("글에 이름표 붙이기: 종류가 reason · memo 가 아니거나, 글이 비었거나 100자를 넘으면 400 이다")
+  void classifyTextRejectsBadRequests() throws Exception {
+    classifyText("{\"text\":\"문자\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("글의 종류를 보내 주세요"));
+    classifyText("{\"kind\":\"diary\",\"text\":\"문자\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("글의 종류는 reason 또는 memo 로 보내 주세요"));
+    classifyText("{\"kind\":\"memo\",\"text\":\" \"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("분류할 글을 보내 주세요"));
+    classifyText("{\"kind\":\"memo\",\"text\":\"" + "가".repeat(101) + "\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("글은 100자 이하로 보내 주세요"));
+    verifyNoInteractions(textLabelService);
   }
 }
