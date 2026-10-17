@@ -3,6 +3,7 @@ package com.ithopeschool.projectbe.domain.safety;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 
 // "연락 금지 시간" 검사기입니다. (이슈 #57, 기획서 v2 5장 「안전 브레이크」)
 // 사용자 대부분이 미성년자라서, 밤늦게는 메시지·푸시·전화를 보내지 않습니다.
@@ -50,6 +51,55 @@ public final class QuietHours {
     }
     // 자정을 넘는 범위 (예: 23시 ~ 7시) — "23시 이후" 이거나 "7시 이전" 이면 금지 시간입니다.
     return nowMinutes >= startMinutes || nowMinutes < endMinutes;
+  }
+
+  // 사용자가 정한 연락 금지 시간 (시작 · 끝). 관리 설정(#22)에서 읽어 옵니다. (settings/QuietHoursSettings)
+  public record Window(LocalTime start, LocalTime end) {
+
+    // 기본 연락 금지 시간 (23:00 ~ 07:00)
+    public static final Window DEFAULT = new Window(DEFAULT_START, DEFAULT_END);
+  }
+
+  // 보낼지 판단한 결과입니다.
+  //   SEND   지금 보냅니다                     (sendAt = 지금)
+  //   DELAY  금지 시간이 끝나면 보냅니다         (sendAt = 금지 시간이 끝나는 순간)
+  //   DROP   보내지 않습니다                   (sendAt = null)
+  public enum Action {
+    SEND,
+    DELAY,
+    DROP
+  }
+
+  public record Decision(Action action, Instant sendAt) {}
+
+  // 지금(now) 이 메시지를 보낼지 정합니다. 메시지·푸시·전화를 보내기 직전에 이것을 부릅니다. (이슈 #57)
+  //
+  //   금지 시간이 아님                        →  SEND  (지금)
+  //   금지 시간 + 미룰 메시지(DELAY)          →  DELAY (금지 시간이 끝나는 순간, 한국 시간)
+  //   금지 시간 + 버릴 메시지(DROP)           →  DROP
+  //
+  //   예) 밤 11시 30분, 23:00~07:00, 목표 달성 칭찬(DELAY)  →  DELAY, 다음 날 아침 7시
+  //   예) 새벽 1시,     23:00~07:00, 목표 달성 칭찬(DELAY)  →  DELAY, 같은 날 아침 7시
+  //   예) 밤 11시 30분, 23:00~07:00, 계획 시간 지남(DROP)   →  DROP
+  public static Decision decide(Instant now, Window window, QuietPolicy policy) {
+    if (!isQuiet(now, window.start(), window.end())) {
+      return new Decision(Action.SEND, now);
+    }
+    if (policy == QuietPolicy.DROP) {
+      return new Decision(Action.DROP, null);
+    }
+    return new Decision(Action.DELAY, nextEnd(now, window.end()));
+  }
+
+  // 지금 다음으로 오는 "금지 시간이 끝나는 순간" (한국 시간)
+  //   지금 10/17 23:30, 끝 07:00  →  10/18 07:00
+  //   지금 10/18 01:00, 끝 07:00  →  10/18 07:00
+  private static Instant nextEnd(Instant now, LocalTime end) {
+    ZonedDateTime nowInSeoul = now.atZone(SEOUL);
+    // 분까지만 봅니다. (초는 버림, isQuiet 과 같은 규칙)
+    ZonedDateTime todayEnd =
+        nowInSeoul.toLocalDate().atTime(end.getHour(), end.getMinute()).atZone(SEOUL);
+    return todayEnd.isAfter(nowInSeoul) ? todayEnd.toInstant() : todayEnd.plusDays(1).toInstant();
   }
 
   // 시각을 "자정부터 몇 분째인지" 로 바꿉니다. (07:30 → 450)
