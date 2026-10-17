@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.message;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
@@ -15,4 +16,8 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
   // 번호로 내 메시지 하나를 찾습니다. 없거나 다른 사람의 것이면 빈 Optional 입니다.
   Optional<Message> findByIdAndUserId(Long id, Long userId);
+
+  // 이 사람에게 이 종류의 메시지를 from 이후에 보낸 적이 있는지. (하루에 한 번만 보내는 작업이 씁니다)
+  boolean existsByUserIdAndKindAndSentAtGreaterThanEqual(
+      Long userId, MessageKind kind, Instant from);
 }

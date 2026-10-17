@@ -125,11 +125,53 @@ class LoginRequiredFlowTest {
               "POST",
               "/api/v1/realtime/session",
               "/api/v1/realtime/session",
-              "{\"careLevel\":1,\"maxHarshness\":3}"));
+              "{\"careLevel\":1,\"maxHarshness\":3}"),
+          // AI 통화 기록 (자막은 학생의 대화입니다)
+          new Api("GET", "/api/v1/calls", "/api/v1/calls", null),
+          new Api("GET", "/api/v1/calls/habits", "/api/v1/calls/habits", null),
+          // 웹 푸시 (내 기기를 알림 받을 곳으로 등록합니다)
+          new Api("GET", "/api/v1/push/public-key", "/api/v1/push/public-key", null),
+          new Api(
+              "POST",
+              "/api/v1/push/subscriptions",
+              "/api/v1/push/subscriptions",
+              "{\"endpoint\":\"https://fcm.googleapis.com/x\",\"keys\":{\"p256dh\":\"BNc\",\"auth\":\"tBH\"}}"),
+          new Api(
+              "DELETE",
+              "/api/v1/push/subscriptions",
+              "/api/v1/push/subscriptions",
+              "{\"endpoint\":\"https://fcm.googleapis.com/x\"}"),
+          // 생각 습관 테스트 (학생의 심리 기록입니다)
+          new Api("GET", "/api/v1/thinking-tests/latest", "/api/v1/thinking-tests/latest", null),
+          new Api("GET", "/api/v1/thinking-tests/gap", "/api/v1/thinking-tests/gap", null),
+          new Api(
+              "POST",
+              "/api/v1/thinking-tests",
+              "/api/v1/thinking-tests",
+              "{\"testVersion\":2,\"scores\":["
+                  + "{\"habit\":\"PLANNING_FALLACY\",\"average\":4.0},"
+                  + "{\"habit\":\"FUTURE_SELF\",\"average\":4.0},"
+                  + "{\"habit\":\"WHAT_THE_HELL\",\"average\":4.0},"
+                  + "{\"habit\":\"EMOTIONAL_REASONING\",\"average\":4.0},"
+                  + "{\"habit\":\"EXTERNAL_BLAME\",\"average\":4.0},"
+                  + "{\"habit\":\"ALL_OR_NOTHING\",\"average\":4.0},"
+                  + "{\"habit\":\"MORAL_LICENSING\",\"average\":4.0},"
+                  + "{\"habit\":\"OVERGENERALIZING\",\"average\":4.0}]}"),
+          new Api(
+              "POST",
+              "/api/v1/calls/{id}/finish",
+              "/api/v1/calls/1/finish",
+              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
+  // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.
   private static final List<String> PUBLIC =
-      List.of("GET /api/v1/health", "POST /api/v1/auth/signup", "POST /api/v1/auth/login");
+      List.of(
+          "GET /api/v1/health",
+          "POST /api/v1/auth/signup",
+          "POST /api/v1/auth/login",
+          "POST /api/v1/auth/google",
+          "POST /api/v1/auth/google/signup");
 
   // 로그인 토큰이 아니라 "작업 키"(X-Job-Key)로 지키는 API 입니다. 사람이 아니라 예약 작업이 부릅니다.
   // 키가 없으면 401 인 것은 JobFlowTest 가 확인합니다.

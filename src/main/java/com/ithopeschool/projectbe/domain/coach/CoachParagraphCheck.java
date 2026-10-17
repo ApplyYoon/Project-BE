@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.coach;
 
+import com.ithopeschool.projectbe.domain.care.ToneGuide;
 import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
 import java.util.HashSet;
 import java.util.List;
@@ -15,16 +16,11 @@ import java.util.regex.Pattern;
 //   1. 비어 있지 않고 너무 길지 않은가
 //   2. 문단에 나온 숫자가 모두 우리가 준 숫자인가   ← 지어낸 숫자를 막습니다
 //   3. 깎아내리는 말이 들어 있지 않은가               ← 미성년자가 읽는 글입니다 (CLAUDE.md 4장)
+//      금지 표현의 목록과 검사는 공통 말투 지침(ToneGuide)에 있습니다. 여기서는 그 검사를 부르기만 합니다.
 public final class CoachParagraphCheck {
 
   // 문단의 최대 길이(글자). 3~4문장이면 넉넉히 들어갑니다. 이보다 길면 시킨 대로 쓰지 않은 것으로 봅니다.
   public static final int MAX_LENGTH = 300;
-
-  // 깎아내리는 말의 첫 목록입니다. 이 중 하나라도 들어 있으면 문단을 버립니다.
-  // 공통 말투 지침·금지 표현 검사(#65)가 만들어지면 그쪽으로 옮기고 목록을 키웁니다.
-  private static final List<String> BANNED_WORDS =
-      List.of(
-          "멍청", "한심", "바보", "쓰레기", "게으르", "게을러", "못생", "머리가 나쁘", "구제불능", "실망이야", "남들은", "다른 애들");
 
   // 글 속의 숫자 덩어리를 찾습니다. 예: "55%" 에서 55, "평균 23분" 에서 23
   private static final Pattern DIGITS = Pattern.compile("\\d+");
@@ -56,14 +52,9 @@ public final class CoachParagraphCheck {
     return given.containsAll(digitsIn(paragraph));
   }
 
-  // 깎아내리는 말이 들어 있으면 true 입니다.
+  // 깎아내리는 말이 들어 있으면 true 입니다. (공통 말투 지침의 금지 표현 검사)
   static boolean hasBannedWord(String paragraph) {
-    for (String word : BANNED_WORDS) {
-      if (paragraph.contains(word)) {
-        return true;
-      }
-    }
-    return false;
+    return ToneGuide.hasBannedExpression(paragraph);
   }
 
   // 글에서 숫자 덩어리를 모두 꺼냅니다.  "20번 중 11번" -> ["20", "11"]

@@ -190,6 +190,9 @@ class StudyPlanControllerTest {
         Arguments.of("{" + VALID_PLAN + ",\"startTime\":\"25:00\"}", "시작 시각은 19:00 처럼 보내 주세요"),
         Arguments.of("{" + VALID_PLAN + ",\"startTime\":\"7:00\"}", "시작 시각은 19:00 처럼 보내 주세요"),
         Arguments.of("{" + VALID_PLAN.replace("\"3\"", "\"abc\"") + "}", "과목 번호가 올바르지 않아요"),
+        // 19자리는 서버의 숫자(Long)에 안 들어갈 수 있어서 400 으로 막습니다. (예전에는 500 이 났음)
+        Arguments.of(
+            "{" + VALID_PLAN.replace("\"3\"", "\"9999999999999999999\"") + "}", "과목 번호가 올바르지 않아요"),
         Arguments.of("{" + VALID_PLAN.replace("수학", "가".repeat(201)) + "}", "할 일은 200자 이하로 적어 주세요"),
         Arguments.of(
             "{" + VALID_PLAN.replace("2026-10-05", "2026/10/05") + "}", "보낸 값을 다시 확인해 주세요"));
@@ -292,7 +295,8 @@ class StudyPlanControllerTest {
         Arguments.of("{\"targetMinutes\":0}", "목표 시간은 1분 이상이어야 해요"),
         Arguments.of("{\"targetMinutes\":601}", "목표 시간은 600분(10시간) 이하여야 해요"),
         Arguments.of("{\"startTime\":\"24:00\"}", "시작 시각은 19:00 처럼 보내 주세요"),
-        Arguments.of("{\"subjectId\":\"x\"}", "과목 번호가 올바르지 않아요"));
+        Arguments.of("{\"subjectId\":\"x\"}", "과목 번호가 올바르지 않아요"),
+        Arguments.of("{\"subjectId\":\"9999999999999999999\"}", "과목 번호가 올바르지 않아요"));
   }
 
   @ParameterizedTest(name = "{1}")
