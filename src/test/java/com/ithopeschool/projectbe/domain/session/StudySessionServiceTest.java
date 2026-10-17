@@ -26,6 +26,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -359,5 +360,16 @@ class StudySessionServiceTest {
         .willReturn(true);
 
     expectError(simple(START, END, null), ErrorCode.CONFLICT, "이미 저장된 기록과 시간이 겹쳐요");
+  }
+
+  @Test
+  @DisplayName("모두 지우기는 로그인한 사람의 기록만 찾아서 지운다")
+  void deleteAllUsesMyUserId() {
+    List<StudySession> mine = List.of(new StudySession(ME, MY_SUBJECT, NOW, NOW, 0));
+    given(studySessionRepository.findByUserId(ME)).willReturn(mine);
+
+    studySessionService.deleteAll();
+
+    verify(studySessionRepository).deleteAll(mine);
   }
 }

@@ -45,6 +45,9 @@ public interface StudySessionRepository extends JpaRepository<StudySession, Long
       @Param("periodStart") Instant periodStart,
       @Param("periodEnd") Instant periodEnd);
 
+  // 내 기록을 모두 찾습니다. "모든 기록 지우기" 가 이 목록을 지웁니다. (StudySessionService.deleteAll)
+  List<StudySession> findByUserId(Long userId);
+
   // 내 기록 중 가장 먼저 시작한 것 하나. 기록이 없으면 빈 Optional 입니다.
   // 첫 리포트 카운트다운의 "첫 기록 날짜" 를 찾을 때 씁니다. (InsightService, 이슈 #35)
   Optional<StudySession> findFirstByUserIdOrderByStartedAtAscIdAsc(Long userId);
