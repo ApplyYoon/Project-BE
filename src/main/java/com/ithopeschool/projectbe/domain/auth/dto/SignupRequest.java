@@ -1,5 +1,7 @@
 package com.ithopeschool.projectbe.domain.auth.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
@@ -23,9 +25,8 @@ public record SignupRequest(
         @Pattern(regexp = ".*[a-zA-Z].*", message = "비밀번호에 영문과 숫자를 모두 넣어 주세요")
         @Pattern(regexp = ".*[0-9].*", message = "비밀번호에 영문과 숫자를 모두 넣어 주세요")
         String password,
-    // 실명. 선택입니다. 안 보내도 가입됩니다. (이슈 #71: 실명은 받지 않는 방향입니다.
-    // FE 가 실명 입력을 없앨 때까지만 받아 주고, 없어지면 이 칸과 accounts.name 을 지웁니다)
-    @Size(min = 2, max = 20, message = "이름은 2자 이상 20자 이하로 적어 주세요") String name,
+    // 호환용 자리입니다. 값은 읽지 않으며 항상 null입니다. (#71)
+    @JsonIgnore @Schema(hidden = true) String name,
     // 앱에서 부르는 이름 (users.nickname 에 저장합니다)
     @NotNull(message = "닉네임을 입력해 주세요")
         @Size(min = 2, max = 10, message = "닉네임은 2자 이상 10자 이하로 적어 주세요")
@@ -40,8 +41,8 @@ public record SignupRequest(
   // 비밀번호는 공백도 비밀번호의 일부일 수 있어서 건드리지 않습니다.
   public SignupRequest {
     email = email == null ? null : email.trim();
-    // 실명은 선택이라, 공백뿐인 글자는 "안 보냄" 으로 봅니다.
-    name = name == null || name.isBlank() ? null : name.trim();
+    // 예전 FE가 name을 보내도 실명은 로직에 전달하거나 저장하지 않습니다.
+    name = null;
     nickname = nickname == null ? null : nickname.trim();
   }
 

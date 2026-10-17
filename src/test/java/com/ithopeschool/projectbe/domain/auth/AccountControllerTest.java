@@ -119,7 +119,7 @@ class AccountControllerTest {
   // ---- 내 정보 고치기 ----
 
   @Test
-  @DisplayName("고치기에 성공하면 200 과 고친 내 정보를 돌려주고, 이름·닉네임은 공백을 지운 값으로 넘어간다")
+  @DisplayName("고치기에 성공하면 200 과 고친 내 정보를 돌려주고, 실명은 무시하고 닉네임은 공백을 지운다")
   void updateProfile() throws Exception {
     given(accountService.updateProfile(any())).willReturn(PROFILE);
 
@@ -132,7 +132,7 @@ class AccountControllerTest {
     ArgumentCaptor<ProfileUpdateRequest> captor =
         ArgumentCaptor.forClass(ProfileUpdateRequest.class);
     verify(accountService).updateProfile(captor.capture());
-    assertThat(captor.getValue().name()).isEqualTo("김티맥");
+    assertThat(captor.getValue().name()).isNull();
     assertThat(captor.getValue().nickname()).isEqualTo("티맥이");
     assertThat(captor.getValue().diaryAnalysis()).isTrue();
   }
@@ -149,11 +149,8 @@ class AccountControllerTest {
   }
 
   @Test
-  @DisplayName("이름 2 ~ 20자, 닉네임 2 ~ 10자가 아니거나 동의 여부가 없으면 400")
+  @DisplayName("닉네임 2 ~ 10자가 아니거나 동의 여부가 없으면 400")
   void updateProfileRejectsBadValues() throws Exception {
-    expectRejected(
-        putJson("/api/v1/auth/profile", VALID_UPDATE.replace("\"김티맥\"", "\"김\"")),
-        "이름은 2자 이상 20자 이하로 적어 주세요");
     expectRejected(
         putJson("/api/v1/auth/profile", VALID_UPDATE.replace("\"티맥이\"", "\"   \"")),
         "닉네임은 2자 이상 10자 이하로 적어 주세요");
