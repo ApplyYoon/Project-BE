@@ -5,6 +5,8 @@ import com.ithopeschool.projectbe.domain.call.dto.BiasHabitResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallRecordResponse;
+import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.safety.CrisisText;
@@ -36,6 +38,8 @@ import org.springframework.transaction.annotation.Transactional;
 //   7. 받은 칸을 검사한다                              (CallReview: 정해진 값이 아니면 그 칸은 비움)
 //   8. GPT 도 위기 표현이라고 했으면 4번과 같이 한다   (단어 목록과 GPT 중 하나라도 걸리면 감지. 놓치는 쪽이 더 위험)
 //   9. 요약·보인 생각 습관·약속을 저장하고 결론을 돌려준다
+//  10. 기분·못 채운 이유·예상 순공·약속은 그날의 체크인에도 남긴다 (CallCheckIn. 이미 있으면 빈 칸만 채움)
+//      위기 표현이 감지된 통화는 내용을 남기지 않으므로 체크인도 만들지 않습니다.
 //
 // ⚠️ 자막은 정리하는 데만 쓰고 저장하지 않습니다. 자막과 정리한 내용은 로그에 찍지 않습니다. (CLAUDE.md 4장)
 @Service
@@ -44,6 +48,8 @@ public class CallRecordService {
 
   private final CurrentUserProvider currentUserProvider;
   private final CallRecordRepository callRecordRepository;
+  // 통화에서 나온 값을 그날의 체크인으로 남깁니다. (이슈 #29 · #24)
+  private final CheckInRepository checkInRepository;
   private final CallReviewClient callReviewClient;
   // 통화 시간을 기록하고, GPT 요약을 부르기 전에 하루 한도를 봅니다. (이슈 #33)
   private final GptUsageGuard gptUsageGuard;
@@ -162,6 +168,7 @@ public class CallRecordService {
         review.promiseThen(),
         review.promiseKept());
     callRecordRepository.save(record);
+    saveCheckIn(record, review);
 
     return new CallFinishResponse(
         String.valueOf(record.getId()),
@@ -176,6 +183,23 @@ public class CallRecordService {
         review.promiseKept(),
         review.mood(),
         review.expectedMinutes());
+  }
+
+  // 통화에서 나온 값을 통화한 날의 체크인으로 남깁니다. 옮길 값이 없으면 아무것도 하지 않습니다. (CallCheckIn)
+  // finish 는 트랜잭션이 없어서(위 주석), 찾은 체크인을 바꾼 뒤에도 save 로 저장합니다.
+  private void saveCheckIn(CallRecord record, CallReview review) {
+    if (!CallCheckIn.hasAnyValue(review)) {
+      return;
+    }
+    Optional<CheckIn> found =
+        checkInRepository.findByUserIdAndCheckInDate(record.getUserId(), record.getCallDate());
+    if (found.isPresent()) {
+      CallCheckIn.fillBlanks(found.get(), review);
+      checkInRepository.save(found.get());
+    } else {
+      checkInRepository.save(
+          CallCheckIn.newCheckIn(record.getUserId(), record.getCallDate(), review));
+    }
   }
 
   // 위기 표현이 감지된 통화: 내용은 남기지 않고 "감지됨" 만 남깁니다. 다음 통화는 7일 동안 위로하는 통화가 됩니다. (CallService)
