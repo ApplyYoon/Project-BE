@@ -7,7 +7,9 @@ import com.ithopeschool.projectbe.domain.care.MissReason;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 // "내가 생각한 나" 와 "실제 기록" 을 견줍니다. (이슈 #35 · #40, 선생님 요청 "내 생각과 현실의 차이")
 //
@@ -58,8 +60,8 @@ public record ThinkingGap(
   // 습관 하나의 판정. thought: 테스트에서 많이 해당했는지 / foundCount: 통화에서 보인 횟수
   public record HabitGap(CognitiveBias bias, boolean thought, int foundCount, Verdict verdict) {}
 
-  // 견주는 이유들 (아픔 · 기타는 뺍니다)
-  private static final List<MissReason> COMPARED_REASONS =
+  // 견주는 이유들 (아픔 · 기타는 뺍니다). ExamThinkingGap 도 같이 씁니다.
+  static final List<MissReason> COMPARED_REASONS =
       List.of(
           MissReason.PHONE,
           MissReason.TIRED,
@@ -75,25 +77,14 @@ public record ThinkingGap(
       Collection<Weakness> thoughtWeaknesses,
       List<CallFact> calls,
       int days) {
-    List<ReasonGap> reasons = new ArrayList<>();
-    for (MissReason reason : COMPARED_REASONS) {
-      List<Weakness> thoughtBy = new ArrayList<>();
-      for (Weakness weakness : Weakness.values()) {
-        if (thoughtWeaknesses.contains(weakness) && weakness.getMissReason() == reason) {
-          thoughtBy.add(weakness);
-        }
-      }
-      int count = 0;
-      for (CallFact call : calls) {
-        if (call.missReason() == reason) {
-          count++;
-        }
-      }
-      Verdict verdict = verdictOf(!thoughtBy.isEmpty(), count);
-      if (verdict != null) {
-        reasons.add(new ReasonGap(reason, thoughtBy, count, verdict));
+    // 이유마다 통화에서 나온 횟수
+    Map<MissReason, Integer> reasonCounts = new EnumMap<>(MissReason.class);
+    for (CallFact call : calls) {
+      if (call.missReason() != null) {
+        reasonCounts.put(call.missReason(), reasonCounts.getOrDefault(call.missReason(), 0) + 1);
       }
     }
+    List<ReasonGap> reasons = reasonGapsOf(thoughtWeaknesses, reasonCounts);
 
     List<HabitGap> habits = new ArrayList<>();
     for (CognitiveBias bias : CognitiveBias.values()) {
@@ -110,13 +101,6 @@ public record ThinkingGap(
       }
     }
 
-    List<Weakness> unverifiable = new ArrayList<>();
-    for (Weakness weakness : Weakness.values()) {
-      if (thoughtWeaknesses.contains(weakness) && weakness.getMissReason() == null) {
-        unverifiable.add(weakness);
-      }
-    }
-
     boolean enoughData = calls.size() >= MIN_CALLS;
     return new ThinkingGap(
         days,
@@ -124,8 +108,40 @@ public record ThinkingGap(
         enoughData,
         reasons,
         habits,
-        unverifiable,
+        unverifiableOf(thoughtWeaknesses),
         sentencesOf(enoughData, calls.size(), days, reasons, habits));
+  }
+
+  // 못 채운 이유마다 판정합니다. 판정이 없는 이유는 목록에 넣지 않습니다. (ExamThinkingGap 도 같은 규칙으로 씁니다)
+  // actualCounts: 이유 → 실제로 나온 횟수. 없는 이유는 0번으로 봅니다.
+  static List<ReasonGap> reasonGapsOf(
+      Collection<Weakness> thoughtWeaknesses, Map<MissReason, Integer> actualCounts) {
+    List<ReasonGap> reasons = new ArrayList<>();
+    for (MissReason reason : COMPARED_REASONS) {
+      List<Weakness> thoughtBy = new ArrayList<>();
+      for (Weakness weakness : Weakness.values()) {
+        if (thoughtWeaknesses.contains(weakness) && weakness.getMissReason() == reason) {
+          thoughtBy.add(weakness);
+        }
+      }
+      int count = actualCounts.getOrDefault(reason, 0);
+      Verdict verdict = verdictOf(!thoughtBy.isEmpty(), count);
+      if (verdict != null) {
+        reasons.add(new ReasonGap(reason, thoughtBy, count, verdict));
+      }
+    }
+    return reasons;
+  }
+
+  // 짝이 없어서 기록으로는 확인할 수 없는, 내가 꼽은 약점들 (집중력 · 기분·스트레스)
+  static List<Weakness> unverifiableOf(Collection<Weakness> thoughtWeaknesses) {
+    List<Weakness> unverifiable = new ArrayList<>();
+    for (Weakness weakness : Weakness.values()) {
+      if (thoughtWeaknesses.contains(weakness) && weakness.getMissReason() == null) {
+        unverifiable.add(weakness);
+      }
+    }
+    return unverifiable;
   }
 
   // 판정 규칙 (위 주석의 표). 어디에도 안 맞으면 null
@@ -205,7 +221,7 @@ public record ThinkingGap(
   }
 
   //   [GAME, VIDEO]  →  "'게임', '유튜브·영상'"
-  private static String weaknessLabels(List<Weakness> weaknesses) {
+  static String weaknessLabels(List<Weakness> weaknesses) {
     List<String> labels = new ArrayList<>();
     for (Weakness weakness : weaknesses) {
       labels.add("'" + weakness.getLabel() + "'");

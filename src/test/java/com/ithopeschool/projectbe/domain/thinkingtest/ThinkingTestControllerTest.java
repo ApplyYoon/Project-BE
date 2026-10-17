@@ -9,10 +9,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
+import com.ithopeschool.projectbe.domain.thinkingtest.dto.ExamThinkingGapResponse;
 import com.ithopeschool.projectbe.domain.thinkingtest.dto.ThinkingTestResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -105,5 +107,51 @@ class ThinkingTestControllerTest {
 
     mockMvc.perform(get("/api/v1/thinking-tests/latest")).andExpect(status().isNotFound());
     mockMvc.perform(get("/api/v1/thinking-tests/gap?days=5")).andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @DisplayName("시험 전 2주의 생각 vs 현실: 시험 날짜를 받아 200 과 결과를 돌려준다")
+  void examGap() throws Exception {
+    LocalDate exam = LocalDate.of(2026, 10, 20);
+    given(thinkingTestService.getExamGap(exam))
+        .willReturn(
+            new ExamThinkingGapResponse(
+                exam,
+                LocalDate.of(2026, 10, 6),
+                LocalDate.of(2026, 10, 19),
+                4,
+                true,
+                List.of(),
+                new ExamThinkingGapResponse.Plan("낙관", 58, 9, "MATCHED"),
+                List.of(),
+                List.of("테스트에서 계획할 때 '낙관' 쪽이었고, 시험 전 2주도 계획한 시간의 58%를 했어. 생각이 맞았어.")));
+
+    mockMvc
+        .perform(get("/api/v1/thinking-tests/exam-gap?examDate=2026-10-20"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.fromDate").value("2026-10-06"))
+        .andExpect(jsonPath("$.toDate").value("2026-10-19"))
+        .andExpect(jsonPath("$.plan.planRate").value(58))
+        .andExpect(jsonPath("$.plan.verdict").value("MATCHED"));
+  }
+
+  @Test
+  @DisplayName("시험 날짜를 안 보냈거나 모양이 틀리면 400 이고 서비스를 부르지 않는다. 테스트를 안 했으면 404")
+  void examGapErrors() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/thinking-tests/exam-gap"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    mockMvc
+        .perform(get("/api/v1/thinking-tests/exam-gap?examDate=2026/10/20"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    verifyNoInteractions(thinkingTestService);
+
+    given(thinkingTestService.getExamGap(LocalDate.of(2026, 10, 20)))
+        .willThrow(new ApiException(ErrorCode.NOT_FOUND, "아직 생각 습관 테스트를 하지 않았어요"));
+    mockMvc
+        .perform(get("/api/v1/thinking-tests/exam-gap?examDate=2026-10-20"))
+        .andExpect(status().isNotFound());
   }
 }

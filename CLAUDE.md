@@ -29,7 +29,7 @@ Claude Code(및 다른 AI 에이전트)가 이 저장소에서 작업할 때 **�
 | 코드 정리  | Spotless (google-java-format)                                                 |
 | 테스트     | JUnit 5                                                                       |
 | API 확인   | **Swagger UI** (springdoc-openapi) — 만든 API 를 브라우저에서 직접 불러 봄    |
-| DB         | 로컬: **H2 메모리 DB** (설치 불필요) / 원격: Neon (PostgreSQL) 으로 옮길 예정 |
+| DB         | 로컬: **H2 메모리 DB** (설치 불필요) / 원격: **Neon** (PostgreSQL) — 3장 끝   |
 | AI         | OpenAI GPT API — **서버에서만** 호출                                          |
 | 배포       | **Render** 무료 서버 (이슈 #8) — `render.yaml`, 순서는 `docs/DEPLOY.md`       |
 
@@ -54,7 +54,8 @@ src/main/java/com/ithopeschool/projectbe/
 │   └── exception/              공통 에러 처리 (에러는 ApiException 으로 던짐)
 └── domain/                     기능별 폴더 하나씩
     └── health/                 예시: Controller + Service + 응답 DTO
-src/main/resources/             설정 파일 (application.yml, -local.yml, -prod.yml)
+src/main/resources/             설정 파일 (application.yml, -local.yml, -neon.yml, -prod.yml)
+db/schema.sql                   운영 DB(Neon)의 테이블을 만드는 SQL (사람이 Neon SQL Editor 에서 실행)
 src/test/java/                  테스트 (main 과 같은 폴더 구조로)
 build.gradle                    라이브러리 목록과 빌드 설정
 gradlew, gradlew.bat, gradle/   Gradle 실행 파일 (고치지 않음)
@@ -119,13 +120,23 @@ domain/<기능>/
 AI 는 테이블·컬럼을 **먼저 정해 주지 않습니다.** 질문으로 돕고, 학생이 정한 것을 코드로 옮기는 일을 돕습니다.
 만들 때마다 `/db` 로 다이어그램을 새로 그려 눈으로 확인하게 합니다. (`.claude/skills/db-table/SKILL.md`)
 
-### 원격 DB 는 아직입니다
+### 원격 DB(Neon) — 테이블은 `db/schema.sql` 로 사람이 만듭니다 (이슈 #75)
 
-지금은 **로컬 H2 만** 씁니다. 서버를 끄면 데이터가 사라지는 연습용 DB 입니다.
-원격 DB(Neon) 연결은 다음 단계에서 하고, 그때 아래를 정해 이 문서에 적습니다.
+| 어디서 켜나                 | 프로필                                | DB                    | 테이블은 누가 만드나                     |
+| --------------------------- | ------------------------------------- | --------------------- | ---------------------------------------- |
+| 내 컴퓨터 (기본)            | `local`                               | H2 메모리 (꺼지면 비움) | 서버가 자동 (`ddl-auto: create-drop`)   |
+| 내 컴퓨터 + Neon            | `local,neon` (`application-neon.yml`) | Neon **`dev`** 브랜치 | 사람이 `db/schema.sql` 실행 → 서버는 **검사만** (`validate`) |
+| 배포 서버 (Render)          | `prod`                                | Neon **`main`** 브랜치 | 사람이 `db/schema.sql` 실행 → 서버는 검사도 안 함 (`none`) |
 
-- 원격 DB 의 테이블을 만드는 방법 (배포 설정은 `ddl-auto: none` 이라 **테이블이 미리 있어야** 합니다. DB 주소가 틀려도 서버가 꺼지지 않게 하려고 켜질 때 테이블 검사를 뺐습니다 — 이슈 #4)
-- 내 컴퓨터에서 접속 정보를 받는 방법 (이슈 #76 에서 정합니다)
+- **아무 설정 없이 켜면 지금처럼 H2** 입니다. Neon 은 `SPRING_PROFILES_ACTIVE=local,neon` 과 `DATABASE_URL`·`DATABASE_USERNAME`·`DATABASE_PASSWORD` 환경변수를 넣었을 때만 씁니다.
+- 운영 DB 의 테이블은 서버가 만들거나 바꾸지 않습니다. (`ddl-auto: update` 는 쓰지 않습니다 — 운영 DB 가 코드에 따라 멋대로 바뀌어 사고가 나기 쉽습니다)
+  배포 설정이 검사(`validate`)까지 빼고 `none` 인 이유: DB 주소가 틀려도 서버가 꺼지지 않게 하려고 켜질 때 DB 에 접속하지 않습니다. (이슈 #4)
+- **엔티티를 만들거나 고치면 `db/schema.sql` 도 같은 커밋에서 고칩니다.** 안 고치면 `SchemaSqlTest` 가 실패합니다.
+  이미 만든 Neon 브랜치에는 바뀐 부분만 `alter table` 로 사람이 실행합니다. (dev 먼저, main 은 그다음)
+- `create-drop`·`update` 를 `neon`·`prod` 설정에 넣지 않습니다. `create-drop` 은 서버를 끌 때 Neon 의 테이블을 전부 지웁니다.
+- 접속 정보는 지금은 **환경변수**로 받습니다. 시크릿 매니저로 받는 방법은 이슈 #76 에서 정하면 이 문단을 고칩니다.
+  Neon 주소·비밀번호를 대화·이슈·PR·파일에 붙여 넣지 않습니다. Claude 에게도 주지 않습니다.
+- Neon 가입·브랜치 만들기·SQL Editor 실행·접속 확인은 **사람이** 합니다. 순서는 README "운영 DB(Neon)".
 
 ---
 
