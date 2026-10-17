@@ -6,14 +6,14 @@ import java.util.Arrays;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-// 메시지 종류가 이슈 #30 에 적힌 다섯 가지와 같은지 확인합니다.
+// 메시지 종류가 이슈 #30 에 적힌 다섯 가지 + 전화 알림(#32) 과 같은지 확인합니다.
 class MessageKindTest {
 
   @Test
-  @DisplayName("종류는 carrot · nudge · stick · event · recovery 다섯 가지다")
-  void fiveKindsFromTheIssue() {
+  @DisplayName("종류는 carrot · nudge · stick · event · recovery 다섯 가지와 전화 알림 call 이다")
+  void kindsFromTheIssues() {
     assertThat(Arrays.stream(MessageKind.values()).map(MessageKind::toValue))
-        .containsExactlyInAnyOrder("carrot", "nudge", "stick", "event", "recovery");
+        .containsExactlyInAnyOrder("carrot", "nudge", "stick", "event", "recovery", "call");
   }
 
   @Test

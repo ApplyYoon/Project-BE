@@ -169,7 +169,7 @@ create table messages (
     sent_at timestamp(6) with time zone not null,
     user_id bigint not null,
     text varchar(500) not null,
-    kind varchar(255) not null check ((kind in ('CARROT','NUDGE','STICK','EVENT','RECOVERY'))),
+    kind varchar(255) not null check ((kind in ('CARROT','NUDGE','STICK','EVENT','RECOVERY','CALL'))),
     primary key (id)
 );
 
