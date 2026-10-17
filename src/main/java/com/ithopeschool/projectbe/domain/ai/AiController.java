@@ -10,6 +10,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.SettingsFromTextRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.SettingsFromTextResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.TextLabelRequest;
@@ -37,6 +39,7 @@ public class AiController {
   private final FailCauseService failCauseService;
   private final ExamNextStepService examNextStepService;
   private final TextLabelService textLabelService;
+  private final RoutineCardService routineCardService;
   private final QuickCardService quickCardService;
   private final SettingsFromTextService settingsFromTextService;
 
@@ -77,6 +80,14 @@ public class AiController {
   @PostMapping("/classify-text")
   public TextLabelResponse textLabel(@Valid @RequestBody TextLabelRequest request) {
     return textLabelService.label(request);
+  }
+
+  @Operation(
+      summary =
+          "루틴 카드 제안: 목표 + 방해물 + 대처 → 루틴 카드 2~3장 (요일·시각·길이는 코드가 정함 · 저장 안 함 · 못 만들면 cards: null · 토큰 필요)")
+  @PostMapping("/routine-cards")
+  public RoutineCardResponse routineCards(@Valid @RequestBody RoutineCardRequest request) {
+    return routineCardService.suggest(request);
   }
 
   @Operation(

@@ -57,4 +57,9 @@ public final class AiSchema {
   public static Map<String, Object> stringList() {
     return Map.of("type", "array", "items", string());
   }
+
+  // 같은 모양 여러 개.   list(object(…))  →  { "type": "array", "items": { … } }
+  public static Map<String, Object> list(Map<String, Object> item) {
+    return Map.of("type", "array", "items", item);
+  }
 }
