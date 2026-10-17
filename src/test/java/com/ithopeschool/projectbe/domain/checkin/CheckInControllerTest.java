@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ithopeschool.projectbe.domain.checkin.dto.CheckInQuestionsResponse;
 import com.ithopeschool.projectbe.domain.checkin.dto.CheckInResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -32,6 +33,23 @@ class CheckInControllerTest {
   @Autowired private MockMvc mockMvc;
 
   @MockitoBean private CheckInService checkInService;
+  @MockitoBean private CheckInQuestionService checkInQuestionService;
+
+  @Test
+  @DisplayName("오늘 물어볼 질문은 200 과 기본 · 자세히로 나눈 질문 목록이다")
+  void getsTodayQuestions() throws Exception {
+    given(checkInQuestionService.getTodayQuestions())
+        .willReturn(
+            new CheckInQuestionsResponse(
+                DATE, List.of("mood"), List.of("condition", "expectedMinutes", "missReason")));
+
+    mockMvc
+        .perform(get("/api/v1/checkins/today/questions"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.date").value("2026-10-17"))
+        .andExpect(jsonPath("$.basic[0]").value("mood"))
+        .andExpect(jsonPath("$.detail[2]").value("missReason"));
+  }
 
   private ResultActions save(String date, String body) throws Exception {
     return mockMvc.perform(

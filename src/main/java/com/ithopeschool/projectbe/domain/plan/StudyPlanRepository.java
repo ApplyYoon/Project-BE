@@ -17,6 +17,10 @@ public interface StudyPlanRepository extends JpaRepository<StudyPlan, Long> {
   List<StudyPlan> findByUserIdAndPlanDateBetweenOrderByPlanDateAscIdAsc(
       Long userId, LocalDate from, LocalDate to);
 
+  // 내 계획 중 날짜가 가장 이른 것 하나. 계획이 없으면 빈 Optional 입니다.
+  // 첫 리포트 카운트다운의 "첫 기록 날짜" 를 찾을 때 씁니다. (InsightService, 이슈 #35)
+  Optional<StudyPlan> findFirstByUserIdOrderByPlanDateAscIdAsc(Long userId);
+
   // 내 계획 중에서 번호로 하나 찾습니다. 없는 번호이거나 남의 계획이면 빈 Optional 입니다.
   Optional<StudyPlan> findByIdAndUserId(Long id, Long userId);
 }

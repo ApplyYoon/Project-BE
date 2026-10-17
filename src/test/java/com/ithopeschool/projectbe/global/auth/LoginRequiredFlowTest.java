@@ -169,6 +169,8 @@ class LoginRequiredFlowTest {
               "{\"source\":\"manual\"}"),
           new Api(
               "GET", "/api/v1/checkins", "/api/v1/checkins?from=2026-10-01&to=2026-10-07", null),
+          new Api(
+              "GET", "/api/v1/checkins/today/questions", "/api/v1/checkins/today/questions", null),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
@@ -247,7 +249,9 @@ class LoginRequiredFlowTest {
               "PUT",
               "/api/v1/onboarding/initial-plan",
               "/api/v1/onboarding/initial-plan",
-              "{\"dailyMinutes\":180,\"daysPerWeek\":5}"));
+              "{\"dailyMinutes\":180,\"daysPerWeek\":5}"),
+          // 첫 가설 (설문 답으로 만든 문장이라 학생의 정보입니다)
+          new Api("GET", "/api/v1/insights/hypotheses", "/api/v1/insights/hypotheses", null));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

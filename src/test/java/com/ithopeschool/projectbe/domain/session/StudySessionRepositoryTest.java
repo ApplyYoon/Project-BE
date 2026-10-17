@@ -159,4 +159,18 @@ class StudySessionRepositoryTest {
         .containsExactlyInAnyOrder(at(300), at(400), at(500));
     assertThat(found).allMatch(session -> session.getUserId().equals(1L));
   }
+
+  @Test
+  @DisplayName("내 기록 중 가장 먼저 시작한 것 하나 (남의 더 이른 기록은 무시) · 기록이 없으면 빈 Optional")
+  void findFirstByStartedAt() {
+    // setUp: 내 기록 at(0), 남의 기록 at(120)
+    em.persistAndFlush(new StudySession(1L, 10L, at(300), at(360), 0)); // 내 나중 기록
+    em.persistAndFlush(new StudySession(2L, 20L, at(-600), at(-540), 0)); // 남의 더 이른 기록
+
+    assertThat(studySessionRepository.findFirstByUserIdOrderByStartedAtAscIdAsc(1L))
+        .get()
+        .extracting(StudySession::getStartedAt)
+        .isEqualTo(at(0));
+    assertThat(studySessionRepository.findFirstByUserIdOrderByStartedAtAscIdAsc(999L)).isEmpty();
+  }
 }
