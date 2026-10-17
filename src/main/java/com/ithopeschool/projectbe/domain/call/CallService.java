@@ -7,6 +7,7 @@ import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallKeyClient.CallKey;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
+import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.thinkingtest.StudyStyle;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingGap;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
@@ -22,7 +23,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 // AI 통화를 시작하는 로직입니다. (이슈 #27 · FE src/lib/realtimeCall.ts)
@@ -30,14 +30,15 @@ import org.springframework.stereotype.Service;
 // 순서
 //   1. 로그인한 사람인지 확인한다             (아니면 401)
 //   2. 통화를 켤 수 있는 서버인지 본다         (내 컴퓨터에서는 꺼져 있습니다 → 503)
-//   3. 오늘 건 횟수가 한도 안인지 본다         (넘었으면 429)
+//   3. 오늘 건 횟수 · 통화 시간이 한도 안인지 본다 (넘었으면 429. GptUsageGuard, 이슈 #33)
+//      오늘 남은 시간이 한 번 최대 길이보다 짧으면, 이번 통화의 최대 길이를 남은 시간으로 줄입니다.
 //   4. 최근 2주의 통화 기록을 읽는다          (CallRecord)
 //   5. 오늘 확인할 생각 습관 질문을 고른다     (BiasQuestion: 자주 보인 습관 → 어제 이유 → 시작 지연 → 가입 테스트)
 //      가입 테스트는 서버에 저장된 결과(thinking_tests)를 먼저 쓰고, 없으면 FE 가 보낸 값을 씁니다.
 //      저장된 결과가 있으면 최근 통화와 견줘 "생각과 실제가 달랐던 점" 도 지침에 넣습니다. (ThinkingGap)
 //   6. 학생 카드와 지난 통화로 대본(지침)을 만든다 (CallScript: 기록에 따라 질문과 말투가 달라집니다)
 //   7. OpenAI 에서 그 대본이 묶인 임시 키를 받는다 (못 받으면 503)
-//   8. 통화 기록을 한 줄 만들고, 임시 키와 기록 번호를 돌려준다
+//   8. 통화 기록을 한 줄 만들고, GPT 호출 기록에도 "통화 시작" 을 남긴 뒤, 임시 키와 기록 번호를 돌려준다
 //
 // 최근 7일 안에 위기 표현이 감지된 통화가 있으면, FE 가 보낸 관리 강도와 상관없이 위로하는 통화(0)로 합니다.
 // 안전 브레이크는 어떤 설정보다 먼저입니다. (CLAUDE.md 4장)
@@ -55,31 +56,28 @@ public class CallService {
 
   private final CurrentUserProvider currentUserProvider;
   private final CallKeyClient callKeyClient;
-  private final CallDailyLimit callDailyLimit;
+  // 오늘 통화 횟수 · 시간 한도를 보고, 통화 시작을 기록합니다. (이슈 #33)
+  private final GptUsageGuard gptUsageGuard;
   private final TokenHasher tokenHasher;
   private final CallRecordRepository callRecordRepository;
   private final ThinkingTestRepository thinkingTestRepository;
   private final Clock clock;
-  // 통화 한 번의 최대 길이(초). FE 가 이 시간이 되면 끊습니다.
-  private final int maxCallSeconds;
 
   public CallService(
       CurrentUserProvider currentUserProvider,
       CallKeyClient callKeyClient,
-      CallDailyLimit callDailyLimit,
+      GptUsageGuard gptUsageGuard,
       TokenHasher tokenHasher,
       CallRecordRepository callRecordRepository,
       ThinkingTestRepository thinkingTestRepository,
-      Clock clock,
-      @Value("${app.ai.call-max-seconds:300}") int maxCallSeconds) {
+      Clock clock) {
     this.currentUserProvider = currentUserProvider;
     this.callKeyClient = callKeyClient;
-    this.callDailyLimit = callDailyLimit;
+    this.gptUsageGuard = gptUsageGuard;
     this.tokenHasher = tokenHasher;
     this.callRecordRepository = callRecordRepository;
     this.thinkingTestRepository = thinkingTestRepository;
     this.clock = clock;
-    this.maxCallSeconds = maxCallSeconds;
   }
 
   public CallSessionResponse startSession(CallSessionRequest request) {
@@ -89,7 +87,9 @@ public class CallService {
     if (!callKeyClient.isEnabled()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 통화가 아직 켜져 있지 않아요");
     }
-    if (!callDailyLimit.tryUse(userId)) {
+    // 이번 통화를 최대 몇 초까지 해도 되는지. 0 이면 오늘 횟수나 시간을 다 쓴 것입니다.
+    int allowedSeconds = gptUsageGuard.allowedCallSeconds(userId);
+    if (allowedSeconds <= 0) {
       throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 통화는 다 썼어요. 내일 다시 만나요");
     }
 
@@ -128,16 +128,17 @@ public class CallService {
 
     Optional<CallKey> key = callKeyClient.createKey(instructions, safetyIdentifier);
     if (key.isEmpty()) {
-      // 통화가 시작되지 않았으니, 방금 올린 횟수를 되돌립니다. 통화 기록도 만들지 않습니다.
-      callDailyLimit.giveBack(userId);
+      // 통화가 시작되지 않았으니 통화 기록도, GPT 호출 기록도 만들지 않습니다. (그래서 오늘 횟수도 쓰지 않습니다)
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
     }
 
     CallRecord record = callRecordRepository.save(new CallRecord(userId, today, now, biasQuestion));
+    gptUsageGuard.recordCallStart(userId, record.getId());
     return new CallSessionResponse(
         key.get().value(),
         key.get().expiresAtMillis(),
-        maxCallSeconds,
+        // FE 는 이 시간이 되면 통화를 끊습니다. 오늘 남은 시간이 적으면 그만큼만 줍니다.
+        allowedSeconds,
         String.valueOf(record.getId()));
   }
 
