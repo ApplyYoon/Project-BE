@@ -25,7 +25,8 @@ import tools.jackson.databind.json.JsonMapper;
 //
 // ■ 인증키 (환경변수 NEIS_API_KEY)
 //   있으면 한 번에 1000건까지 받습니다. 없으면 NEIS 가 한 번에 5건만 주고 쪽 넘기기도 안 돼서,
-//   기간을 한 주씩 잘라 여러 번 받습니다. (2026-10-17 확인) 그래서 키 없이 받는 기간은 짧게 잡습니다. (SchoolEventService)
+//   기간을 한 주씩 잘라 여러 번 받고, 5건이 꽉 찬 주는 하루씩 다시 받습니다. (2026-10-17 확인)
+//   그래서 키 없이 받는 기간은 짧게 잡습니다. (SchoolEventService)
 // ■ NEIS 가 멈추거나 이상한 답을 주면 에러를 던지지 않고 빈 값(Optional.empty)을 돌려줍니다.
 //   그러면 서버는 전에 받아 둔 일정을 그대로 씁니다.
 // ⚠️ 인증키는 로그에 찍지 않습니다.
@@ -91,7 +92,29 @@ public class NeisClient {
       if (week.isEmpty()) {
         return Optional.empty();
       }
+      // 5건이 꽉 차서 왔으면 더 있을 수 있습니다. (예: 시험 3일 + 행사 3개인 주) 그 주는 하루씩 다시 받습니다.
+      if (week.get().size() >= PAGE_SIZE_WITHOUT_KEY) {
+        week = fetchDayByDay(officeCode, schoolCode, start, end);
+        if (week.isEmpty()) {
+          return Optional.empty();
+        }
+      }
       events.addAll(week.get());
+    }
+    return Optional.of(events);
+  }
+
+  // from ~ to 를 하루씩 받습니다. (하루에 행사가 6개 넘는 날은 거의 없어서 여기서 더 쪼개지 않습니다)
+  private Optional<List<NeisEvent>> fetchDayByDay(
+      String officeCode, String schoolCode, LocalDate from, LocalDate to) {
+    List<NeisEvent> events = new ArrayList<>();
+    for (LocalDate day = from; !day.isAfter(to); day = day.plusDays(1)) {
+      Optional<List<NeisEvent>> oneDay =
+          fetchRange(officeCode, schoolCode, day, day, PAGE_SIZE_WITHOUT_KEY);
+      if (oneDay.isEmpty()) {
+        return Optional.empty();
+      }
+      events.addAll(oneDay.get());
     }
     return Optional.of(events);
   }

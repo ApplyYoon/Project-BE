@@ -96,6 +96,71 @@ class NeisClientTest {
   }
 
   @Test
+  @DisplayName("키가 없을 때 한 주가 5건으로 꽉 차서 오면 그 주를 하루씩 다시 받는다 (6번째 행사가 빠지지 않게)")
+  void fullWeekIsFetchedDayByDay() {
+    NeisClient client = new NeisClient("", builder);
+    // 실제 NEIS 에서 본 시험 주 (2026-12-07 ~ 12-13): 행사 6개인데 키가 없으면 5개만 옴
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/SchoolSchedule")))
+        .andExpect(queryParam("AA_FROM_YMD", "20261207"))
+        .andExpect(queryParam("AA_TO_YMD", "20261213"))
+        .andRespond(
+            withSuccess(
+                scheduleOf(
+                    "20261208|신입생 예비소집",
+                    "20261209|2학기 2차 정기시험",
+                    "20261210|2학기 2차 정기시험",
+                    "20261211|진학 진로 설명회",
+                    "20261211|2학기 2차 정기시험"),
+                MediaType.APPLICATION_JSON));
+    for (int day = 7; day <= 13; day++) {
+      String ymd = "202612" + (day < 10 ? "0" + day : day);
+      String body =
+          switch (day) {
+            case 8 -> scheduleOf("20261208|신입생 예비소집");
+            case 9 -> scheduleOf("20261209|2학기 2차 정기시험");
+            case 10 -> scheduleOf("20261210|2학기 2차 정기시험");
+            case 11 -> scheduleOf("20261211|진학 진로 설명회", "20261211|2학기 2차 정기시험");
+            case 12 -> scheduleOf("20261212|학교 축제");
+            default -> NO_DATA;
+          };
+      neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/SchoolSchedule")))
+          .andExpect(queryParam("AA_FROM_YMD", ymd))
+          .andExpect(queryParam("AA_TO_YMD", ymd))
+          .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+    }
+
+    Optional<List<NeisClient.NeisEvent>> events =
+        client.fetchSchedule(
+            "J10", "7530560", LocalDate.of(2026, 12, 7), LocalDate.of(2026, 12, 13));
+
+    assertThat(events).isPresent();
+    assertThat(events.get()).hasSize(6);
+    assertThat(events.get()).extracting(NeisClient.NeisEvent::name).contains("학교 축제");
+    neis.verify();
+  }
+
+  // NEIS 학사일정 응답을 만듭니다. 줄 하나 = "날짜|이름"
+  private static String scheduleOf(String... rows) {
+    StringBuilder body = new StringBuilder();
+    for (String row : rows) {
+      String[] parts = row.split("\\|");
+      if (!body.isEmpty()) {
+        body.append(',');
+      }
+      body.append("{\"AA_YMD\":\"")
+          .append(parts[0])
+          .append("\",\"EVENT_NM\":\"")
+          .append(parts[1])
+          .append("\"}");
+    }
+    return "{\"SchoolSchedule\":[{\"head\":[{\"list_total_count\":"
+        + rows.length
+        + "}]},{\"row\":["
+        + body
+        + "]}]}";
+  }
+
+  @Test
   @DisplayName("NEIS 가 에러를 주거나 멈추면 빈 값이다 (받아 둔 일정을 덮어쓰지 않게)")
   void failureIsEmpty() {
     NeisClient client = new NeisClient("k", builder);
