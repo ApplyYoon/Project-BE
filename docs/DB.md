@@ -21,6 +21,7 @@ erDiagram
     users ||--o{ call_records : "user_id"
     users ||--o{ thinking_tests : "user_id"
     users ||--o{ push_subscriptions : "user_id"
+    users ||--o{ daily_signals : "user_id"
     thinking_tests ||--o{ thinking_test_scores : "thinking_test_id"
     thinking_tests ||--o{ thinking_test_weaknesses : "thinking_test_id"
     subjects ||--o{ study_plans : "subject_id"
@@ -137,6 +138,16 @@ erDiagram
         bigint thinking_test_id FK "어느 테스트의 약점인지"
         varchar weakness "내가 꼽은 약점 칩 (GAME, PHONE, VIDEO, SLEEP, LAZY, DELAY, FOCUS, FRIENDS, TIRED, MOOD, PLANNING 중 하나)"
     }
+    daily_signals {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 데이터의 주인"
+        date signal_date "어느 날의 데이터인지 (같은 사람 안에서 날짜 중복 불가)"
+        int sleep_minutes "실제로 잔 시간(분), 모르면 비어 있음"
+        timestamptz slept_at "잠든 시각, 모르면 비어 있음"
+        timestamptz woke_at "일어난 시각, 모르면 비어 있음"
+        int steps "하루 걸음 수, 모르면 비어 있음"
+        boolean sns_over_thirty_minutes "SNS 를 30분 넘게 썼는지, 모르면 비어 있음"
+    }
     exams {
         bigint id PK "시험을 구분하는 고유 번호"
         bigint user_id FK "이 시험의 주인"
@@ -195,6 +206,7 @@ erDiagram
 | `messages` | AI 가 사용자에게 보낸 메시지 하나가 한 줄 (종류, 내용, 보낸 시각, 읽은 시각) | #30 |
 | `call_records` | AI 통화 한 번이 한 줄 (확인하려던 생각 습관, 요약, 보인 생각 습관과 근거, 약속, 위기 표현 표시) | #28 · #29 |
 | `push_subscriptions` | 웹 푸시(앱을 닫아도 오는 알림)를 받겠다고 한 기기 하나가 한 줄 (보낼 주소, 잠금 열쇠) | #32 |
+| `daily_signals` | 한 사람의 하루치 휴대폰·수면·걸음 데이터가 한 줄 (수면 시간, 잠든·일어난 시각, 걸음 수, SNS 30분 초과). 같은 날을 다시 보내면 덮어씀. 날짜 말고는 다 비어도 됨 | #18 |
 | `thinking_tests` | 생각 습관 테스트 한 번이 한 줄 (마친 시각, 테스트 모양 번호). 다시 하면 새 줄이 쌓임 | #35 |
 | `thinking_test_scores` | 테스트 한 번의 습관 8개 평균이 한 줄씩 (`@ElementCollection`) | #35 |
 | `thinking_test_weaknesses` | 테스트 한 번에서 고른 약점 칩이 한 줄씩 (`@ElementCollection`) | #35 |
