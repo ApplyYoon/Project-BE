@@ -46,8 +46,9 @@ public class Account {
   @Column(unique = true, length = 64)
   private String googleSubject;
 
-  // 실명. (화면에 보이는 별명은 users.nickname 입니다)
-  @Column(nullable = false, length = 20)
+  // 실명. 선택이라 비어 있을 수 있습니다(null). (화면에 보이는 별명은 users.nickname 입니다)
+  // 이슈 #71 에서 "실명은 받지 않는다" 로 정해서, FE 가 실명 입력을 없애면 이 칸도 지웁니다.
+  @Column(length = 20)
   private String name;
 
   // 고른 고등학교의 번호(NEIS 학교 번호). 고르지 않았으면 비어 있습니다(null).

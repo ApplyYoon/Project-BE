@@ -21,6 +21,7 @@ erDiagram
     users ||--o{ call_records : "user_id"
     users ||--o{ thinking_tests : "user_id"
     users ||--o{ push_subscriptions : "user_id"
+    users ||--o{ consent_records : "user_id"
     users ||--o{ onboarding_answers : "user_id"
     users ||--o| initial_plans : "user_id"
     users ||--o{ daily_signals : "user_id"
@@ -86,7 +87,7 @@ erDiagram
         varchar email "로그인할 때 쓰는 이메일 (소문자로 저장, 중복 불가, 100자까지)"
         varchar password_hash "비밀번호를 되돌릴 수 없게 바꾼 값 (진짜 비밀번호는 저장하지 않음, 구글로 가입했으면 비어 있음)"
         varchar google_subject "구글로 가입했으면 구글이 정해 준 고유 번호 (중복 불가, 이메일로 가입했으면 비어 있음)"
-        varchar name "실명 (20자까지)"
+        varchar name "실명 (20자까지, 비어 있을 수 있음. 실명은 받지 않는 방향이라 FE 가 입력을 없애면 이 칸을 지움)"
         varchar school_code "고른 고등학교의 번호 (안 골랐으면 비어 있음)"
         varchar school_name "고른 고등학교의 이름 (안 골랐으면 비어 있음)"
         boolean diary_analysis_agreed "일기·감정 기록을 분석에 써도 된다고 했으면 true (선택 동의)"
@@ -102,7 +103,7 @@ erDiagram
     messages {
         bigint id PK "메시지를 구분하는 고유 번호 (나중에 보낸 것일수록 큼)"
         bigint user_id FK "이 메시지를 받은 사람"
-        varchar kind "메시지 종류 (CARROT, NUDGE, STICK, EVENT, RECOVERY 중 하나)"
+        varchar kind "메시지 종류 (CARROT, NUDGE, STICK, EVENT, RECOVERY, CALL 중 하나)"
         varchar text "메시지 내용 (500자까지)"
         timestamptz sent_at "메시지를 보낸 시각"
         timestamptz read_at "처음 읽은 시각 (아직 안 읽었으면 비어 있음)"
@@ -272,6 +273,13 @@ erDiagram
         varchar promise_then "오늘의 약속 ~한다 (100자까지), 비어도 됨"
         boolean suggestion_kept "개선안을 실천했는지, 비어도 됨"
     }
+    consent_records {
+        bigint id PK "동의 기록을 구분하는 고유 번호 (나중에 한 동의일수록 큼)"
+        bigint user_id FK "누가 동의했는지"
+        timestamptz agreed_at "동의한 시각"
+        varchar text_version "동의한 문구의 버전 (20자까지, 지금은 v1)"
+        boolean age_confirmed_over14 "만 14세 이상 확인 (true 면 확인함, 비어 있으면 확인받은 적 없음)"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
@@ -309,8 +317,9 @@ erDiagram
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
 | `study_plans` | 하루의 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부, 시작 시각, 공부/노는 계획, 루틴) | #3 · #12 |
 | `study_sessions` | 타이머로 한 번 잰 기록 하나가 한 줄 (과목, 시작·끝 시각, 일시정지 횟수·시간, 계획, 목표 시간, 그만둔 이유, 공부/노는 기록) | #3 · #13 |
-| `accounts` | 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시 또는 구글 고유 번호, 실명, 학교, 동의). 사용자 한 명에 하나 | #97 · #19 |
+| `accounts` | 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시 또는 구글 고유 번호, 실명(선택), 학교, 동의). 사용자 한 명에 하나 | #97 · #19 |
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
+| `consent_records` | 개인정보 동의 한 번이 한 줄 (동의 시각, 문구 버전, 만 14세 확인). 다시 동의하면 **새 줄이 쌓여** 이력이 남음 | #71 |
 | `messages` | AI 가 사용자에게 보낸 메시지 하나가 한 줄 (종류, 내용, 보낸 시각, 읽은 시각) | #30 |
 | `call_records` | AI 통화 한 번이 한 줄 (확인하려던 생각 습관, 요약, 보인 생각 습관과 근거, 약속, 위기 표현 표시) | #28 · #29 |
 | `push_subscriptions` | 웹 푸시(앱을 닫아도 오는 알림)를 받겠다고 한 기기 하나가 한 줄 (보낼 주소, 잠금 열쇠) | #32 |
@@ -333,6 +342,15 @@ erDiagram
 
 > `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
 > 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.
+
+> `consent_records` 는 2026-10-17 에 이슈 #71 에서 **학생이 설계**했습니다. (AI 는 질문으로만 도왔습니다)
+> - 한 줄 = 동의 한 번. 다시 동의하면 **옛 줄을 고치지 않고 새 줄을 더합니다.** 그래서 "언제 어떤 문구에 동의했는지" 이력이 남습니다.
+> - 지금 동의 상태 = 이 사람의 줄 중 번호(`id`)가 가장 큰 줄입니다. 그 줄의 `text_version` 이 서버가 지금 받는 버전(`ConsentPolicy.CURRENT_VERSION`)과 다르면 "최신 문구에 동의하지 않은 사람" 이고, 그 사람은 저장(POST · PUT · PATCH)이 403 입니다.
+> - 칸은 동의 시각 · 문구 버전 · 만 14세 확인 셋과 `user_id` 입니다. 필수 동의(이용약관 · 개인정보)는 칸을 따로 두지 않았습니다. 동의하지 않으면 가입이 안 되어서, 줄이 있다는 것이 곧 필수 동의를 했다는 뜻이기 때문입니다.
+> - **만 14세 확인만 비어도 됩니다.** 이 확인을 받기 전에 가입한 계정의 옛 동의는 확인받은 적이 없어서 비워 둡니다.
+> - `accounts.agreed_at`(가입할 때의 동의 시각)은 그대로 둡니다. 두 곳에 같은 시각이 남지만, 학생이 그렇게 정했습니다.
+> - 칸 이름은 AI 가 정했습니다. `age_confirmed_over14` 로 한 이유: `over14_confirmed` 처럼 숫자 뒤에 대문자가 오면 Spring 이 밑줄을 넣지 않아 `over14confirmed` 가 될 수 있어서입니다. 그림에서 생각한 이름과 같은지 봐 주세요.
+> - 실명(`accounts.name`)은 이 이슈에서 **선택**으로 바꿨습니다. (이슈 완료 조건: 실명·전화번호·생년월일은 받지 않는다) FE 가 실명 입력을 없앤 뒤에 칸을 지우는 PR 을 따로 만듭니다.
 
 > `messages` 는 2026-10-12 에 이슈 #30 을 만들면서 **AI 가 초안을 먼저 만든 테이블**입니다. (사용자가 "AI 가 초안을 만들어 달라" 고 해서 예외로 했습니다)
 > 이슈 완료 조건에 적힌 것(종류, 보낸 시각, 읽은 시각, 주인)에 메시지 내용 글자(`text`)만 더했습니다.
