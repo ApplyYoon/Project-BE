@@ -3,6 +3,7 @@ package com.ithopeschool.projectbe.domain.coach;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -11,13 +12,14 @@ import static org.mockito.Mockito.verify;
 
 import com.ithopeschool.projectbe.domain.coach.dto.CoachCommentRequest;
 import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
+import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -36,15 +38,16 @@ class CoachServiceTest {
 
   private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
   private final CoachAiClient coachAiClient = mock(CoachAiClient.class);
-  // 하루 한도는 2번으로 두고 진짜 코드를 씁니다.
-  private final CoachDailyLimit coachDailyLimit =
-      new CoachDailyLimit(2, Clock.fixed(Instant.parse("2026-10-11T06:00:00Z"), ZoneOffset.UTC));
+  // 하루 한도는 가짜로 "한 사람당 2번" 을 흉내 냅니다. (진짜로 DB 에 기록하며 세는 것은 GptUsageGuardTest 가 확인합니다)
+  private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
+  // 가짜 한도가 세는 횟수 (사용자 번호 → 오늘 쓴 횟수)
+  private final Map<Long, Integer> usedCounts = new HashMap<>();
 
   // 받아 둔 문단을 기억하는 곳도 진짜 코드를 씁니다.
   private final CoachParagraphStore coachParagraphStore = new CoachParagraphStore();
 
   private final CoachService coachService =
-      new CoachService(currentUserProvider, coachAiClient, coachDailyLimit, coachParagraphStore);
+      new CoachService(currentUserProvider, coachAiClient, gptUsageGuard, coachParagraphStore);
 
   private static final List<WeeklyCoachRequest.Number> NUMBERS =
       List.of(
@@ -64,6 +67,28 @@ class CoachServiceTest {
     // 기본 상황: 로그인한 사람이고, AI 가 켜져 있습니다. 테스트마다 필요한 것만 바꿉니다.
     given(currentUserProvider.getCurrentUserId()).willReturn(USER_ID);
     given(coachAiClient.isEnabled()).willReturn(true);
+    // 코치로 부르면 한 사람당 2번까지 true, 그 뒤로는 false 입니다.
+    given(gptUsageGuard.tryUseText(any(), eq(GptUsageKind.COACH)))
+        .willAnswer(
+            invocation -> {
+              Long userId = invocation.getArgument(0);
+              int used = usedCounts.getOrDefault(userId, 0);
+              if (used >= 2) {
+                return false;
+              }
+              usedCounts.put(userId, used + 1);
+              return true;
+            });
+  }
+
+  @Test
+  @DisplayName("GPT 를 부르기 전에 '코치' 종류로 하루 한도를 보고 기록한다")
+  void usesTheCoachLimit() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+
+    coachService.weeklyParagraph(REQUEST);
+
+    verify(gptUsageGuard).tryUseText(USER_ID, GptUsageKind.COACH);
   }
 
   @Test

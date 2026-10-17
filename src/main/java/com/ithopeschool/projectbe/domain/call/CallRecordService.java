@@ -5,6 +5,8 @@ import com.ithopeschool.projectbe.domain.call.dto.BiasHabitResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallRecordResponse;
+import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.safety.CrisisText;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -29,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 //   4. 학생 말에 위기 표현이 있는지 단어 목록으로 본다 (있으면 내용 없이 "감지됨" 만 남기고 도움 안내)
 //   5. 학생이 한마디도 안 했으면 GPT 를 부르지 않고 빈 기록으로 마무리한다
 //   6. GPT 에게 자막을 정해진 칸으로 정리해 달라고 한다 (꺼져 있거나 실패하면 503, 기록은 그대로라 다시 시도할 수 있음)
+//      부르기 전에 GPT 글 호출 하루 한도를 본다          (넘었으면 429. GptUsageGuard, 이슈 #33)
+//   (처음 마무리를 부를 때, 통화 시간과 대략적인 비용을 GPT 호출 기록에 남깁니다)
 //   7. 받은 칸을 검사한다                              (CallReview: 정해진 값이 아니면 그 칸은 비움)
 //   8. GPT 도 위기 표현이라고 했으면 4번과 같이 한다   (단어 목록과 GPT 중 하나라도 걸리면 감지. 놓치는 쪽이 더 위험)
 //   9. 요약·보인 생각 습관·약속을 저장하고 결론을 돌려준다
@@ -41,6 +45,8 @@ public class CallRecordService {
   private final CurrentUserProvider currentUserProvider;
   private final CallRecordRepository callRecordRepository;
   private final CallReviewClient callReviewClient;
+  // 통화 시간을 기록하고, GPT 요약을 부르기 전에 하루 한도를 봅니다. (이슈 #33)
+  private final GptUsageGuard gptUsageGuard;
   private final Clock clock;
 
   // 기록 화면에 보여 주는 지난 통화의 기간(일). 오늘을 넣어 최근 30일
@@ -99,6 +105,8 @@ public class CallRecordService {
     }
 
     Instant now = clock.instant();
+    // 통화 시간과 비용을 기록합니다. 정리가 실패해서 다시 불러도, 처음 부른 시각으로 한 번만 적힙니다. (이슈 #33)
+    gptUsageGuard.recordCallFinish(userId, record.getId(), record.getStartedAt(), now);
     List<String> studentLines = studentLinesOf(request.lines());
 
     // 4) 위기 표현 (단어 목록)
@@ -114,6 +122,11 @@ public class CallRecordService {
     // 6) GPT 에게 정리 부탁
     if (!callReviewClient.isEnabled()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 정리가 아직 켜져 있지 않아요");
+    }
+    // 정리가 실패할 때마다 다시 부르면 GPT 를 끝없이 부를 수 있어서, 글 호출 하루 한도를 씁니다. (넘으면 429)
+    // 기록은 그대로라 다음 날 다시 마무리할 수 있습니다.
+    if (!gptUsageGuard.tryUseText(userId, GptUsageKind.CALL_REVIEW)) {
+      throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 AI 사용량을 다 썼어요. 내일 다시 시도해 주세요");
     }
     Optional<CallReview.Raw> raw =
         callReviewClient.review(
