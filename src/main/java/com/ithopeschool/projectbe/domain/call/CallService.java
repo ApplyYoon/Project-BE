@@ -43,6 +43,8 @@ import org.springframework.stereotype.Service;
 //      가입 테스트는 서버에 저장된 결과(thinking_tests)를 먼저 쓰고, 없으면 FE 가 보낸 값을 씁니다.
 //      저장된 결과가 있으면 최근 통화와 견줘 "생각과 실제가 달랐던 점" 도 지침에 넣습니다. (ThinkingGap)
 //   6. 학생 카드와 지난 통화로 대본(지침)을 만든다 (CallScript: 기록에 따라 질문과 말투가 달라집니다)
+//      학생 카드의 숫자는 서버 DB 의 그 사람 기록으로 계산합니다. (CallCardLoader, 이슈 #28)
+//      서버에 계획·공부 기록이 아직 없으면(FE 가 기기에만 저장하던 학생) FE 가 보낸 카드를 씁니다.
 //   7. OpenAI 에서 그 대본이 묶인 임시 키를 받는다 (못 받으면 503)
 //   8. 통화 기록을 한 줄 만들고, GPT 호출 기록에도 "통화 시작" 을 남긴 뒤, 임시 키와 기록 번호를 돌려준다
 //
@@ -71,6 +73,8 @@ public class CallService {
   // 안전 브레이크를 서버의 기록으로 한 번 더 보려고 씁니다. (체크인의 글·기분, 시험 날짜)
   private final CheckInRepository checkInRepository;
   private final ExamRepository examRepository;
+  // 학생 카드를 서버 DB 의 기록으로 만듭니다. (이슈 #28)
+  private final CallCardLoader callCardLoader;
   private final Clock clock;
 
   public CallService(
@@ -82,6 +86,7 @@ public class CallService {
       ThinkingTestRepository thinkingTestRepository,
       CheckInRepository checkInRepository,
       ExamRepository examRepository,
+      CallCardLoader callCardLoader,
       Clock clock) {
     this.currentUserProvider = currentUserProvider;
     this.callKeyClient = callKeyClient;
@@ -91,6 +96,7 @@ public class CallService {
     this.thinkingTestRepository = thinkingTestRepository;
     this.checkInRepository = checkInRepository;
     this.examRepository = examRepository;
+    this.callCardLoader = callCardLoader;
     this.clock = clock;
   }
 
@@ -116,7 +122,12 @@ public class CallService {
 
     // 안전 브레이크가 켜졌으면 위로하는 통화로 합니다. (관리 강도 0 이면 말투·순서가 모두 위로하는 쪽으로 바뀝니다)
     int careLevel = isSafetyBrakeOn(userId, recentCalls, now, today) ? 0 : request.careLevel();
-    CallSessionRequest.Card card = request.card();
+    // 학생 카드: 서버 DB 의 기록이 먼저입니다. 나간 기록 · 집중 모드처럼 서버에 없는 값만 FE 카드에서 가져옵니다.
+    CallSessionRequest.Card serverCard = callCardLoader.load(userId, today, now);
+    CallSessionRequest.Card card =
+        serverCard == null
+            ? request.card()
+            : CallCardLoader.withFocusFrom(serverCard, request.card());
 
     // 생각 습관 테스트 결과. 서버에 저장된 것이 있으면 그것을, 없으면 FE 가 보낸 것을 씁니다.
     CallScript.SelfReport selfReport = selfReportOf(userId, request, recentCalls);
