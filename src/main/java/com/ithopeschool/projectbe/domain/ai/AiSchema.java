@@ -15,7 +15,7 @@ import java.util.Map;
 //        "required": ["items"], "additionalProperties": false }
 //
 // OpenAI 의 strict 모드는 "모든 칸이 required" 이고 "모르는 칸은 금지(additionalProperties: false)" 여야 합니다.
-// object 가 이 두 가지를 알아서 붙입니다. 기능이 늘어 다른 모양(숫자·정해진 글 중 하나 등)이 필요하면 여기에 더합니다.
+// object 가 이 두 가지를 알아서 붙입니다. 기능이 늘어 다른 모양(숫자 등)이 필요하면 여기에 더합니다.
 public final class AiSchema {
 
   private AiSchema() {}
@@ -37,15 +37,15 @@ public final class AiSchema {
     return Map.of("type", "string");
   }
 
-  // 글 목록.   →  { "type": "array", "items": { "type": "string" } }
-  public static Map<String, Object> stringList() {
-    return Map.of("type", "array", "items", string());
-  }
-
   // 정해진 글 중 하나.   enumOf(List.of("inner", "outer"))  →  { "type": "string", "enum": ["inner",
   // "outer"] }
   public static Map<String, Object> enumOf(List<String> values) {
     return Map.of("type", "string", "enum", values);
+  }
+
+  // 글 목록.   →  { "type": "array", "items": { "type": "string" } }
+  public static Map<String, Object> stringList() {
+    return Map.of("type", "array", "items", string());
   }
 
   // 같은 모양 여러 개.   list(object(…))  →  { "type": "array", "items": { … } }

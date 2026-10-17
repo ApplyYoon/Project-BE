@@ -2,12 +2,16 @@ package com.ithopeschool.projectbe.domain.ai;
 
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.TextLabelRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.TextLabelResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -29,6 +33,8 @@ public class AiController {
   private final ChecklistService checklistService;
   private final FirstStepService firstStepService;
   private final FailCauseService failCauseService;
+  private final ExamNextStepService examNextStepService;
+  private final TextLabelService textLabelService;
   private final RoutineCardService routineCardService;
 
   @Operation(
@@ -52,6 +58,22 @@ public class AiController {
   @PostMapping("/fail-cause-options")
   public FailCauseResponse failCauseOptions(@Valid @RequestBody FailCauseRequest request) {
     return failCauseService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "시험 회고 → 다음 카드에 넣을 한 가지 (저장된 회고·점수를 봄 · 과목은 예상보다 가장 아쉬운 것 · 못 만들면 nextStep: null · 토큰 필요)")
+  @PostMapping("/exam-next-step")
+  public ExamNextStepResponse examNextStep(@Valid @RequestBody ExamNextStepRequest request) {
+    return examNextStepService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "글에 이름표 붙이기: '기타' 사유 → 내 행동/바깥 일, 딴생각 메모 → 연락·다른과제·걱정·생활 (참고 칸 · 못 붙이면 label: null · 토큰 필요)")
+  @PostMapping("/classify-text")
+  public TextLabelResponse textLabel(@Valid @RequestBody TextLabelRequest request) {
+    return textLabelService.label(request);
   }
 
   @Operation(
