@@ -21,11 +21,16 @@ erDiagram
     users ||--o{ call_records : "user_id"
     users ||--o{ thinking_tests : "user_id"
     users ||--o{ push_subscriptions : "user_id"
+    users ||--o{ onboarding_answers : "user_id"
+    users ||--o| initial_plans : "user_id"
     users ||--o{ daily_signals : "user_id"
     thinking_tests ||--o{ thinking_test_scores : "thinking_test_id"
     thinking_tests ||--o{ thinking_test_weaknesses : "thinking_test_id"
+    onboarding_answers ||--o{ onboarding_answer_failure_causes : "onboarding_answer_id"
+    onboarding_answers ||--o{ onboarding_answer_subject_levels : "onboarding_answer_id"
     subjects ||--o{ study_plans : "subject_id"
     subjects ||--o{ study_sessions : "subject_id"
+    subjects ||--o{ onboarding_answer_subject_levels : "subject_id"
     users ||--o{ exams : "user_id"
     users ||--o{ exam_scores : "user_id"
     exams ||--o{ exam_scores : "exam_id"
@@ -141,6 +146,45 @@ erDiagram
         bigint thinking_test_id FK "어느 테스트의 약점인지"
         varchar weakness "내가 꼽은 약점 칩 (GAME, PHONE, VIDEO, SLEEP, LAZY, DELAY, FOCUS, FRIENDS, TIRED, MOOD, PLANNING 중 하나)"
     }
+    onboarding_answers {
+        bigint id PK "설문을 구분하는 고유 번호"
+        bigint user_id FK "누구의 설문인지"
+        timestamptz answered_at "답한 시각 (가장 처음 줄과 가장 최근 줄을 이것으로 구분)"
+        varchar grade "학년 (HIGH_1, HIGH_2, HIGH_3, REPEATER, UNIVERSITY 중 하나)"
+        varchar target_exam "목표로 하는 시험 이름 (30자까지)"
+        date target_exam_date "목표 시험 날짜 (D-day 계산용)"
+        varchar target_university "목표 대학 (30자까지, 비어 있을 수 있음)"
+        varchar target_score "목표 점수 (30자까지, 비어 있을 수 있음)"
+        time wake_up_time "평소 기상 시각"
+        time sleep_time "평소 취침 시각"
+        time school_end_time "학교 끝나는 시각"
+        time academy_end_time "학원 끝나는 시각"
+        varchar study_place "주로 공부하는 장소 (HOME, SCHOOL, ACADEMY, LIBRARY, CAFE, OTHER 중 하나)"
+        varchar chronotype "[자기 인식] 아침형/밤형 (MORNING, NIGHT 중 하나)"
+        int max_focus_minutes "[자기 인식] 한 번에 집중 가능한 시간(분) (30, 50, 90, 120 중 하나)"
+        varchar biggest_distraction "[자기 인식] 가장 큰 방해 요소 (PHONE, SLEEPY, WANDERING_MIND, PEOPLE, NOISE, OTHER 중 하나)"
+        int daily_available_minutes "[자기 인식] 하루 공부 가능 시간(분) (60, 120, 180, 240, 300 중 하나)"
+        varchar motivation_reason "공부하는 이유 (50자까지)"
+        varchar goal_reward "목표를 이루면 하고 싶은 것 (50자까지)"
+    }
+    onboarding_answer_failure_causes {
+        bigint onboarding_answer_id FK "어느 설문의 답인지"
+        varchar cause "계획이 무너졌던 때 (AFTER_EXAM, WEEKEND, LATE_ACADEMY, PHONE, TOO_MUCH_PLAN 중 하나)"
+    }
+    onboarding_answer_subject_levels {
+        bigint onboarding_answer_id FK "어느 설문의 답인지"
+        bigint subject_id FK "어떤 과목인지"
+        int grade "최근 등급 (1 ~ 9, 점수로 적었으면 비어 있음)"
+        int score "최근 점수 (0 ~ 100, 등급으로 적었으면 비어 있음)"
+        int confidence "이 과목에 대한 자신감 (1 ~ 5)"
+    }
+    initial_plans {
+        bigint id PK "처음 계획을 구분하는 고유 번호"
+        bigint user_id FK "누구의 처음 계획인지 (한 사람에 한 줄, 중복 불가)"
+        date created_date "처음 계획을 세운(다시 세운) 날짜"
+        int daily_minutes "하루에 공부하기로 한 시간(분) (60, 120, 180, 240, 300 중 하나)"
+        int days_per_week "일주일에 며칠 하기로 했는지 (3, 5, 6, 7 중 하나)"
+    }
     daily_signals {
         bigint id PK "줄을 구분하는 고유 번호"
         bigint user_id FK "이 데이터의 주인"
@@ -236,6 +280,10 @@ erDiagram
 | `thinking_tests` | 생각 습관 테스트 한 번이 한 줄 (마친 시각, 테스트 모양 번호). 다시 하면 새 줄이 쌓임 | #35 |
 | `thinking_test_scores` | 테스트 한 번의 습관 8개 평균이 한 줄씩 (`@ElementCollection`) | #35 |
 | `thinking_test_weaknesses` | 테스트 한 번에서 고른 약점 칩이 한 줄씩 (`@ElementCollection`) | #35 |
+| `onboarding_answers` | 온보딩 설문 하나가 한 줄. 고칠 때마다 원래 줄을 두고 **새 줄이 쌓임** (처음 답한 자기 인식을 남기려고) | #21 |
+| `onboarding_answer_failure_causes` | 설문 하나에서 고른 "계획이 무너진 때" 가 한 줄씩 (`@ElementCollection`) | #21 |
+| `onboarding_answer_subject_levels` | 설문 하나의 과목별 최근 성적·자신감이 과목마다 한 줄씩 (`@ElementCollection`) | #21 |
+| `initial_plans` | 한 사람의 처음 계획이 한 줄. **한 사람에 한 줄**이고 "다시 세우기" 할 때만 그 줄을 고침 | #21 |
 | `exams` | 시험 하나가 한 줄 (이름, 종류, 날짜). 과목별 점수는 `exam_scores` 에 따로 적음 | #16 |
 | `exam_scores` | 시험 하나의 과목 하나의 점수가 한 줄 (예상 점수, 실제 점수). 같은 시험에 같은 과목은 한 번만 | #16 |
 | `care_settings` | 사용자 한 명의 관리 설정이 한 줄 (전화 시간, 메시지 횟수, 연락 금지, 독설 수위, 앱 잠금, 제재 한도와 바뀔 한도) | #22 |
@@ -261,6 +309,14 @@ erDiagram
 > - **문장별 답은 저장하지 않고 습관 8개의 평균만** 저장합니다. 테스트 문장은 앞으로 바뀔 수 있어서(선생님 말씀), 문장이 바뀌어도 테이블은 그대로 쓰게 하려는 것입니다.
 > - 한 테스트에 점수 8개 · 약점 여러 개라서 **딸린 테이블(`@ElementCollection`)** 에 담았습니다. 엔티티는 `ThinkingTest` 하나이고, JPA 가 두 테이블을 알아서 같이 읽고 씁니다. 그래서 딸린 테이블에는 `id` 가 없습니다.
 > - "기타" 에 직접 쓴 약점 글은 서버로 받지 않아서 저장하지 않습니다.
+
+> `onboarding_answers` · 딸린 테이블 두 개 · `initial_plans` 는 2026-10-17 에 이슈 #21 에서 **학생이 설계**했습니다.
+> - 한 줄 = 설문 하나. 고치면 원래 줄을 고치지 않고 **새 줄을 더합니다.** 그래야 처음 답한 자기 인식(아침형/밤형 등)이 남아서 #40 에서 실제 기록과 견줄 수 있습니다.
+> - 지금 내 설문은 `answered_at` 이 가장 늦은 줄, 처음 자기 인식은 항목마다 **처음으로 답이 있는 줄**에서 꺼냅니다. (온보딩이 짧아져서 아침형/밤형 같은 것은 나중에 처음 답하기 때문)
+> - 한 줄에 여러 개인 답(무너진 때 · 과목별 수준)은 `thinking_tests` 처럼 딸린 테이블에 담았습니다.
+> - 처음 계획은 규칙이 달라서(온보딩을 다시 해도 안 바뀌고 "다시 세우기" 때만 바뀜) 테이블을 따로 뒀습니다. 한 사람에 한 줄이라 그림의 선이 `||--o|` (0개 또는 1개) 입니다.
+> - 엔티티 이름은 `OnboardingAnswer` · `UserInitialPlan` 입니다. (`routine/InitialPlan` 은 루틴 초안 계산 도구라서 이름이 겹치지 않게 했습니다)
+> - 과목을 지우면 그 과목의 수준 줄은 DB 에 남지만 응답에서는 빼고 보여 줍니다.
 
 > `exams` 와 `exam_scores` 는 2026-10-17 에 이슈 #16 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 도왔고, 칸 이름의 영어 표기만 같이 정했습니다)
 > - **시험 하나 = 한 줄, 과목별 점수 = 딸린 테이블.** 과목은 사용자마다 달라서(`subjects`) 시험 표에 `국어 예상` 같은 칸을 미리 만들 수 없고, 시험마다 과목 수도 다르기 때문입니다. (모의고사 3과목, 쪽지시험 1과목)

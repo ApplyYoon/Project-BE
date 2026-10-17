@@ -16,6 +16,10 @@ import com.ithopeschool.projectbe.domain.auth.dto.WithdrawRequest;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallRecord;
+import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
+import com.ithopeschool.projectbe.domain.onboarding.Grade;
+import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
+import com.ithopeschool.projectbe.domain.onboarding.SubjectLevel;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.subject.Subject;
@@ -515,7 +519,12 @@ class AccountServiceTest {
   private static final Map<String, String[]> CHILD_TABLES =
       Map.of(
           "THINKING_TEST_SCORES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"},
-          "THINKING_TEST_WEAKNESSES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"});
+          "THINKING_TEST_WEAKNESSES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"},
+          // 온보딩 설문(onboarding_answers)에 매달린 "계획이 무너진 때" 와 "과목별 수준" (이슈 #21)
+          "ONBOARDING_ANSWER_FAILURE_CAUSES",
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
+          "ONBOARDING_ANSWER_SUBJECT_LEVELS",
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"});
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
@@ -527,6 +536,15 @@ class AccountServiceTest {
         scores.put(bias, 4.0);
       }
       entityManager.persist(new ThinkingTest(userId, NOW, 2, scores, EnumSet.of(Weakness.GAME)));
+      // 딸린 테이블(무너진 때 · 과목별 수준)에도 줄이 있어야, 아래 "부모 없이 남은 줄" 검사가 빈 테이블을 훑고 지나가지 않습니다.
+      OnboardingAnswer.Values answer = new OnboardingAnswer.Values();
+      answer.grade = Grade.HIGH_2;
+      answer.targetExam = "수능";
+      answer.targetExamDate = LocalDate.of(2027, 11, 18);
+      answer.dailyAvailableMinutes = 180;
+      answer.pastFailureCauses = EnumSet.of(FailureCause.WEEKEND);
+      answer.subjectLevels = List.of(new SubjectLevel(1L, 2, null, 4));
+      entityManager.persist(new OnboardingAnswer(userId, NOW, answer));
     }
     entityManager.flush();
     callWith(tokenOfA);
