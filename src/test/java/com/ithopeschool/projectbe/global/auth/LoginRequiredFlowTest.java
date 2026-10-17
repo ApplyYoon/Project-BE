@@ -267,7 +267,13 @@ class LoginRequiredFlowTest {
           new Api("POST", "/api/v1/ai/checklist", "/api/v1/ai/checklist", "{\"title\":\"수학 문제집\"}"),
           // 첫 준비 행동 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #236)
           new Api(
-              "POST", "/api/v1/ai/first-step", "/api/v1/ai/first-step", "{\"item\":\"단어 외우기\"}"));
+              "POST", "/api/v1/ai/first-step", "/api/v1/ai/first-step", "{\"item\":\"단어 외우기\"}"),
+          // 예상 실패 원인 선지 (내 최근 30일 실패 원인을 봅니다. 이슈 #237)
+          new Api(
+              "POST",
+              "/api/v1/ai/fail-cause-options",
+              "/api/v1/ai/fail-cause-options",
+              "{\"title\":\"수학 문제집\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

@@ -47,7 +47,7 @@ public class GptUsage {
   @Column(nullable = false)
   private Long userId;
 
-  // 무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE, CHECKLIST 중 하나)
+  // 무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE, CHECKLIST, ASSIST 중 하나)
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 20)
   private GptUsageKind kind;
