@@ -3,6 +3,7 @@ package com.ithopeschool.projectbe.domain.ai;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -15,9 +16,12 @@ import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.TextLabelResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,6 +43,7 @@ class AiControllerTest {
   @MockitoBean private FailCauseService failCauseService;
   @MockitoBean private ExamNextStepService examNextStepService;
   @MockitoBean private TextLabelService textLabelService;
+  @MockitoBean private RoutineCardService routineCardService;
   @MockitoBean private QuickCardService quickCardService;
 
   private ResultActions checklist(String body) throws Exception {
@@ -296,6 +301,85 @@ class AiControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("글은 100자 이하로 보내 주세요"));
     verifyNoInteractions(textLabelService);
+  }
+
+  // ---- 루틴 카드 제안 (이슈 #239) ----
+
+  private ResultActions routineCards(String body) throws Exception {
+    return mockMvc.perform(
+        post("/api/v1/ai/routine-cards").contentType(MediaType.APPLICATION_JSON).content(body));
+  }
+
+  private void expectRoutineCardsRejected(String body, String message) throws Exception {
+    routineCards(body)
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.error.message").value(message));
+    verifyNoInteractions(routineCardService);
+  }
+
+  @Test
+  @DisplayName("루틴 카드: 보내면 200 과 카드 목록이고, dDay · totalAmount · amountUnit 이 서비스까지 간다")
+  void routineCardsSuggests() throws Exception {
+    given(routineCardService.suggest(any()))
+        .willReturn(
+            new RoutineCardResponse(
+                false,
+                List.of(
+                    new RoutineCardResponse.Suggestion(
+                        "영단어 30쪽",
+                        List.of(1, 2, 3, 4, 5),
+                        "19:00",
+                        50,
+                        List.of("폰을 다른 방에 두고 오기")))));
+
+    routineCards(
+            "{\"goal\":\" 영단어장 1회독 \",\"obstacle\":\"\",\"plan\":\"폰을 다른 방에 두기\","
+                + "\"dDay\":\"2026-10-26\",\"totalAmount\":300,\"amountUnit\":\"쪽\"}")
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .json(
+                    "{\"showHelp\":false,\"cards\":[{\"title\":\"영단어 30쪽\",\"repeatDays\":[1,2,3,4,5],"
+                        + "\"startTime\":\"19:00\",\"durationMinutes\":50,\"checklist\":[\"폰을 다른 방에 두고 오기\"]}]}",
+                    true));
+    // 앞뒤 공백은 지우고, 빈 방해물은 없는 것(null)으로 받습니다.
+    verify(routineCardService)
+        .suggest(
+            new RoutineCardRequest(
+                "영단어장 1회독", null, "폰을 다른 방에 두기", LocalDate.of(2026, 10, 26), 300, "쪽"));
+  }
+
+  @Test
+  @DisplayName("루틴 카드: AI 가 못 만들었으면 200 과 cards: null, 위기 표현이면 showHelp: true")
+  void routineCardsNullAndHelp() throws Exception {
+    given(routineCardService.suggest(any())).willReturn(new RoutineCardResponse(false, null));
+    routineCards("{\"goal\":\"수학 3등급\",\"plan\":\"문제집부터 펴기\"}")
+        .andExpect(status().isOk())
+        .andExpect(content().json("{\"showHelp\":false,\"cards\":null}", true));
+
+    given(routineCardService.suggest(any())).willReturn(RoutineCardResponse.help());
+    routineCards("{\"goal\":\"수학 3등급\",\"plan\":\"그냥 사라지고 싶어\"}")
+        .andExpect(status().isOk())
+        .andExpect(content().json("{\"showHelp\":true,\"cards\":null}", true));
+  }
+
+  @Test
+  @DisplayName("루틴 카드: 목표·대처가 비었거나 길거나, 분량·단위가 범위를 벗어나면 400 이고 서비스를 부르지 않는다")
+  void routineCardsRejectsBadRequests() throws Exception {
+    expectRoutineCardsRejected("{\"plan\":\"대처\"}", "목표를 적어 주세요");
+    expectRoutineCardsRejected("{\"goal\":\"목표\",\"plan\":\"  \"}", "대처를 적어 주세요");
+    expectRoutineCardsRejected(
+        "{\"goal\":\"" + "가".repeat(101) + "\",\"plan\":\"대처\"}", "목표는 100자 이하로 적어 주세요");
+    expectRoutineCardsRejected(
+        "{\"goal\":\"목표\",\"obstacle\":\"" + "가".repeat(101) + "\",\"plan\":\"대처\"}",
+        "방해물은 100자 이하로 적어 주세요");
+    expectRoutineCardsRejected(
+        "{\"goal\":\"목표\",\"plan\":\"" + "가".repeat(101) + "\"}", "대처는 100자 이하로 적어 주세요");
+    expectRoutineCardsRejected(
+        "{\"goal\":\"목표\",\"plan\":\"대처\",\"totalAmount\":0}", "전체 분량은 1 ~ 100000 사이로 보내 주세요");
+    expectRoutineCardsRejected(
+        "{\"goal\":\"목표\",\"plan\":\"대처\",\"amountUnit\":\"가나다라마바\"}", "분량 단위는 5자 이하로 보내 주세요");
   }
 
   // ---- 즉석 카드 ----
