@@ -57,6 +57,10 @@ erDiagram
     thinking_tests ||--o{ thinking_test_scores : "thinking_test_id"
     thinking_tests ||--o{ thinking_test_weaknesses : "thinking_test_id"
     users ||--o{ psych_tests : "user_id"
+    users ||--o{ fixed_blocks : "user_id"
+    users ||--o{ goals : "user_id"
+    goals ||--o{ goal_target_snapshots : "goal_id"
+    goals ||--o{ cards : "goal_id"
     psych_tests ||--o{ psych_test_answers : "psych_test_id"
     onboarding_answers ||--o{ onboarding_answer_failure_causes : "onboarding_answer_id"
     onboarding_answers ||--o{ onboarding_answer_subject_levels : "onboarding_answer_id"
@@ -77,6 +81,17 @@ erDiagram
     users ||--o{ insights : "user_id"
     insights ||--o{ insight_evidence_dates : "insight_id"
     users ||--o{ checkins : "user_id"
+    users ||--o{ cards : "user_id"
+    cards ||--o{ card_checklist_items : "card_id"
+    cards ||--o{ card_expected_fail_causes : "card_id"
+    cards ||--o{ study_sessions : "card_id"
+    study_sessions ||--o{ session_pauses : "study_session_id"
+    study_sessions ||--o{ session_checked_items : "study_session_id"
+    study_sessions ||--o{ session_good_reasons : "study_session_id"
+    study_sessions ||--o{ session_memos : "study_session_id"
+    users ||--o{ card_day_marks : "user_id"
+    cards ||--o{ card_day_marks : "card_id"
+    users ||--o{ rest_days : "user_id"
     checkins ||--o{ checkin_emotions : "checkin_id"
     users ||--o{ reflection_prescriptions : "user_id"
     users ||--o{ risk_forecasts : "user_id"
@@ -108,15 +123,48 @@ erDiagram
     study_sessions {
         bigint id PK "기록을 구분하는 고유 번호"
         bigint user_id FK "이 기록의 주인"
-        bigint subject_id FK "어떤 과목을 공부했는지 (노는 기록이면 비어 있음)"
+        bigint subject_id FK "어떤 과목을 공부했는지 (노는 기록, 과목 없이 카드로 켠 기록이면 비어 있음)"
         timestamptz started_at "공부를 시작한 시각"
         timestamptz ended_at "공부를 끝낸 시각"
         int pause_count "일시정지를 누른 횟수"
         bigint paused_ms "일시정지해 있던 시간의 합, 밀리초 (없으면 0, 순공에서 뺌)"
         bigint plan_id "어느 계획을 하려고 켠 타이머인지 (계획 없이 켰으면 비어 있음)"
         int target_minutes "시작할 때 약속한 목표 시간(분) (목표 없이 켰으면 비어 있음)"
-        varchar stop_reason "목표 전에 그만둔 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, ETC 중 하나, 안 골랐으면 비어 있음)"
+        varchar stop_reason "목표 전에 그만둔 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, PROCRASTINATED, ETC 중 하나, 안 골랐으면 비어 있음)"
         varchar kind "공부 기록인지 노는 기록인지 (STUDY, PLAY 중 하나)"
+        bigint card_id FK "어느 카드의 세션인지 (옛 기록이면 비어 있음, #224)"
+        varchar mode "잰 방법 (NORMAL 타이머, OFFLINE 오프라인, SELF_REPORT 사후 입력 중 하나, 옛 기록은 비어 있음 = NORMAL)"
+        boolean ended_early "예정 종료 전에 끝내기를 눌렀으면 true (옛 기록은 비어 있음)"
+        boolean end_reported "종료 팝업에 답했으면 true (팝업을 닫았거나 옛 기록이면 비어 있음)"
+        varchar shortfall_reason "체크리스트를 다 못 한 이유 (TOO_MUCH, STUCK, PHONE, MIND_WANDER, TIRED, EXTERNAL, ETC 중 하나), 비어도 됨"
+        varchar with_what "같이 한 것 (MUSIC, VIDEO, NONE 중 하나), 비어도 됨"
+        varchar proof_link "산출물 증빙 링크 (300자까지), 비어도 됨"
+        varchar proof_summary "산출물 증빙 2~3줄 요약 (300자까지), 비어도 됨"
+        varchar play_tag "노는 기록일 때 무엇을 했는지 (YOUTUBE, GAME, SNS, WEBTOON, REST, ETC 중 하나)"
+        bigint over_rest_ms "노는 기록일 때 놀기가 끝난 뒤 더 쉰 시간(밀리초)"
+    }
+    session_pauses {
+        bigint study_session_id FK "어느 기록의 일시정지인지"
+        int position "몇 번째 일시정지인지 (0 부터)"
+        timestamptz started_at "일시정지를 누른 시각"
+        timestamptz ended_at "다시 시작한 시각 (멈춘 채 끝냈으면 기록이 끝난 시각)"
+        varchar tag "이유 (TOILET, SNACK, PHONE, MIND_WANDER, STUCK, EXTERNAL, OTHER 중 하나)"
+        varchar note "기타를 골랐을 때 쓴 글 (100자까지), 비어도 됨"
+    }
+    session_checked_items {
+        bigint study_session_id FK "어느 기록에서 체크했는지"
+        varchar item_key "체크한 카드 체크리스트 항목의 id (40자까지)"
+        timestamptz checked_at "체크한 시각"
+    }
+    session_good_reasons {
+        bigint study_session_id FK "어느 기록의 잘 된 이유인지"
+        varchar good_reason "잘 된 이유 (FOCUS, GOOD_PLAN, CONDITION, ENVIRONMENT, HELPED, LUCK 중 하나)"
+    }
+    session_memos {
+        bigint study_session_id FK "어느 기록에서 쓴 메모인지"
+        int position "몇 번째 메모인지 (0 부터)"
+        timestamptz written_at "쓴 시각"
+        varchar text "딴생각 주차장 한 줄 (100자까지)"
     }
     accounts {
         bigint id PK "계정을 구분하는 고유 번호"
@@ -158,7 +206,7 @@ erDiagram
         varchar found_bias "대답에서 보인 생각 습관 (asked_bias 와 같은 값 중 하나, 없으면 비어 있음)"
         varchar found_evidence "그 습관이 보인 근거 한 줄 (100자까지)"
         varchar actual_question "AI 가 실제로 한 생각 습관 질문 (200자까지)"
-        varchar miss_reason "어제 계획을 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, ETC 중 하나)"
+        varchar miss_reason "어제 계획을 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, PROCRASTINATED, ETC 중 하나)"
         varchar promise_if "오늘의 약속 '만약 ~하면' (50자까지)"
         varchar promise_then "오늘의 약속 '~한다' (50자까지)"
         boolean promise_kept "지난 약속을 지켰다고 했는지 (이야기하지 않았으면 비어 있음)"
@@ -186,6 +234,44 @@ erDiagram
     thinking_test_weaknesses {
         bigint thinking_test_id FK "어느 테스트의 약점인지"
         varchar weakness "내가 꼽은 약점 칩 (GAME, PHONE, VIDEO, SLEEP, LAZY, DELAY, FOCUS, FRIENDS, TIRED, MOOD, PLANNING 중 하나)"
+    }
+    goals {
+        bigint id PK "목표를 구분하는 고유 번호 (카드의 goal_id 가 가리킴)"
+        bigint user_id FK "목표의 주인"
+        varchar kind "유형 (SCORE 점수형, COMPLETION 완주형)"
+        varchar title "W 소망 - 목표 한 줄 (40자까지)"
+        date d_day "D-day"
+        varchar current_score "점수형의 지금 점수 · 등급 (20자까지, 완주형이면 비어 있음)"
+        int total_amount "완주형의 전체 분량 (점수형이면 비어 있음)"
+        varchar amount_unit "완주형의 분량 단위 (5자까지)"
+        varchar benefit "O 결과 - 이루면 좋은 점"
+        varchar cost "O 결과 - 안 하면 생길 일"
+        varchar obstacle "O 방해물 - 내 안의 방해물 1개"
+        varchar plan "P 계획 - 방해물이 생겼을 때의 대처"
+        varchar status "상태 (ACTIVE 진행, DONE 완료, GIVEN_UP 포기)"
+        varchar result "D-day 뒤에 적은 결과"
+        varchar given_up_reason "포기한 이유"
+        timestamptz created_at "목표를 만든 시각"
+    }
+    goal_target_snapshots {
+        bigint goal_id FK "어느 목표의 이력인지"
+        int position "몇 번째로 고쳤는지 (0부터)"
+        varchar title "고치기 전의 목표 한 줄"
+        date d_day "고치기 전의 D-day"
+        varchar current_score "고치기 전의 지금 점수"
+        int total_amount "고치기 전의 전체 분량"
+        varchar amount_unit "고치기 전의 단위"
+        timestamptz changed_at "이 값에서 바꾼 시각"
+        varchar reason "왜 바꿨는지"
+    }
+    fixed_blocks {
+        bigint id PK "고정 일정을 구분하는 고유 번호"
+        bigint user_id FK "일정의 주인"
+        varchar title "무슨 일정인지 (학교, 수학 학원 등 20자까지)"
+        varchar repeat_days "반복 요일을 쉼표로 이은 글자 (0 일요일 ~ 6 토요일, 예 1,2,3,4,5)"
+        time start_time "시작 시각"
+        time end_time "끝 시각 (하루 시작 새벽 4시 기준으로 시작보다 뒤)"
+        timestamptz created_at "일정을 만든 시각"
     }
     psych_tests {
         bigint id PK "심리검사 결과를 구분하는 고유 번호 (나중에 한 것일수록 큼)"
@@ -298,6 +384,19 @@ erDiagram
         varchar old_value "바꾸기 전 값 (글자, 1000자까지)"
         varchar new_value "바꾼 뒤 값 (글자, 1000자까지)"
     }
+    school_events {
+        bigint id PK "일정 한 줄을 구분하는 고유 번호"
+        varchar school_code "어느 학교의 일정인지 (NEIS 학교 번호, accounts 의 school_code 와 같은 값)"
+        date event_date "행사 날짜"
+        varchar name "행사 이름 (NEIS 가 준 그대로, 100자까지, 같은 학교 같은 날에 같은 이름은 한 번만)"
+        varchar content "행사 설명 (NEIS 가 준 그대로, 200자까지, 없으면 비어 있음)"
+        varchar grades "해당 학년 (예: 1,2 / 학년 구분이 없으면 빈 글자)"
+    }
+    school_event_fetches {
+        varchar school_code PK "학교 번호 (학교마다 한 줄)"
+        varchar office_code "그 학교의 교육청 코드 (NEIS 에 물을 때 같이 보냄, 예: J10)"
+        timestamptz fetched_at "NEIS 에서 마지막으로 받은 시각 (24시간이 지나면 새로 받음)"
+    }
     gpt_usages {
         bigint id PK "기록 한 줄을 구분하는 고유 번호 (나중에 부른 것일수록 큼)"
         bigint user_id FK "GPT 를 부르게 한 사람"
@@ -314,7 +413,7 @@ erDiagram
         varchar source "어디서 만든 체크인인지 (MANUAL, CALL, QUICK 중 하나)"
         int condition "오늘 컨디션 (1 ~ 5), 안 골랐으면 비어 있음"
         int mood "오늘 기분 (1 ~ 5), 안 골랐으면 비어 있음"
-        varchar miss_reason "어제 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, ETC 중 하나), 비어도 됨"
+        varchar miss_reason "어제 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, PROCRASTINATED, ETC 중 하나), 비어도 됨"
         varchar miss_reason_note "기타 이유 한 줄 (50자까지, ETC 일 때만)"
         int expected_minutes "오늘 예상 순공시간(분), 비어도 됨"
         varchar promise_if "오늘의 약속 만약 ~하면 (100자까지), 비어도 됨"
@@ -342,6 +441,55 @@ erDiagram
         timestamptz agreed_at "동의한 시각"
         varchar text_version "동의한 문구의 버전 (20자까지, 지금은 v1)"
         boolean age_confirmed_over14 "만 14세 이상 확인 (true 면 확인함, 비어 있으면 확인받은 적 없음)"
+    }
+    cards {
+        bigint id PK "카드를 구분하는 고유 번호"
+        bigint user_id FK "이 카드의 주인"
+        varchar title "무엇을 하는지 (100자까지)"
+        date card_date "1회성 카드면 그 날짜, 반복 카드면 반복을 시작한 날짜"
+        varchar repeat_days "반복 요일을 쉼표로 이은 글자 (0 일 ~ 6 토, 예 1,3,5). 1회성 카드면 비어 있음"
+        time start_time "시작 시각, 몇 시 몇 분 (옛 계획에서 옮긴 카드만 비어 있음)"
+        int duration_minutes "길이(분), 1 ~ 600"
+        bigint goal_id FK "연결한 목표 번호 (목표 없음이면 비어 있음)"
+        varchar priority "우선순위 (ABSOLUTE 절대, FLEXIBLE 유연 중 하나)"
+        varchar type "유형 (SELF 자습, LECTURE 인강 중 하나)"
+        int expected_done "예상 달성 개수 (비어 있으면 체크리스트 전부)"
+        varchar expected_done_reason "예상 달성 개수를 낮춘 이유 태그 (30자까지), 비어도 됨"
+        varchar alert_method "알림 방법 (MESSAGE, CALL 중 하나). 알림 칸이 모두 비면 기본 알림"
+        int alert_minutes_before "시작 몇 분 전에 알릴지 (0 ~ 120)"
+        varchar alert_text "알림 문구 (100자까지, 비어 있으면 기본 문구)"
+        bigint planning_ms "카드 편집 화면을 열고 저장할 때까지 걸린 시간(밀리초), 비어도 됨"
+        timestamptz created_at "카드를 만든 시각"
+    }
+    card_checklist_items {
+        bigint card_id FK "어느 카드의 항목인지"
+        int position "카드 안에서 몇 번째 항목인지 (0 부터)"
+        varchar item_key "항목을 구분하는 글자 (FE 의 ChecklistItem.id, 40자까지)"
+        varchar text "할 일 (100자까지)"
+    }
+    card_expected_fail_causes {
+        bigint card_id FK "어느 카드의 예상 실패 원인인지"
+        int position "몇 번째 원인인지 (0 부터)"
+        varchar cause "예상 실패 원인 글 (100자까지)"
+    }
+    card_day_marks {
+        bigint id PK "표시를 구분하는 고유 번호"
+        bigint user_id FK "누구의 표시인지"
+        bigint card_id FK "어느 카드인지"
+        date mark_date "어느 날의 카드인지 (미루거나 실패한 그 날짜)"
+        varchar mark "미루기 POSTPONED 또는 실패 FAILED"
+        varchar reason "미루기 이유 100~500자 또는 실패 사유 500자까지 (위기 표현이 있으면 비움)"
+        varchar cause "실패 원인 태그 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, PROCRASTINATED, ETC 중 하나, 실패일 때만)"
+        date new_date "미룬 새 날짜 (미루기일 때만)"
+        time new_start_time "미룬 새 시작 시각 (미루기일 때만)"
+        boolean crisis_detected "이유 글에 위기 표현이 있었으면 true"
+        timestamptz created_at "표시를 남긴 시각"
+    }
+    rest_days {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "누가 쉰 날인지"
+        date rest_date "휴식으로 처리한 날짜 (같은 사람 안에서 중복 불가)"
+        timestamptz created_at "휴식으로 처리한 시각"
     }
     insights {
         bigint id PK "줄을 구분하는 고유 번호"
@@ -407,7 +555,13 @@ erDiagram
 | `users` | 서비스를 쓰는 사람 한 명이 한 줄 (별명, 가입 시각) | #3 |
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
 | `study_plans` | 하루의 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부, 시작 시각, 공부/노는 계획, 루틴) | #3 · #12 |
-| `study_sessions` | 타이머로 한 번 잰 기록 하나가 한 줄 (과목, 시작·끝 시각, 일시정지 횟수·시간, 계획, 목표 시간, 그만둔 이유, 공부/노는 기록) | #3 · #13 |
+| `study_sessions` | 타이머로 한 번 잰 기록 하나가 한 줄 (과목, 시작·끝 시각, 일시정지 횟수·시간, 계획, 목표 시간, 그만둔 이유, 공부/노는 기록, 그리고 #224 에서 카드 · 잰 방법 · 중도 종료 · 종료 팝업 답 · 노는 종류 · 초과 휴식) | #3 · #13 · #224 |
+| `session_pauses` | 기록 하나의 일시정지 한 번이 한 줄씩 (시각 · 이유 태그 · 기타 글, `@ElementCollection`) | #224 |
+| `session_checked_items` | 기록 하나에서 체크한 카드 체크리스트 항목이 한 줄씩 (항목 id · 체크한 시각, `@ElementCollection`) | #224 |
+| `session_good_reasons` | 기록 하나의 잘 된 이유 태그가 한 줄씩 (`@ElementCollection`) | #224 |
+| `session_memos` | 기록 하나의 딴생각 메모가 한 줄씩 (`@ElementCollection`) | #224 |
+| `card_day_marks` | 카드 한 장 · 날짜 하나를 미뤘거나(이유 · 새 날짜 · 새 시각) 실패로 기록한(원인 태그 · 사유) 것이 한 줄. 같은 카드 · 같은 날짜에는 한 줄만 | #225 |
+| `rest_days` | 한 사람이 하루를 사후에 휴식으로 처리한 것이 한 줄. 같은 날은 한 번만, 한 달에 4번까지 | #225 |
 | `accounts` | 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시 또는 구글 고유 번호, 실명(선택), 학교, 동의). 사용자 한 명에 하나 | #97 · #19 |
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
 | `consent_records` | 개인정보 동의 한 번이 한 줄 (동의 시각, 문구 버전, 만 14세 확인). 다시 동의하면 **새 줄이 쌓여** 이력이 남음 | #71 |
@@ -420,6 +574,9 @@ erDiagram
 | `thinking_test_weaknesses` | 테스트 한 번에서 고른 약점 칩이 한 줄씩 (`@ElementCollection`) | #35 |
 | `psych_tests` | 온보딩 심리검사 한 번이 한 줄 (마친 시각). 다시 하면 새 줄이 쌓임. 척도 7개 점수는 답으로 계산(저장 안 함) | #219 |
 | `psych_test_answers` | 검사 한 번의 문장마다의 답(1 ~ 7)이 한 줄씩. 지금 검사 35개 · 옛 검사 14개 (`@ElementCollection`) | #219 |
+| `fixed_blocks` | 학교 · 학원처럼 요일마다 정해진 시간 하나가 한 줄 (이름, 반복 요일, 시작 · 끝 시각). 카드가 아니라 타이머 · 의지력 계산에서 빠짐 | #223 |
+| `goals` | 목표 하나가 한 줄 (WOOP: 목표 한 줄 · D-day · 지금 점수 또는 분량 · 이루면 좋은 점 · 안 하면 생길 일 · 방해물 · 대처, 상태). 지우지 않고 포기로 남김 | #221 |
+| `goal_target_snapshots` | 목표값을 고치기 전의 값과 이유가 고칠 때마다 한 줄씩. 지우지 않음 (`@ElementCollection`) | #221 |
 | `onboarding_answers` | 온보딩 설문 하나가 한 줄. 고칠 때마다 원래 줄을 두고 **새 줄이 쌓임** (처음 답한 자기 인식을 남기려고) | #21 |
 | `onboarding_answer_failure_causes` | 설문 하나에서 고른 "계획이 무너진 때" 가 한 줄씩 (`@ElementCollection`) | #21 |
 | `onboarding_answer_subject_levels` | 설문 하나의 과목별 최근 성적·자신감이 과목마다 한 줄씩 (`@ElementCollection`) | #21 |
@@ -430,8 +587,13 @@ erDiagram
 | `care_settings` | 사용자 한 명의 관리 설정이 한 줄 (전화 시간, 메시지 횟수, 연락 금지, 독설 수위, 앱 잠금, 제재 한도와 바뀔 한도) | #22 |
 | `focus_lock_apps` | 한 사용자가 고른 잠금 대상 앱 하나가 한 줄. 같은 사용자 안에서 같은 앱은 한 번만 | #22 |
 | `setting_changes` | 설정 칸 하나를 한 번 바꾼 것이 한 줄 (바꾼 시각, 칸 이름, 이전 값, 새 값) | #22 |
+| `school_events` | 학교 하나의 학사일정 하루치 행사가 한 줄 (날짜, 이름, 설명, 학년). **사람이 아니라 학교마다 한 벌**이고 NEIS 에서 받을 때마다 그 기간을 통째로 바꿈 | #282 |
+| `school_event_fetches` | 학교 하나가 한 줄 (교육청 코드, NEIS 에서 마지막으로 받은 시각). 다시 받을지 정할 때 봄 | #282 |
 | `gpt_usages` | GPT 를 한 번 부른 것이 한 줄 (종류, 부른 시각, 통화 번호·통화 시간, 대략적인 비용). 하루 한도는 이 기록을 세서 지킴 | #33 |
 | `checkins` | 한 사람의 하루치 체크인이 한 줄 (컨디션, 기분, 어제 못 채운 이유와 기타 글, 예상 순공시간, 약속 두 칸, 개선안 실천 여부, 어디서 했는지). 같은 날을 다시 보내면 덮어씀. 누구·날짜·source 말고는 다 비어도 됨 | #24 |
+| `cards` | 카드 한 장이 한 줄 (제목, 날짜, 반복 요일, 시작 시각, 길이, 목표, 절대/유연, 자습/인강, 예상 달성 개수와 낮춘 이유, 알림, 계획에 쓴 시간). 반복 카드도 **한 장**이고 날마다 복사하지 않음 | #222 |
+| `card_checklist_items` | 카드 하나의 체크리스트 항목이 한 줄씩 (`@ElementCollection`, 보낸 순서대로) | #222 |
+| `card_expected_fail_causes` | 카드 하나의 예상 실패 원인 글이 한 줄씩 (`@ElementCollection`, 5개까지) | #222 |
 | `checkin_emotions` | 체크인 하나에서 고른 감정 태그가 한 줄씩 (`@ElementCollection`). 안 골랐으면 줄이 없음 | #220 |
 | `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
 | `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
@@ -501,12 +663,45 @@ erDiagram
 
 > `gpt_usages` 는 2026-10-17 에 이슈 #33 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 돕고 영어 이름만 같이 정했습니다)
 
+> `goals` · `goal_target_snapshots` 는 2026-10-17 에 이슈 #221 을 따라 **AI(Claude)가 만든** 테이블입니다. 고정 일정과 같은 이유로 멘토가 AI 가 만들기로 정했습니다. 칸은 FE 의 `Goal` 과 같은 이름입니다.
+> - **목표값 이력은 지우지 않습니다.** 목표를 슬쩍 낮추면 원래 목표를 잊기 쉬워서(기획서 3 · 7번 오류), 고칠 때마다 원래 값과 이유를 딸린 테이블에 쌓습니다.
+> - 다짐 녹음은 서버에 두지 않습니다. (미성년자 음성, 기기에만 — 2026-10-05 결정)
+
+> `fixed_blocks` 는 2026-10-17 에 이슈 #223 을 따라 **AI(Claude)가 만든** 테이블입니다. AI 하루 계획이 학교 · 학원 시간을 보려면 서버에 있어야 해서, 멘토가 AI 가 만들기로 정했습니다. (그전에는 FE 의 localStorage 에만 있었습니다) 칸은 FE 의 `FixedBlock` 과 같은 이름이고, 반복 요일은 카드(`cards.repeat_days`)와 같은 모양으로 한 칸에 적었습니다.
+
+> `school_events` · `school_event_fetches` 는 2026-10-17 에 이슈 #282 에서 **AI(Claude)가 만든** 테이블입니다. 가입 때 고른 학교의 학사일정(시험 기간 · 방학 등)을 나이스(NEIS) 공개 API 에서 받아 둡니다.
+> - **user_id 가 없습니다.** 개인 정보가 아니라 학교의 공개 자료라서, 같은 학교 학생들이 한 벌을 같이 씁니다. 그래서 탈퇴해도 지우지 않습니다. (`AccountServiceTest` 의 `PUBLIC_TABLES`)
+> - **시험인지는 저장하지 않습니다.** 이름(정기시험 · 학력평가 등)을 보고 응답할 때 코드가 정합니다. 판정 규칙을 고쳐도 다시 받지 않아도 됩니다.
+
 > `psych_tests` · `psych_test_answers` 는 2026-10-17 에 이슈 #219 · 최종 기획서 6장을 따라 **AI(Claude)가 만든** 테이블입니다. 멘토가 "데이터가 쌓여야 AI 가 분석한다" 며 심리검사 결과를 서버에 쌓자고 정했고, 칸은 생각 습관 테스트(`thinking_tests`)와 같은 모양으로 했습니다. 문장마다의 답을 그대로 남기고 척도 점수는 저장하지 않습니다.
 > - **GPT 를 한 번 부른 것 = 한 줄.** 하루 한도(통화 횟수 · 통화 시간 · 글 호출 횟수)는 이 기록을 세서 지킵니다. 예전에는 서버 메모리에서 세서 서버가 다시 켜지면 0 이 됐습니다.
 > - **통화 시간과 비용만 비어도 됩니다.** 코치·요약에는 통화 시간이 없고, 통화는 끝나야 시간과 비용을 알 수 있기 때문입니다.
 > - **통화 번호(`call_record_id`)** 는 "통화가 끝났을 때 어느 줄을 채울지" 알려고 더했습니다. 같은 날 통화가 여러 번이면 이것 없이는 구별할 수 없습니다.
 > - **비용은 원 단위 정수**의 어림값입니다. (읽기 쉬워서 학생이 정함) 환산 기준은 `application.yml` 의 `cost-won-*` 설정에 있습니다.
 > - 종류는 지금 GPT 를 부르는 세 곳(통화 · 통화 요약 · 코치)만 있습니다. 인사이트 · 개선안 · 일기 분석이 생기면 하나씩 더합니다.
+
+> `cards` 와 딸린 테이블 두 개는 2026-10-17 에 이슈 #222 에서 **AI 가 만든 테이블**입니다. (칸 이름은 FE 의 `Card` 타입과 최종 기획서 「4.3 카드」 를 그대로 따랐습니다. **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - 처음 이슈는 `study_plans` 에 칸을 더하는 것이었지만, **새 테이블 `cards`** 로 바꿨습니다. (#222 댓글) 반복 카드는 한 장이라 "날짜마다 한 줄" 인 `study_plans` 와 모양이 다르고, 옛 화면이 쓰는 `/study-plans` 를 깨지 않으려고 입니다.
+> - **반복 요일은 한 칸(`repeat_days`)에 `"1,3,5"` 처럼** 적습니다. 요일은 7개뿐이라 딸린 테이블로 빼지 않았습니다. 그날 하는 카드인지는 `Card.isOnDate` 가 FE 의 `isCardOnDate` 와 같은 규칙으로 봅니다.
+> - **체크리스트 · 예상 실패 원인은 여러 개라서 딸린 테이블**에 담았습니다. `position` 은 보낸 순서입니다. 체크했는지(`doneAt`)는 카드가 아니라 **그날의 세션 기록**(#224)에 남깁니다.
+> - `goal_id` 는 목표 테이블(`goals`, #221)의 번호입니다. DB 의 외래 키는 걸지 않았습니다. 카드를 저장할 때 "내 목표인지" 검사는 #221 다음 PR 에서 더합니다.
+> - 알림 세 칸(`alert_*`)이 모두 비어 있으면 **기본 알림**(정각 · 메시지 · 기본 문구)입니다.
+> - 모든 줄에 `user_id` 가 있어서(딸린 테이블은 카드를 따라) 탈퇴하면 같이 지워집니다.
+
+> `study_sessions` 의 새 칸과 `session_*` 테이블 네 개는 2026-10-17 에 이슈 #224 에서 **AI 가 만들었습니다.** (칸 이름은 FE 의 `StudySession` · `SessionPause` · `SessionEndReport` 를 따름. **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - 옛 기록이 이미 있어서 **새 칸은 모두 비어도 되게** 했습니다. 비어 있는 `mode` 는 타이머(NORMAL), 비어 있는 `ended_early` 는 false 로 봅니다.
+> - **일시정지 · 체크한 항목 · 잘 된 이유 · 메모는 여러 개라서 딸린 테이블**에 담았습니다. 일시정지를 보내면 `pause_count` · `paused_ms` 는 그 목록으로 계산해서 같이 저장합니다. (옛 칸을 읽는 계산이 그대로 맞게)
+> - 체크리스트를 체크했는지는 카드가 아니라 **여기(`session_checked_items`)** 에 남깁니다. 반복 카드는 한 장이라 날짜마다 나눠 담을 곳이 세션이기 때문입니다. (#222)
+> - `end_reported` 는 "종료 팝업에 답했는지" 입니다. 이것이 없으면 "체크 0개로 답함" 과 "팝업을 닫아 버림" 을 구별할 수 없습니다.
+> - 카드로 켠 공부 기록은 과목이 없어도 됩니다. 그래서 검사 규칙을 `ck_study_sessions_study_has_subject_or_card` (노는 기록이거나, 과목이나 카드가 있음)로 바꿨습니다.
+
+> `card_day_marks` · `rest_days` 는 2026-10-17 에 이슈 #225 에서 **AI 가 만든 테이블**입니다. (**PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - **미루기와 실패는 한 테이블**에 `mark` 로 구분합니다. 둘 다 "카드 하루치에 사람이 남긴 표시" 이고, 한 날에는 둘 중 하나만 있을 수 있어서입니다. (`uk_card_day_marks_card_id_mark_date`)
+> - 미루기 한도(반복 카드 월 5회 · 1회성 장당 2회 · 절대 카드 0회)는 이 테이블의 줄을 세서 지킵니다. 1회성 카드를 미루면 카드 자체도 새 날짜 · 시각으로 옮깁니다. 반복 카드는 한 장이라 표시에만 새 날짜 · 시각이 남습니다.
+> - **휴식은 카드가 아니라 하루 전체**에 붙어서 `rest_days` 로 따로 뒀습니다. 휴식한 날의 카드는 실패 집계에서 빠집니다.
+> - 이유 글에 **위기 표현**(#56)이 있으면 글은 저장하지 않고 `crisis_detected` 만 남깁니다. (`call_records` 와 같은 방식)
+> - 실패 원인은 체크인의 못 채운 이유(`MissReason`)와 같은 값이고, 이 이슈에서 **'미루다 보니'(`PROCRASTINATED`)** 를 더했습니다. 그래서 `call_records.miss_reason` · `checkins.miss_reason` · `study_sessions.stop_reason` 의 검사 규칙에도 이 값이 들어갑니다.
+> - 두 테이블 모두 `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
 
 > `checkin_emotions` 는 2026-10-17 에 이슈 #220(최종 기획서 4.2 「홈」의 하루 첫 태그)에서 **AI 가 만든 딸린 테이블**입니다. (체크인은 선생님이 AI 에게 맡긴 범위)
 > - 하루 첫 태그 = 컨디션(1~5) + 감정 태그 여러 개. 감정은 한 체크인에 여러 개라서 `thinking_test_weaknesses` 처럼 딸린 테이블에 담았습니다. 엔티티는 `CheckIn` 하나입니다.

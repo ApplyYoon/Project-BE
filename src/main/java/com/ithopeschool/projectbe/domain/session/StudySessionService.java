@@ -1,12 +1,21 @@
 package com.ithopeschool.projectbe.domain.session;
 
+import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.PlanProgress;
 import com.ithopeschool.projectbe.domain.plan.PlanProgress.PlanSession;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
+import com.ithopeschool.projectbe.domain.session.SessionTags.GoodReason;
+import com.ithopeschool.projectbe.domain.session.SessionTags.PauseTag;
+import com.ithopeschool.projectbe.domain.session.SessionTags.PlayTag;
+import com.ithopeschool.projectbe.domain.session.SessionTags.ShortfallReason;
+import com.ithopeschool.projectbe.domain.session.SessionTags.WithWhat;
 import com.ithopeschool.projectbe.domain.session.dto.PlanActualResponse;
+import com.ithopeschool.projectbe.domain.session.dto.SessionEndReportRequest;
+import com.ithopeschool.projectbe.domain.session.dto.SessionMemoRequest;
+import com.ithopeschool.projectbe.domain.session.dto.SessionPauseRequest;
 import com.ithopeschool.projectbe.domain.session.dto.StudySessionCreateRequest;
 import com.ithopeschool.projectbe.domain.session.dto.StudySessionResponse;
 import com.ithopeschool.projectbe.domain.session.dto.StudyTotalResponse;
@@ -20,12 +29,16 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-// 타이머 공부 기록 저장·조회 로직입니다. (이슈 #13 저장, 이슈 #14 조회, docs/API.md "공부 기록")
+// 타이머 공부 기록 저장·조회 로직입니다. (이슈 #13 저장, 이슈 #14 조회, 이슈 #224 카드 칸, docs/API.md "공부 기록")
 //
 // 모든 메서드는 currentUserProvider.getCurrentUserId() 로 시작해서, 로그인하지 않은 요청은 401 이 나갑니다.
 // 과목·계획은 "내 것" 인지 확인하고, 겹치는 기록도 조회도 "내 기록" 끼리만 봅니다.
@@ -56,12 +69,14 @@ public class StudySessionService {
   private final SubjectRepository subjectRepository;
   // 기록에 붙일 계획이 "내 계획" 인지 확인할 때 씁니다.
   private final StudyPlanRepository studyPlanRepository;
+  // 기록에 붙일 카드가 "내 카드" 인지 확인할 때 씁니다. (이슈 #224)
+  private final CardRepository cardRepository;
   // "지금 몇 시인지" 는 시계에게 묻습니다. 테스트에서 시각을 고정할 수 있습니다. (global/config/ClockConfig)
   private final Clock clock;
 
   // 공부 기록 하나 저장.
   //
-  // 검사 순서: 값의 모양(400) → 내 과목·내 계획인지(404) → 이미 있는 기록과 겹치는지(409)
+  // 검사 순서: 값의 모양(400) → 내 카드·내 과목·내 계획인지(404) → 이미 있는 기록과 겹치는지(409)
   // 하나라도 걸리면 저장하지 않습니다.
   @Transactional
   public StudySessionResponse create(StudySessionCreateRequest request) {
@@ -71,12 +86,34 @@ public class StudySessionService {
     PlanKind kind = request.kind() == null ? PlanKind.STUDY : parseKind(request.kind());
     Instant startedAt = Instant.ofEpochMilli(request.startedAt());
     Instant endedAt = Instant.ofEpochMilli(request.endedAt());
-    // pausedMs 를 보내지 않으면 일시정지한 시간이 없는 것으로 봅니다.
-    long pausedMs = request.pausedMs() == null ? 0 : request.pausedMs();
+
+    // pauses 를 보냈으면 일시정지 횟수·시간은 보낸 값 대신 pauses 로 계산합니다. (FE summarizePauses 와 같은 규칙)
+    // 안 보냈으면(옛 FE) 지금처럼 보낸 횟수·시간을 그대로 씁니다. pausedMs 를 안 보내면 0 입니다.
+    List<SessionPause> pauses = request.pauses() == null ? null : toPauses(request.pauses());
+    int pauseCount = pauses == null ? request.pauseCount() : pauses.size();
+    long pausedMs;
+    if (pauses != null) {
+      pausedMs = 0;
+      for (SessionPause pause : pauses) {
+        pausedMs += pause.millis();
+      }
+    } else {
+      pausedMs = request.pausedMs() == null ? 0 : request.pausedMs();
+    }
 
     checkTimes(startedAt, endedAt, pausedMs);
+    if (pauses != null) {
+      checkPausesInside(pauses, startedAt, endedAt);
+    }
     MissReason stopReason = parseStopReason(request.stopReason());
-    Long subjectId = checkSubject(userId, kind, request.subjectId());
+    SessionMode mode = parseMode(request.mode());
+    List<SessionMemo> memos = request.memos() == null ? List.of() : toMemos(request.memos());
+    // 노는 기록의 종류는 노는 기록에만 저장합니다. 공부 기록에 보냈으면 무시합니다. (과목을 노는 기록에 보낸 것과 같은 약속)
+    PlayTag playTag = kind == PlanKind.PLAY ? parsePlayTag(request.playTag()) : null;
+    Long overRestMs = kind == PlanKind.PLAY ? request.overRestMs() : null;
+    Long cardId = checkCard(userId, request.cardId());
+    // 카드로 켠 공부 기록은 과목이 없어도 됩니다. (카드는 과목 대신 목표로 이어집니다, #222)
+    Long subjectId = checkSubject(userId, kind, request.subjectId(), cardId != null);
     Long planId = checkPlan(userId, request.planId());
 
     // 내 기록 중에 시간이 겹치는 것이 있으면 거절합니다. (같은 시간을 두 번 세지 않도록)
@@ -87,20 +124,64 @@ public class StudySessionService {
       throw new ApiException(ErrorCode.CONFLICT, "이미 저장된 기록과 시간이 겹쳐요");
     }
 
-    StudySession saved =
-        studySessionRepository.save(
-            new StudySession(
-                userId,
-                subjectId,
-                startedAt,
-                endedAt,
-                request.pauseCount(),
-                pausedMs,
-                planId,
-                request.targetMinutes(),
-                stopReason,
-                kind));
-    return StudySessionResponse.from(saved);
+    StudySession session =
+        new StudySession(
+            userId,
+            subjectId,
+            startedAt,
+            endedAt,
+            pauseCount,
+            pausedMs,
+            planId,
+            request.targetMinutes(),
+            stopReason,
+            kind);
+    // 카드 기준으로 넓힌 칸을 채웁니다. (#224) 중도 종료(endedEarly)를 안 보냈으면 false 입니다.
+    session.recordCard(cardId, mode, Boolean.TRUE.equals(request.endedEarly()));
+    if (pauses != null) {
+      session.recordPauses(pauses);
+    }
+    if (request.endReport() != null) {
+      applyEndReport(session, request.endReport());
+    }
+    session.recordMemos(memos);
+    session.recordPlay(playTag, overRestMs);
+
+    return StudySessionResponse.from(studySessionRepository.save(session));
+  }
+
+  // 사후 입력 세션 하나 저장. (이슈 #225, POST /api/v1/cards/{id}/late-entry)
+  // 카드 날짜 · 마감 · 시간 한도는 CardDayService 가 먼저 검사하고 부릅니다. 여기서는 기록 저장 규칙만 봅니다.
+  //   - 시각이 말이 되는지 · 1분 이상인지(400), 내 카드인지(404), 이미 있는 기록과 겹치는지(409)
+  //   - 잰 방법은 늘 사후 입력(SELF_REPORT), 일시정지는 없음(0번), 목표 시간은 카드 길이
+  @Transactional
+  public StudySessionResponse createSelfReport(
+      Long cardId,
+      int targetMinutes,
+      Instant startedAt,
+      Instant endedAt,
+      SessionEndReportRequest endReport) {
+    Long userId = currentUserProvider.getCurrentUserId();
+
+    checkTimes(startedAt, endedAt, 0);
+    Long myCardId = checkCard(userId, String.valueOf(cardId));
+
+    studySessionRepository.lockUser(userId);
+    if (studySessionRepository.existsByUserIdAndStartedAtLessThanAndEndedAtGreaterThan(
+        userId, endedAt, startedAt)) {
+      throw new ApiException(ErrorCode.CONFLICT, "이미 저장된 기록과 시간이 겹쳐요");
+    }
+
+    // 카드로 켠 공부 기록이라 과목은 비어 있습니다.
+    StudySession session =
+        new StudySession(
+            userId, null, startedAt, endedAt, 0, 0, null, targetMinutes, null, PlanKind.STUDY);
+    session.recordCard(myCardId, SessionMode.SELF_REPORT, false);
+    session.recordPauses(List.of());
+    if (endReport != null) {
+      applyEndReport(session, endReport);
+    }
+    return StudySessionResponse.from(studySessionRepository.save(session));
   }
 
   // 기간 안의 내 기록 목록. from ~ to 는 둘 다 포함하는 날짜이고, 없는 기간은 빈 목록입니다.
@@ -220,12 +301,16 @@ public class StudySessionService {
   // 종류에 맞는 과목 번호를 돌려줍니다. (계획과 같은 규칙)
   // - 노는 기록: 과목이 없습니다. 보냈더라도 null 로 저장합니다.
   // - 공부 기록: 과목이 꼭 있어야 하고(400), 내 과목이어야 합니다(404).
-  private Long checkSubject(Long userId, PlanKind kind, String subjectId) {
+  //   단, 카드로 켠 공부 기록(hasCard)은 과목이 없어도 됩니다. 보냈으면 내 과목이어야 합니다.
+  private Long checkSubject(Long userId, PlanKind kind, String subjectId, boolean hasCard) {
     if (kind == PlanKind.PLAY) {
       return null;
     }
     if (subjectId == null || subjectId.isEmpty()) {
-      throw new ApiException(ErrorCode.VALIDATION_ERROR, "공부 기록은 과목을 골라 주세요");
+      if (hasCard) {
+        return null;
+      }
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "공부 기록은 과목이나 카드를 골라 주세요");
     }
     // 숫자 모양인지는 요청 DTO 의 @Pattern 이 이미 검사했습니다.
     Long id = Long.valueOf(subjectId);
@@ -249,6 +334,169 @@ public class StudySessionService {
     return id;
   }
 
+  // 카드 번호를 돌려줍니다. 안 보냈으면(null 또는 "") 카드 없이 켠 기록이라 null 입니다.
+  // 보냈으면 내 카드여야 합니다. 없는 카드와 남의 카드는 구별하지 않고 똑같이 404 입니다.
+  // ⚠️ 이슈 #224 는 "cardId 없는 새 세션은 400" 이지만, 지금 FE 타이머가 아직 cardId 없이 보내서 당분간 받아 줍니다.
+  private Long checkCard(Long userId, String cardId) {
+    if (cardId == null || cardId.isEmpty()) {
+      return null;
+    }
+    Long id = Long.valueOf(cardId);
+    if (cardRepository.findByIdAndUserId(id, userId).isEmpty()) {
+      throw new ApiException(ErrorCode.NOT_FOUND, "카드를 찾을 수 없어요");
+    }
+    return id;
+  }
+
+  // 일시정지 요청을 저장할 값으로 바꿉니다. 이유 태그가 7가지가 아니면 400 입니다. 빈 메모("")는 null 입니다.
+  private List<SessionPause> toPauses(List<SessionPauseRequest> requests) {
+    List<SessionPause> pauses = new ArrayList<>();
+    for (SessionPauseRequest request : requests) {
+      PauseTag tag = PauseTag.fromValue(request.tag());
+      if (tag == null) {
+        throw new ApiException(
+            ErrorCode.VALIDATION_ERROR,
+            "일시정지 이유는 toilet, snack, phone, mindWander, stuck, external, other 중에서 골라 주세요");
+      }
+      String note = request.note() == null || request.note().isEmpty() ? null : request.note();
+      pauses.add(
+          new SessionPause(
+              Instant.ofEpochMilli(request.startedAt()),
+              Instant.ofEpochMilli(request.endedAt()),
+              tag,
+              note));
+    }
+    return pauses;
+  }
+
+  // 일시정지 시각이 모두 기록의 시작 ~ 끝 사이인지 봅니다. 아니면 400 입니다.
+  // (일시정지한 채로 끝냈으면 FE 가 끝을 기록이 끝난 시각으로 보내므로, 끝과 같은 것은 괜찮습니다)
+  private void checkPausesInside(List<SessionPause> pauses, Instant startedAt, Instant endedAt) {
+    for (SessionPause pause : pauses) {
+      boolean isInside =
+          !pause.getStartedAt().isBefore(startedAt)
+              && !pause.getEndedAt().isBefore(startedAt)
+              && !pause.getStartedAt().isAfter(endedAt)
+              && !pause.getEndedAt().isAfter(endedAt);
+      if (!isInside) {
+        throw new ApiException(ErrorCode.VALIDATION_ERROR, "일시정지 시각은 기록의 시작과 끝 사이여야 해요");
+      }
+    }
+  }
+
+  // 메모 요청을 저장할 값으로 바꿉니다. 쓴 시각이 말이 안 되면(2020년 전 · 미래) 400 입니다.
+  private List<SessionMemo> toMemos(List<SessionMemoRequest> requests) {
+    List<SessionMemo> memos = new ArrayList<>();
+    for (SessionMemoRequest request : requests) {
+      Instant at = Instant.ofEpochMilli(request.at());
+      if (!isReasonableTime(at)) {
+        throw new ApiException(ErrorCode.VALIDATION_ERROR, "메모를 쓴 시각이 올바르지 않아요");
+      }
+      memos.add(new SessionMemo(at, request.text()));
+    }
+    return memos;
+  }
+
+  // 종료 팝업에서 받은 것을 검사해서 기록에 적습니다.
+  private void applyEndReport(StudySession session, SessionEndReportRequest report) {
+    // 체크한 항목: id(40자까지) → 체크한 시각. 안 보냈으면 하나도 체크하지 않은 것입니다.
+    Map<String, Instant> checked = new LinkedHashMap<>();
+    if (report.checked() != null) {
+      for (Map.Entry<String, Long> entry : report.checked().entrySet()) {
+        String itemId = entry.getKey();
+        if (itemId == null || itemId.isBlank() || itemId.length() > 40) {
+          throw new ApiException(ErrorCode.VALIDATION_ERROR, "체크한 항목의 id 는 1 ~ 40자로 보내 주세요");
+        }
+        if (entry.getValue() == null || !isReasonableTime(Instant.ofEpochMilli(entry.getValue()))) {
+          throw new ApiException(ErrorCode.VALIDATION_ERROR, "체크한 시각이 올바르지 않아요");
+        }
+        checked.put(itemId, Instant.ofEpochMilli(entry.getValue()));
+      }
+    }
+
+    ShortfallReason shortfallReason = null;
+    if (report.shortfallReason() != null) {
+      shortfallReason = ShortfallReason.fromValue(report.shortfallReason());
+      if (shortfallReason == null) {
+        throw new ApiException(
+            ErrorCode.VALIDATION_ERROR,
+            "못 한 이유는 tooMuch, stuck, phone, mindWander, tired, external, etc 중에서 골라 주세요");
+      }
+    }
+
+    WithWhat withWhat = null;
+    if (report.withWhat() != null) {
+      withWhat = WithWhat.fromValue(report.withWhat());
+      if (withWhat == null) {
+        throw new ApiException(ErrorCode.VALIDATION_ERROR, "같이 한 것은 music, video, none 중에서 골라 주세요");
+      }
+    }
+
+    Set<GoodReason> goodReasons = EnumSet.noneOf(GoodReason.class);
+    if (report.goodReasons() != null) {
+      for (String value : report.goodReasons()) {
+        GoodReason reason = GoodReason.fromValue(value);
+        if (reason == null) {
+          throw new ApiException(
+              ErrorCode.VALIDATION_ERROR,
+              "잘 된 이유는 focus, goodPlan, condition, environment, helped, luck 중에서 골라 주세요");
+        }
+        goodReasons.add(reason);
+      }
+    }
+
+    // 증빙은 빈 글자("")면 없는 것(null)으로 적습니다.
+    String proofLink = null;
+    String proofSummary = null;
+    if (report.proof() != null) {
+      proofLink = emptyToNull(report.proof().link());
+      proofSummary = emptyToNull(report.proof().summary());
+    }
+
+    session.recordEndReport(
+        checked, shortfallReason, withWhat, proofLink, proofSummary, goodReasons);
+  }
+
+  // 시각이 말이 되는지 봅니다. 서비스를 만든 2020년보다 앞서거나, 아직 오지 않은 시각이면 false 입니다.
+  private boolean isReasonableTime(Instant time) {
+    return !time.isBefore(EARLIEST_START) && !time.isAfter(clock.instant());
+  }
+
+  // FE 가 보낸 글자("offline")를 세션 방법으로 바꿉니다. 안 보냈으면 타이머(NORMAL)입니다.
+  // 사후 입력(selfReport)은 여기서 받지 않습니다. 사후 입력에는 따로 지켜야 할 기한·한도가 있어서
+  // POST /api/v1/cards/{id}/late-entry (createSelfReport) 로만 받습니다. (#225)
+  private SessionMode parseMode(String value) {
+    if (value == null) {
+      return SessionMode.NORMAL;
+    }
+    SessionMode mode = SessionMode.fromValue(value);
+    if (mode == SessionMode.SELF_REPORT) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "사후 입력은 카드의 사후 입력(late-entry)으로 보내 주세요");
+    }
+    if (mode == null) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "세션 방법은 normal, offline 중에서 골라 주세요");
+    }
+    return mode;
+  }
+
+  // FE 가 보낸 글자("game")를 노는 기록의 종류로 바꿉니다. 안 보냈으면 null, 6가지가 아니면 400 입니다.
+  private PlayTag parsePlayTag(String value) {
+    if (value == null) {
+      return null;
+    }
+    PlayTag tag = PlayTag.fromValue(value);
+    if (tag == null) {
+      throw new ApiException(
+          ErrorCode.VALIDATION_ERROR, "노는 종류는 youtube, game, sns, webtoon, rest, etc 중에서 골라 주세요");
+    }
+    return tag;
+  }
+
+  // 빈 글자("")를 null 로 바꿉니다.
+  private String emptyToNull(String value) {
+    return value == null || value.isEmpty() ? null : value;
+  }
+
   // FE 가 보낸 글자("study")를 종류로 바꿉니다. 두 가지가 아니면 400 입니다.
   private PlanKind parseKind(String value) {
     PlanKind kind = PlanKind.fromValue(value);
@@ -258,7 +506,7 @@ public class StudySessionService {
     return kind;
   }
 
-  // FE 가 보낸 글자("phone")를 그만둔 이유로 바꿉니다. 안 보냈으면 null, 7가지가 아니면 400 입니다.
+  // FE 가 보낸 글자("phone")를 그만둔 이유로 바꿉니다. 안 보냈으면 null, 8가지(MissReason)가 아니면 400 입니다.
   private MissReason parseStopReason(String value) {
     if (value == null) {
       return null;
@@ -267,7 +515,7 @@ public class StudySessionService {
     if (reason == null) {
       throw new ApiException(
           ErrorCode.VALIDATION_ERROR,
-          "그만둔 이유는 tired, event, phone, tooMuch, unwilling, sick, etc 중에서 골라 주세요");
+          "그만둔 이유는 tired, event, phone, tooMuch, unwilling, sick, procrastinated, etc 중에서 골라 주세요");
     }
     return reason;
   }

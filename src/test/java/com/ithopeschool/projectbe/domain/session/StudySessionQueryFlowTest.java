@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
+import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
@@ -46,6 +47,7 @@ class StudySessionQueryFlowTest {
   @Autowired private StudySessionRepository studySessionRepository;
   @Autowired private StudyPlanRepository studyPlanRepository;
   @Autowired private SubjectRepository subjectRepository;
+  @Autowired private CardRepository cardRepository;
   @Autowired private TestEntityManager em;
 
   private CurrentUserProvider currentUserProvider;
@@ -63,6 +65,7 @@ class StudySessionQueryFlowTest {
         studySessionRepository,
         subjectRepository,
         studyPlanRepository,
+        cardRepository,
         Clock.fixed(now, ZoneOffset.UTC));
   }
 

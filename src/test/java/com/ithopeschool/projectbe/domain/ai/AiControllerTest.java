@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ithopeschool.projectbe.domain.ai.dto.CardParseRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.CardParseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
@@ -50,6 +52,7 @@ class AiControllerTest {
   @MockitoBean private QuickCardService quickCardService;
   @MockitoBean private SettingsFromTextService settingsFromTextService;
   @MockitoBean private ProfileLinesService profileLinesService;
+  @MockitoBean private CardParseService cardParseService;
   @MockitoBean private DayPlanService dayPlanService;
 
   private ResultActions checklist(String body) throws Exception {
@@ -426,6 +429,62 @@ class AiControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("한 줄은 100자 이하로 적어 주세요"));
     verifyNoInteractions(quickCardService);
+  }
+
+  // ---- 말로 카드 만들기 ----
+
+  private ResultActions parseCards(String body) throws Exception {
+    return mockMvc.perform(
+        post("/api/v1/ai/cards/parse").contentType(MediaType.APPLICATION_JSON).content(body));
+  }
+
+  @Test
+  @DisplayName("말로 카드 만들기: 200 과 초안들(날짜 · 시각 · 길이 · 체크리스트 · 목표), 못 만들면 drafts: null")
+  void parseCardsReturnsDrafts() throws Exception {
+    given(cardParseService.parse(any()))
+        .willReturn(
+            new CardParseResponse(
+                false,
+                List.of(
+                    new CardParseResponse.Draft(
+                        LocalDate.of(2026, 10, 18),
+                        "19:00",
+                        25,
+                        true,
+                        "수학 문제집",
+                        List.of("문제집 2장 풀기"),
+                        "4")),
+                "기록 이유"));
+    parseCards("{\"date\":\"2026-10-17\",\"text\":\" 내일 7시에 수학 문제집 2장 \"}")
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .json(
+                    "{\"showHelp\":false,\"drafts\":[{\"date\":\"2026-10-18\",\"startTime\":\"19:00\",\"durationMinutes\":25,\"durationFromRecord\":true,\"title\":\"수학 문제집\",\"checklist\":[\"문제집 2장 풀기\"],\"goalId\":\"4\"}],\"durationEvidence\":\"기록 이유\"}",
+                    true));
+    verify(cardParseService)
+        .parse(new CardParseRequest(LocalDate.of(2026, 10, 17), "내일 7시에 수학 문제집 2장"));
+
+    given(cardParseService.parse(any())).willReturn(CardParseResponse.notMade());
+    parseCards("{\"date\":\"2026-10-17\",\"text\":\"수학\"}")
+        .andExpect(status().isOk())
+        .andExpect(
+            content().json("{\"showHelp\":false,\"drafts\":null,\"durationEvidence\":null}", true));
+  }
+
+  @Test
+  @DisplayName("말로 카드 만들기: 날짜가 없거나 문장이 비었거나 200자를 넘으면 400 이고 서비스를 부르지 않는다")
+  void parseCardsRejectsBadRequests() throws Exception {
+    parseCards("{\"text\":\"수학\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("기준 날짜를 보내 주세요"));
+    parseCards("{\"date\":\"2026-10-17\",\"text\":\" \"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("어떤 카드를 만들지 말해 주세요"));
+    parseCards("{\"date\":\"2026-10-17\",\"text\":\"" + "가".repeat(201) + "\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("문장은 200자 이하로 보내 주세요"));
+    verifyNoInteractions(cardParseService);
   }
 
   // ---- 말로 설정 바꾸기 ----

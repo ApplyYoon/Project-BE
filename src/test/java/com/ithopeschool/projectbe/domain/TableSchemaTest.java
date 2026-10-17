@@ -73,6 +73,17 @@ class TableSchemaTest {
     expected.put("STUDY_SESSIONS.TARGET_MINUTES", "INTEGER NULL");
     expected.put("STUDY_SESSIONS.STOP_REASON", "ENUM NULL");
     expected.put("STUDY_SESSIONS.KIND", "ENUM NOT NULL");
+    // 카드 기준으로 넓힌 칸 (#224). 옛 기록이 있어서 모두 비어도 됩니다.
+    expected.put("STUDY_SESSIONS.CARD_ID", "BIGINT NULL");
+    expected.put("STUDY_SESSIONS.MODE", "ENUM NULL");
+    expected.put("STUDY_SESSIONS.ENDED_EARLY", "BOOLEAN NULL");
+    expected.put("STUDY_SESSIONS.END_REPORTED", "BOOLEAN NULL");
+    expected.put("STUDY_SESSIONS.SHORTFALL_REASON", "ENUM NULL");
+    expected.put("STUDY_SESSIONS.WITH_WHAT", "ENUM NULL");
+    expected.put("STUDY_SESSIONS.PROOF_LINK", "CHARACTER VARYING(300) NULL");
+    expected.put("STUDY_SESSIONS.PROOF_SUMMARY", "CHARACTER VARYING(300) NULL");
+    expected.put("STUDY_SESSIONS.PLAY_TAG", "ENUM NULL");
+    expected.put("STUDY_SESSIONS.OVER_REST_MS", "BIGINT NULL");
 
     Map<String, String> actual = new LinkedHashMap<>();
     for (Object[] row :

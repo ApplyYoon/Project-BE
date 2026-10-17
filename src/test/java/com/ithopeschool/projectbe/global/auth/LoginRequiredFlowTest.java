@@ -63,6 +63,10 @@ class LoginRequiredFlowTest {
   private static final String PLAN_BODY =
       "{\"date\":\"2026-10-12\",\"subjectId\":\"1\",\"content\":\"수학 문제집\",\"targetMinutes\":60}";
 
+  private static final String CARD_BODY =
+      "{\"title\":\"수학 문제집\",\"date\":\"2026-10-12\",\"durationMinutes\":60,"
+          + "\"checklist\":[{\"text\":\"42쪽\"}]}";
+
   private static final String EXAM_BODY =
       "{\"type\":\"mock\",\"name\":\"10월 모의고사\",\"date\":\"2026-10-20\","
           + "\"subjectScores\":[{\"subjectId\":\"1\",\"expectedScore\":85}]}";
@@ -132,6 +136,49 @@ class LoginRequiredFlowTest {
               "{\"date\":\"2026-10-12\",\"text\":\"수학 문제집 2시간\"}"),
           new Api("PATCH", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", "{\"done\":true}"),
           new Api("DELETE", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", null),
+          // 카드 (이슈 #222)
+          new Api("GET", "/api/v1/cards", "/api/v1/cards?date=2026-10-12", null),
+          new Api("POST", "/api/v1/cards", "/api/v1/cards", CARD_BODY),
+          new Api("PATCH", "/api/v1/cards/{id}", "/api/v1/cards/1", "{\"title\":\"수학\"}"),
+          new Api("DELETE", "/api/v1/cards/{id}", "/api/v1/cards/1", null),
+          // 미루기 · 실패 · 사후 입력 · 휴식 처리 (이슈 #225)
+          new Api(
+              "GET",
+              "/api/v1/cards/{id}/postpone-limit",
+              "/api/v1/cards/1/postpone-limit?date=2026-10-12",
+              null),
+          new Api(
+              "POST",
+              "/api/v1/cards/{id}/postpone",
+              "/api/v1/cards/1/postpone",
+              "{\"date\":\"2026-10-12\",\"reason\":\""
+                  + "가".repeat(100)
+                  + "\",\"newDate\":\"2026-10-13\",\"newStartTime\":\"20:00\"}"),
+          new Api(
+              "POST",
+              "/api/v1/cards/{id}/fail",
+              "/api/v1/cards/1/fail",
+              "{\"date\":\"2026-10-12\",\"cause\":\"tired\"}"),
+          new Api(
+              "POST",
+              "/api/v1/cards/{id}/late-entry",
+              "/api/v1/cards/1/late-entry",
+              "{\"date\":\"2026-10-12\",\"startedAt\":1790000000000,\"endedAt\":1790003000000}"),
+          new Api(
+              "GET",
+              "/api/v1/card-day-marks",
+              "/api/v1/card-day-marks?from=2026-10-01&to=2026-10-07",
+              null),
+          new Api("POST", "/api/v1/rest-days/{date}", "/api/v1/rest-days/2026-10-12", null),
+          new Api(
+              "GET", "/api/v1/rest-days", "/api/v1/rest-days?from=2026-10-01&to=2026-10-07", null),
+          // 카드 결과 (이슈 #229)
+          new Api(
+              "GET",
+              "/api/v1/cards/results",
+              "/api/v1/cards/results?from=2026-10-01&to=2026-10-07",
+              null),
+          new Api("GET", "/api/v1/cards/plan-pattern", "/api/v1/cards/plan-pattern?goalId=1", null),
           // 잠금 해제 기록
           new Api(
               "POST",
@@ -230,6 +277,18 @@ class LoginRequiredFlowTest {
               "/api/v1/chats/{id}/finish",
               "/api/v1/chats/1/finish",
               "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
+          // 목표 만들기 대화 (이슈 #239)
+          new Api("POST", "/api/v1/goal-chats", "/api/v1/goal-chats", null),
+          new Api(
+              "POST",
+              "/api/v1/goal-chats/{id}/messages",
+              "/api/v1/goal-chats/abc/messages",
+              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
+          new Api(
+              "POST",
+              "/api/v1/goal-chats/{id}/finish",
+              "/api/v1/goal-chats/abc/finish",
+              "{\"lines\":[{\"speaker\":\"me\",\"text\":\"응\"}]}"),
           // 웹 푸시 (내 기기를 알림 받을 곳으로 등록합니다)
           new Api("GET", "/api/v1/push/public-key", "/api/v1/push/public-key", null),
           new Api(
@@ -313,6 +372,9 @@ class LoginRequiredFlowTest {
           new Api("GET", "/api/v1/stats/miss-reasons", "/api/v1/stats/miss-reasons", null),
           // 리듬·패턴 분석 (공부한 날·시간대·시험 날이라 학생의 정보입니다)
           new Api("GET", "/api/v1/stats/rhythm", "/api/v1/stats/rhythm", null),
+          // 내 학교 학사일정 (가입 정보의 학교 번호로 찾습니다. 이슈 #282)
+          new Api("GET", "/api/v1/school/events", "/api/v1/school/events", null),
+          new Api("POST", "/api/v1/school/events/refresh", "/api/v1/school/events/refresh", null),
           // 카드 체크리스트 추천 (내 지난 기록을 보고 AI 를 부릅니다. 이슈 #236)
           new Api("POST", "/api/v1/ai/checklist", "/api/v1/ai/checklist", "{\"title\":\"수학 문제집\"}"),
           // 첫 준비 행동 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #236)
@@ -371,7 +433,32 @@ class LoginRequiredFlowTest {
           new Api("GET", "/api/v1/psych-tests/latest", "/api/v1/psych-tests/latest", null),
           // 성향 요약 3줄 (내 심리검사를 봅니다. 이슈 #237)
           new Api("POST", "/api/v1/ai/profile-lines", "/api/v1/ai/profile-lines", null),
-          // AI 하루 계획 (내 공부 기록 · 계획 · 설문 · 심리검사를 봅니다)
+          // 고정 일정 (학교 · 학원 시간이라 학생의 생활 정보입니다. 이슈 #223)
+          new Api("GET", "/api/v1/fixed-blocks", "/api/v1/fixed-blocks", null),
+          new Api(
+              "POST",
+              "/api/v1/fixed-blocks",
+              "/api/v1/fixed-blocks",
+              "{\"title\":\"학교\",\"repeatDays\":[1],\"startTime\":\"08:00\",\"endTime\":\"16:30\"}"),
+          new Api(
+              "PATCH", "/api/v1/fixed-blocks/{id}", "/api/v1/fixed-blocks/1", "{\"title\":\"학원\"}"),
+          new Api("DELETE", "/api/v1/fixed-blocks/{id}", "/api/v1/fixed-blocks/1", null),
+          // 목표 (학생의 장기 목표와 다짐이라 학생의 정보입니다. 이슈 #221)
+          new Api("GET", "/api/v1/goals", "/api/v1/goals", null),
+          new Api(
+              "POST",
+              "/api/v1/goals",
+              "/api/v1/goals",
+              "{\"kind\":\"score\",\"title\":\"수학\",\"dDay\":\"2099-01-01\",\"currentScore\":\"5등급\",\"benefit\":\"a\",\"cost\":\"b\",\"obstacle\":\"c\",\"plan\":\"d\"}"),
+          new Api("PATCH", "/api/v1/goals/{id}", "/api/v1/goals/1", "{\"plan\":\"d\"}"),
+          new Api("GET", "/api/v1/goals/{id}/history", "/api/v1/goals/1/history", null),
+          // 말로 카드 만들기 (내 목표 · 카드 · 기록을 봅니다. 이슈 #237)
+          new Api(
+              "POST",
+              "/api/v1/ai/cards/parse",
+              "/api/v1/ai/cards/parse",
+              "{\"date\":\"2026-10-17\",\"text\":\"수학\"}"),
+          // AI 하루 계획 (내 고정 일정 · 카드 · 목표 · 기록 · 설문 · 심리검사를 봅니다. 이슈 #237)
           new Api(
               "POST", "/api/v1/ai/day-plan", "/api/v1/ai/day-plan", "{\"date\":\"2099-01-01\"}"));
 
