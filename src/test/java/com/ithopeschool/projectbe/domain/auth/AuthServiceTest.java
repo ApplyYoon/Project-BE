@@ -101,7 +101,7 @@ class AuthServiceTest {
 
     Account account = accountRepository.findByEmail("tmax@starflow.com").orElseThrow();
     assertThat(account.getUserId()).isEqualTo(user.getId());
-    assertThat(account.getName()).isEqualTo("김티맥");
+    assertThat(account.getName()).isNull();
     assertThat(account.getSchoolCode()).isEqualTo("7530560");
     assertThat(account.getSchoolName()).isEqualTo("한국디지털미디어고등학교");
     assertThat(account.isDiaryAnalysisAgreed()).isFalse();
@@ -337,7 +337,7 @@ class AuthServiceTest {
     GoogleLoginResponse response = authService.googleLogin(new GoogleLoginRequest(CREDENTIAL));
 
     assertThat(response.status()).isEqualTo(GoogleLoginResponse.SIGNUP_REQUIRED);
-    assertThat(response.name()).isEqualTo("김티맥");
+    assertThat(response.name()).isEmpty();
     assertThat(response.email()).isEqualTo("tmax@gmail.com");
     assertThat(response.token()).isNull();
     assertThat(accountRepository.count()).isZero();
@@ -357,6 +357,12 @@ class AuthServiceTest {
     assertThat(account.isDiaryAnalysisAgreed()).isTrue();
     assertThat(account.getAgreedAt()).isEqualTo(NOW);
     assertThat(signedUp.user().name()).isEqualTo("티맥이");
+    assertThat(
+            accountRepository
+                .findByUserId(Long.valueOf(signedUp.user().id()))
+                .orElseThrow()
+                .getName())
+        .isNull();
     assertThat(loginTokenRepository.findByTokenHash(tokenHasher.hash(signedUp.token())))
         .isPresent();
 

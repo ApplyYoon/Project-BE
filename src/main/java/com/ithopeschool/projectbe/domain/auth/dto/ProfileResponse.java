@@ -4,12 +4,12 @@ import com.ithopeschool.projectbe.domain.auth.Account;
 import com.ithopeschool.projectbe.domain.user.User;
 
 // "내 정보" 의 응답 모양입니다. 로그인한 본인에게만 돌려줍니다.
-//   { "email": "tmax@starflow.com", "name": "김티맥", "nickname": "티맥이",
+//   { "email": "tmax@starflow.com", "name": "티맥이", "nickname": "티맥이",
 //     "schoolCode": "7530560", "schoolName": "한국디지털미디어고등학교", "diaryAnalysis": false }
 // 비밀번호(해시 포함)는 어떤 경우에도 담지 않습니다.
 public record ProfileResponse(
     String email,
-    // 실명
+    // 예전 FE를 위한 닉네임 별칭. 기존 DB 실명은 반환하지 않습니다.
     String name,
     // 화면에 보이는 별명
     String nickname,
@@ -22,7 +22,7 @@ public record ProfileResponse(
   public static ProfileResponse of(User user, Account account) {
     return new ProfileResponse(
         account.getEmail(),
-        account.getName(),
+        user.getNickname(),
         user.getNickname(),
         account.getSchoolCode(),
         account.getSchoolName(),

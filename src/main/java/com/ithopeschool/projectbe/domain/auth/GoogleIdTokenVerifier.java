@@ -107,8 +107,8 @@ public class GoogleIdTokenVerifier {
     if (isBlank(info.sub()) || isBlank(info.email())) {
       return Optional.empty();
     }
-    // 이름은 구글 계정에 없을 수도 있어서, 없으면 빈 글자로 둡니다. (가입 화면에서 직접 적습니다)
-    String name = info.name() == null ? "" : info.name().trim();
+    // 실명은 수집하지 않습니다. 예전 호출자를 위한 name 자리는 빈 글자만 둡니다.
+    String name = "";
     return Optional.of(new GoogleProfile(info.sub(), info.email().trim(), name));
   }
 
@@ -126,7 +126,7 @@ public class GoogleIdTokenVerifier {
   // 확인이 끝난 구글 정보
   //   subject : 구글이 정해 준 이 사람의 고유 번호(sub). 이메일은 바뀔 수 있어서 계정은 이 번호로 찾습니다.
   //   email   : 구글이 확인한 이메일
-  //   name    : 구글 계정의 이름 (없으면 빈 글자)
+  //   name    : 호환용 빈 글자 (실명을 읽지 않음)
   public record GoogleProfile(String subject, String email, String name) {}
 
   // 구글 tokeninfo 응답에서 우리가 읽는 부분만 적었습니다. 나머지 필드는 무시합니다.
@@ -139,6 +139,5 @@ public class GoogleIdTokenVerifier {
       String sub,
       String email,
       // 구글은 "true" 처럼 글자로 줍니다.
-      @JsonProperty("email_verified") String emailVerified,
-      String name) {}
+      @JsonProperty("email_verified") String emailVerified) {}
 }
