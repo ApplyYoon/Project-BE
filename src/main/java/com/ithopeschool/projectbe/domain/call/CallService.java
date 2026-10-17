@@ -7,7 +7,13 @@ import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallKeyClient.CallKey;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
+import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
+import com.ithopeschool.projectbe.domain.exam.Exam;
+import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.safety.LowMoodStreak;
+import com.ithopeschool.projectbe.domain.safety.SafetyBrake;
 import com.ithopeschool.projectbe.domain.thinkingtest.StudyStyle;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingGap;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
@@ -40,7 +46,8 @@ import org.springframework.stereotype.Service;
 //   7. OpenAI 에서 그 대본이 묶인 임시 키를 받는다 (못 받으면 503)
 //   8. 통화 기록을 한 줄 만들고, GPT 호출 기록에도 "통화 시작" 을 남긴 뒤, 임시 키와 기록 번호를 돌려준다
 //
-// 최근 7일 안에 위기 표현이 감지된 통화가 있으면, FE 가 보낸 관리 강도와 상관없이 위로하는 통화(0)로 합니다.
+// 안전 브레이크가 켜졌으면, FE 가 보낸 관리 강도와 상관없이 위로하는 통화(0)로 합니다. (isSafetyBrakeOn)
+//   최근 7일 통화의 위기 표현 · 최근 7일 체크인 글의 위기 표현 · 기분 저하 6일 연속 · 시험 3일 전 ~ 2일 뒤
 // 안전 브레이크는 어떤 설정보다 먼저입니다. (CLAUDE.md 4장)
 //
 // ⚠️ 학생 카드와 대본, 임시 키, 지난 통화의 요약은 로그에 찍지 않습니다.
@@ -61,6 +68,9 @@ public class CallService {
   private final TokenHasher tokenHasher;
   private final CallRecordRepository callRecordRepository;
   private final ThinkingTestRepository thinkingTestRepository;
+  // 안전 브레이크를 서버의 기록으로 한 번 더 보려고 씁니다. (체크인의 글·기분, 시험 날짜)
+  private final CheckInRepository checkInRepository;
+  private final ExamRepository examRepository;
   private final Clock clock;
 
   public CallService(
@@ -70,6 +80,8 @@ public class CallService {
       TokenHasher tokenHasher,
       CallRecordRepository callRecordRepository,
       ThinkingTestRepository thinkingTestRepository,
+      CheckInRepository checkInRepository,
+      ExamRepository examRepository,
       Clock clock) {
     this.currentUserProvider = currentUserProvider;
     this.callKeyClient = callKeyClient;
@@ -77,6 +89,8 @@ public class CallService {
     this.tokenHasher = tokenHasher;
     this.callRecordRepository = callRecordRepository;
     this.thinkingTestRepository = thinkingTestRepository;
+    this.checkInRepository = checkInRepository;
+    this.examRepository = examRepository;
     this.clock = clock;
   }
 
@@ -100,8 +114,8 @@ public class CallService {
         callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
             userId, today.minusDays(RECENT_DAYS - 1));
 
-    // 최근에 위기 표현이 있었으면 위로하는 통화로 합니다. (관리 강도 0 이면 말투·순서가 모두 위로하는 쪽으로 바뀝니다)
-    int careLevel = hasRecentCrisis(recentCalls, today) ? 0 : request.careLevel();
+    // 안전 브레이크가 켜졌으면 위로하는 통화로 합니다. (관리 강도 0 이면 말투·순서가 모두 위로하는 쪽으로 바뀝니다)
+    int careLevel = isSafetyBrakeOn(userId, recentCalls, now, today) ? 0 : request.careLevel();
     CallSessionRequest.Card card = request.card();
 
     // 생각 습관 테스트 결과. 서버에 저장된 것이 있으면 그것을, 없으면 FE 가 보낸 것을 씁니다.
@@ -193,6 +207,38 @@ public class CallService {
       weaknesses.add(Weakness.valueOf(name));
     }
     return weaknesses;
+  }
+
+  // 안전 브레이크가 켜졌는지 서버의 기록으로 봅니다. (이슈 #28 "안전 브레이크가 걸린 날은 채찍 말투가 빠진다")
+  //   1) 오늘을 넣어 최근 7일 안에 위기 표현이 감지된 통화가 있다 (hasRecentCrisis)
+  //   2) SafetyBrake 의 위기 표현 · 시험 기간 · 기분 저하 중 하나라도 걸린다 (이슈 #56 · #58 · #59)
+  //      글은 최근 7일 체크인의 기타 이유 · 약속, 기분은 같은 체크인의 기분, 시험은 서버에 저장한 시험 날짜를 봅니다.
+  // FE 도 같은 규칙으로 관리 강도를 0 으로 보내지만, 기기에만 있는 기록으로 판정해서 서버가 한 번 더 봅니다.
+  // 체크인 · 시험이 아직 서버에 없는 학생은 1) 만 걸립니다. (기록이 없는 날은 기분 저하로 세지 않습니다)
+  private boolean isSafetyBrakeOn(
+      Long userId, List<CallRecord> recentCalls, Instant now, LocalDate today) {
+    if (hasRecentCrisis(recentCalls, today)) {
+      return true;
+    }
+    List<String> texts = new ArrayList<>();
+    List<LowMoodStreak.MoodRecord> moods = new ArrayList<>();
+    for (CheckIn checkIn :
+        checkInRepository.findByUserIdAndCheckInDateBetweenOrderByCheckInDateAsc(
+            userId, today.minusDays(CRISIS_CARE_DAYS - 1), today)) {
+      texts.add(checkIn.getMissReasonNote());
+      texts.add(checkIn.getPromiseIf());
+      texts.add(checkIn.getPromiseThen());
+      if (checkIn.getMood() != null) {
+        moods.add(new LowMoodStreak.MoodRecord(checkIn.getCheckInDate(), checkIn.getMood()));
+      }
+    }
+    List<LocalDate> examDates = new ArrayList<>();
+    for (Exam exam : examRepository.findByUserIdOrderByExamDateDescIdDesc(userId)) {
+      examDates.add(exam.getExamDate());
+    }
+    // 관리 강도 계산(CareLevel.of)에 넘기는 것과 같은 기준입니다. (SafetyBrake 맨 위 설명)
+    SafetyBrake brake = SafetyBrake.check(now, texts, moods, examDates);
+    return brake.stopWhip() || brake.recoveryMode();
   }
 
   // 오늘을 넣어 최근 7일 안에 위기 표현이 감지된 통화가 있으면 true 입니다.
