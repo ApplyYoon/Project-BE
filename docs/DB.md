@@ -12,6 +12,14 @@
 
 ```mermaid
 erDiagram
+    users ||--o{ lock_events : "user_id"
+    lock_events {
+        bigint id PK "해제 기록 번호"
+        bigint user_id FK "기록의 주인"
+        timestamptz occurred_at "해제 시각"
+        varchar app_name "앱 이름"
+        varchar reason "한 줄 이유"
+    }
     users ||--o{ subjects : "user_id"
     users ||--o{ study_plans : "user_id"
     users ||--o{ study_sessions : "user_id"
@@ -280,6 +288,7 @@ erDiagram
 
 | 테이블 | 무엇을 담나 | 만든 이슈 |
 | ------ | ----------- | --------- |
+| lock_events | 사용자별 잠금 해제 시각·앱·한 줄 이유 | #67 |
 | `users` | 서비스를 쓰는 사람 한 명이 한 줄 (별명, 가입 시각) | #3 |
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
 | `study_plans` | 하루의 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부, 시작 시각, 공부/노는 계획, 루틴) | #3 · #12 |
