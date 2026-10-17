@@ -457,7 +457,13 @@ class LoginRequiredFlowTest {
               "POST",
               "/api/v1/ai/cards/parse",
               "/api/v1/ai/cards/parse",
-              "{\"date\":\"2026-10-17\",\"text\":\"수학\"}"));
+              "{\"date\":\"2026-10-17\",\"text\":\"수학\"}"),
+          // 카드 폼 기본값 (내 카드 · 목표 · 기록을 봅니다. 이슈 #237)
+          new Api(
+              "POST",
+              "/api/v1/ai/card-defaults",
+              "/api/v1/ai/card-defaults",
+              "{\"title\":\"수학\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

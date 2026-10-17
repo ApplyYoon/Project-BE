@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.CardParseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardParseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
@@ -52,6 +54,7 @@ class AiControllerTest {
   @MockitoBean private SettingsFromTextService settingsFromTextService;
   @MockitoBean private ProfileLinesService profileLinesService;
   @MockitoBean private CardParseService cardParseService;
+  @MockitoBean private CardDefaultsService cardDefaultsService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -483,6 +486,35 @@ class AiControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("문장은 200자 이하로 보내 주세요"));
     verifyNoInteractions(cardParseService);
+  }
+
+  // ---- 카드 폼 기본값 ----
+
+  @Test
+  @DisplayName("카드 폼 기본값: 200 과 목표 · 유형 · 길이 · 이유, 제목이 비면 400")
+  void cardDefaults() throws Exception {
+    given(cardDefaultsService.suggest(any()))
+        .willReturn(new CardDefaultsResponse(false, "4", "lecture", 60, List.of("이유")));
+    mockMvc
+        .perform(
+            post("/api/v1/ai/card-defaults")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\" 수학 인강 \"}"))
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .json(
+                    "{\"showHelp\":false,\"goalId\":\"4\",\"type\":\"lecture\",\"durationMinutes\":60,\"evidence\":[\"이유\"]}",
+                    true));
+    verify(cardDefaultsService).suggest(new CardDefaultsRequest("수학 인강"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/card-defaults")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\" \"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("카드 제목을 입력해 주세요"));
   }
 
   // ---- 말로 설정 바꾸기 ----

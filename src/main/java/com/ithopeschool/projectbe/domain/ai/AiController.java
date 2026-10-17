@@ -1,5 +1,7 @@
 package com.ithopeschool.projectbe.domain.ai;
 
+import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.CardParseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardParseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistRequest;
@@ -47,6 +49,7 @@ public class AiController {
   private final SettingsFromTextService settingsFromTextService;
   private final ProfileLinesService profileLinesService;
   private final CardParseService cardParseService;
+  private final CardDefaultsService cardDefaultsService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -109,6 +112,14 @@ public class AiController {
   @PostMapping("/cards/parse")
   public CardParseResponse parseCards(@Valid @RequestBody CardParseRequest request) {
     return cardParseService.parse(request);
+  }
+
+  @Operation(
+      summary =
+          "카드 폼 기본값: 제목 → 목표 연결 · 유형 · 길이 (같은 제목 카드가 있으면 그대로 · 처음이면 AI 가 목표 · 유형, 길이는 내 기록 · 저장 안 함 · 토큰 필요)")
+  @PostMapping("/card-defaults")
+  public CardDefaultsResponse cardDefaults(@Valid @RequestBody CardDefaultsRequest request) {
+    return cardDefaultsService.suggest(request);
   }
 
   @Operation(
