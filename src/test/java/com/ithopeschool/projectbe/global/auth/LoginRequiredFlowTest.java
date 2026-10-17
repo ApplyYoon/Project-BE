@@ -235,7 +235,14 @@ class LoginRequiredFlowTest {
               "PUT",
               "/api/v1/onboarding/initial-plan",
               "/api/v1/onboarding/initial-plan",
-              "{\"dailyMinutes\":180,\"daysPerWeek\":5}"));
+              "{\"dailyMinutes\":180,\"daysPerWeek\":5}"),
+          // 개인정보 동의 (동의 문구가 바뀌었을 때 다시 동의하는 API. 이슈 #71)
+          new Api("GET", "/api/v1/auth/consent", "/api/v1/auth/consent", null),
+          new Api(
+              "POST",
+              "/api/v1/auth/consent",
+              "/api/v1/auth/consent",
+              "{\"terms\":true,\"privacy\":true,\"over14\":true,\"version\":\"v1\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.
@@ -293,7 +300,7 @@ class LoginRequiredFlowTest {
           "nickname": "%s",
           "schoolCode": null,
           "schoolName": null,
-          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false }
+          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false, "over14": true, "version": "v1" }
         }
         """
             .formatted(email, PASSWORD, nickname);

@@ -20,6 +20,9 @@ public enum ErrorCode {
   METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 요청 방법이에요"),
   // 이미 있는 것을 또 만들려고 함, 또는 쓰고 있는 것을 지우려고 함 (계획이 있는 과목 삭제 등)
   CONFLICT(HttpStatus.CONFLICT, "이미 있는 값이에요"),
+  // 로그인은 했지만 최신 동의 문구에 동의하지 않아서 데이터를 저장할 수 없음 (이슈 #71)
+  // ⚠️ 서버 코드가 직접 던질 때만 나갑니다. Spring 이 던지는 일반 403 에는 이 이름을 쓰지 않습니다. (fromStatus 참고)
+  CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "동의 문구에 동의한 뒤에 저장할 수 있어요"),
   // 정해 둔 횟수를 넘게 부름 (하루 통화 횟수 등)
   TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "오늘은 더 할 수 없어요"),
   // 서버가 예상 못 한 문제
@@ -35,9 +38,11 @@ public enum ErrorCode {
 
   // HTTP 상태 번호에 맞는 에러 종류를 찾습니다.
   // 위 목록에 없는 번호는 4xx(요청이 잘못됨)면 VALIDATION_ERROR, 그 밖에는 INTERNAL_ERROR 로 봅니다.
+  // CONSENT_REQUIRED 는 건너뜁니다. 403 은 "동의가 필요하다" 말고도 여러 이유로 날 수 있어서,
+  // 이유를 모르는 403 에 "동의 문구에 동의해 주세요" 라고 잘못 알리지 않기 위해서입니다.
   public static ErrorCode fromStatus(int statusNumber) {
     for (ErrorCode code : values()) {
-      if (code.status.value() == statusNumber) {
+      if (code != CONSENT_REQUIRED && code.status.value() == statusNumber) {
         return code;
       }
     }

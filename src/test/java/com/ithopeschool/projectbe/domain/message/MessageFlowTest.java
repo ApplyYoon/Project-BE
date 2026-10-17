@@ -72,7 +72,7 @@ class MessageFlowTest {
           "nickname": "티맥이",
           "schoolCode": null,
           "schoolName": null,
-          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false }
+          "consents": { "terms": true, "privacy": true, "diaryAnalysis": false, "over14": true, "version": "v1" }
         }
         """
             .formatted(email, PASSWORD);

@@ -23,9 +23,9 @@ public record SignupRequest(
         @Pattern(regexp = ".*[a-zA-Z].*", message = "비밀번호에 영문과 숫자를 모두 넣어 주세요")
         @Pattern(regexp = ".*[0-9].*", message = "비밀번호에 영문과 숫자를 모두 넣어 주세요")
         String password,
-    // 실명
-    @NotNull(message = "이름을 입력해 주세요") @Size(min = 2, max = 20, message = "이름은 2자 이상 20자 이하로 적어 주세요")
-        String name,
+    // 실명. 선택입니다. 안 보내도 가입됩니다. (이슈 #71: 실명은 받지 않는 방향입니다.
+    // FE 가 실명 입력을 없앨 때까지만 받아 주고, 없어지면 이 칸과 accounts.name 을 지웁니다)
+    @Size(min = 2, max = 20, message = "이름은 2자 이상 20자 이하로 적어 주세요") String name,
     // 앱에서 부르는 이름 (users.nickname 에 저장합니다)
     @NotNull(message = "닉네임을 입력해 주세요")
         @Size(min = 2, max = 10, message = "닉네임은 2자 이상 10자 이하로 적어 주세요")
@@ -40,14 +40,23 @@ public record SignupRequest(
   // 비밀번호는 공백도 비밀번호의 일부일 수 있어서 건드리지 않습니다.
   public SignupRequest {
     email = email == null ? null : email.trim();
-    name = name == null ? null : name.trim();
+    // 실명은 선택이라, 공백뿐인 글자는 "안 보냄" 으로 봅니다.
+    name = name == null || name.isBlank() ? null : name.trim();
     nickname = nickname == null ? null : nickname.trim();
   }
 
-  // 동의 항목 세 가지. true 면 동의했다는 뜻입니다. (FE 의 SignupConsents)
+  // 동의 항목과 만 14세 확인, 동의한 문구의 버전. true 면 동의(확인)했다는 뜻입니다. (FE 의 SignupConsents)
+  // 구글 가입(GoogleSignupRequest)과 다시 동의하기(ConsentAgreeRequest)도 같은 규칙을 씁니다.
+  // 필수 true/false 칸을 false 로 보내면 아래 문장의 400 이 됩니다. 칸을 아예 안 보내면 값을 읽을 수 없는 요청이라
+  // 기본 문장("보낸 값을 다시 확인해 주세요")의 400 이 됩니다. 어느 쪽이든 가입은 끝나지 않습니다.
   public record Consents(
       @AssertTrue(message = "서비스 이용약관에 동의해 주세요") boolean terms,
       @AssertTrue(message = "개인정보 수집·이용에 동의해 주세요") boolean privacy,
       // [선택] 일기·감정 기록을 분석에 쓰기. 동의하지 않아도 가입할 수 있습니다.
-      boolean diaryAnalysis) {}
+      boolean diaryAnalysis,
+      // [필수] 만 14세 이상인지 확인. 아니면 가입할 수 없습니다. (생년월일은 받지 않고 "네" 만 확인합니다)
+      @AssertTrue(message = "만 14세 이상만 가입할 수 있어요") boolean over14,
+      // [필수] 화면에 보여 준 동의 문구의 버전. 지금 받는 버전(ConsentPolicy)과 같아야 합니다.
+      @NotBlank(message = "동의 문구 버전(version)을 보내 주세요") @Size(max = 20, message = "동의 문구 버전이 너무 길어요")
+          String version) {}
 }
