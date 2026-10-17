@@ -102,4 +102,25 @@ class CheckInRepositoryTest {
         .extracting(CheckIn::getCheckInDate)
         .containsExactly(LocalDate.parse("2026-10-13"), LocalDate.parse("2026-10-15"));
   }
+
+  @Test
+  @DisplayName("모두 지우기는 내 체크인만 지우고, 지운 줄 수를 돌려준다. 남의 체크인은 그대로다")
+  void deletesOnlyMine() {
+    save(1L, "2026-10-15", 3);
+    save(1L, "2026-10-16", 4);
+    save(2L, "2026-10-16", 5);
+
+    assertThat(checkInRepository.deleteAllOfUser(1L)).isEqualTo(2);
+
+    assertThat(
+            checkInRepository.findByUserIdAndCheckInDateBetweenOrderByCheckInDateAsc(
+                1L, LocalDate.parse("2026-10-01"), LocalDate.parse("2026-10-31")))
+        .isEmpty();
+    assertThat(
+            checkInRepository.findByUserIdAndCheckInDateBetweenOrderByCheckInDateAsc(
+                2L, LocalDate.parse("2026-10-01"), LocalDate.parse("2026-10-31")))
+        .hasSize(1);
+    // 지울 것이 없어도 에러 없이 0 입니다.
+    assertThat(checkInRepository.deleteAllOfUser(1L)).isZero();
+  }
 }

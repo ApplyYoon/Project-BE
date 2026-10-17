@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.ithopeschool.projectbe.domain.auth.LoginToken;
 import com.ithopeschool.projectbe.domain.auth.LoginTokenRepository;
 import com.ithopeschool.projectbe.domain.auth.TokenHasher;
+import com.ithopeschool.projectbe.domain.consent.ConsentPolicy;
 import com.ithopeschool.projectbe.domain.consent.ConsentRecord;
 import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -164,5 +165,17 @@ class ConsentGateTest {
           .extracting(e -> ((ApiException) e).getErrorCode())
           .isEqualTo(ErrorCode.UNAUTHORIZED);
     }
+  }
+
+  @Test
+  void getCanReadButCannotAutomaticallySaveWithoutConsent() {
+    CurrentUserProvider provider = providerFor(7L, "GET");
+    assertThat(provider.getCurrentUserId()).isEqualTo(7L);
+    assertThat(provider.canSaveForCurrentUser()).isFalse();
+    agree(7L, ConsentPolicy.CURRENT_VERSION);
+    assertThat(provider.canSaveForCurrentUser()).isTrue();
+    assertThat(
+            providerWithHeader("Bearer " + TEST_TOKEN, "GET", TEST_TOKEN).canSaveForCurrentUser())
+        .isTrue();
   }
 }

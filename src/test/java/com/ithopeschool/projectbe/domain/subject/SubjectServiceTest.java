@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -16,15 +17,19 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import com.ithopeschool.projectbe.domain.subject.dto.SubjectCreateRequest;
 import com.ithopeschool.projectbe.domain.subject.dto.SubjectResponse;
 import com.ithopeschool.projectbe.domain.subject.dto.SubjectUpdateRequest;
+import com.ithopeschool.projectbe.domain.user.User;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -38,12 +43,14 @@ class SubjectServiceTest {
   private CurrentUserProvider currentUserProvider;
   private SubjectRepository subjectRepository;
   private SubjectService subjectService;
+  private EntityManager entityManager;
 
   @BeforeEach
   void setUp() {
     currentUserProvider = mock(CurrentUserProvider.class);
     subjectRepository = mock(SubjectRepository.class);
-    subjectService = new SubjectService(currentUserProvider, subjectRepository);
+    entityManager = mock(EntityManager.class);
+    subjectService = new SubjectService(currentUserProvider, subjectRepository, entityManager);
     given(currentUserProvider.getCurrentUserId()).willReturn(ME);
   }
 
@@ -343,5 +350,20 @@ class SubjectServiceTest {
     verify(subjectRepository, never()).hasPlans(anyLong(), anyLong());
     verify(subjectRepository, never()).hasStudySessions(anyLong(), anyLong());
     verify(subjectRepository, never()).delete(any(Subject.class));
+  }
+
+  @Test
+  void deleteWithRoutine() {
+    given(subjectRepository.findByIdAndUserId(3L, ME))
+        .willReturn(Optional.of(subject(3L, ME, "수학", SubjectColor.BLUE)));
+    given(subjectRepository.hasRoutines(ME, 3L)).willReturn(true);
+    assertError(() -> subjectService.delete(3L), ErrorCode.CONFLICT, "이 과목으로 만든 루틴이 있어서 지울 수 없어요");
+    verify(subjectRepository, never()).delete(any());
+    InOrder order = inOrder(entityManager, subjectRepository);
+    order.verify(entityManager).find(User.class, ME, LockModeType.PESSIMISTIC_WRITE);
+    order.verify(subjectRepository).findByIdAndUserId(3L, ME);
+    order.verify(subjectRepository).hasPlans(ME, 3L);
+    order.verify(subjectRepository).hasStudySessions(ME, 3L);
+    order.verify(subjectRepository).hasRoutines(ME, 3L);
   }
 }
