@@ -167,7 +167,7 @@ public class CheckInService {
     return source;
   }
 
-  // FE 가 보낸 글자("phone")를 못 채운 이유로 바꿉니다. 안 보냈으면 null, 7가지가 아니면 400 입니다.
+  // FE 가 보낸 글자("phone")를 못 채운 이유로 바꿉니다. 안 보냈으면 null, 8가지(MissReason)가 아니면 400 입니다.
   private MissReason parseMissReason(String value) {
     if (value == null) {
       return null;
@@ -176,7 +176,7 @@ public class CheckInService {
     if (reason == null) {
       throw new ApiException(
           ErrorCode.VALIDATION_ERROR,
-          "못 채운 이유는 tired, event, phone, tooMuch, unwilling, sick, etc 중에서 골라 주세요");
+          "못 채운 이유는 tired, event, phone, tooMuch, unwilling, sick, procrastinated, etc 중에서 골라 주세요");
     }
     return reason;
   }

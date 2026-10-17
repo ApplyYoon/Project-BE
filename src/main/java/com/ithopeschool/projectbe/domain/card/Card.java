@@ -16,6 +16,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
@@ -188,6 +189,15 @@ public class Card {
   // 자바의 요일 번호는 월요일 1 … 일요일 7 이라서, 7 로 나눈 나머지를 쓰면 일요일만 0 이 되고 나머지는 그대로입니다.
   public static int weekdayOf(LocalDate date) {
     return date.getDayOfWeek().getValue() % 7;
+  }
+
+  // 그 날짜의 시작 시각을 한 순간(Instant)으로 바꿉니다. FE 의 getPlannedStartAt (src/lib/facts.ts) 와 같은 규칙입니다.
+  // 하루는 새벽 4시에 시작하므로(DayRule), 00:00 ~ 03:59 는 달력으로 다음 날 새벽입니다.
+  //   (10-12, 19:00) → 2026-10-12 19:00 (한국 시간)
+  //   (10-12, 01:30) → 2026-10-13 01:30 (한국 시간)  — 10-12 의 밤샘 카드
+  public static Instant startAtOf(LocalDate date, LocalTime startTime) {
+    LocalDate calendarDay = startTime.getHour() < 4 ? date.plusDays(1) : date;
+    return calendarDay.atTime(startTime).atZone(ZoneId.of("Asia/Seoul")).toInstant();
   }
 
   // 반복 요일 목록을 DB 에 적을 글자로 바꿉니다. 비어 있으면 null(1회성)입니다.

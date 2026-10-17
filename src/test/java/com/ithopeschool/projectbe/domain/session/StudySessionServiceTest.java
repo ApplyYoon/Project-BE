@@ -299,7 +299,7 @@ class StudySessionServiceTest {
     expectError(
         request("3", START, END, null, null, null, "bored", null),
         ErrorCode.VALIDATION_ERROR,
-        "그만둔 이유는 tired, event, phone, tooMuch, unwilling, sick, etc 중에서 골라 주세요");
+        "그만둔 이유는 tired, event, phone, tooMuch, unwilling, sick, procrastinated, etc 중에서 골라 주세요");
   }
 
   // ---- 과목 · 계획 ----

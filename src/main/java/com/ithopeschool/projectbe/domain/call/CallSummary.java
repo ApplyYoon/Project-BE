@@ -159,6 +159,7 @@ public record CallSummary(
       case TOO_MUCH -> "계획 과다";
       case UNWILLING -> "하기 싫음";
       case SICK -> "아픔";
+      case PROCRASTINATED -> "미루다 보니";
       case ETC -> "기타";
     };
   }

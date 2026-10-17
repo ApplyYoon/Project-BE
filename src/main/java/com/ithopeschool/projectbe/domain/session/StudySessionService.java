@@ -150,6 +150,40 @@ public class StudySessionService {
     return StudySessionResponse.from(studySessionRepository.save(session));
   }
 
+  // 사후 입력 세션 하나 저장. (이슈 #225, POST /api/v1/cards/{id}/late-entry)
+  // 카드 날짜 · 마감 · 시간 한도는 CardDayService 가 먼저 검사하고 부릅니다. 여기서는 기록 저장 규칙만 봅니다.
+  //   - 시각이 말이 되는지 · 1분 이상인지(400), 내 카드인지(404), 이미 있는 기록과 겹치는지(409)
+  //   - 잰 방법은 늘 사후 입력(SELF_REPORT), 일시정지는 없음(0번), 목표 시간은 카드 길이
+  @Transactional
+  public StudySessionResponse createSelfReport(
+      Long cardId,
+      int targetMinutes,
+      Instant startedAt,
+      Instant endedAt,
+      SessionEndReportRequest endReport) {
+    Long userId = currentUserProvider.getCurrentUserId();
+
+    checkTimes(startedAt, endedAt, 0);
+    Long myCardId = checkCard(userId, String.valueOf(cardId));
+
+    studySessionRepository.lockUser(userId);
+    if (studySessionRepository.existsByUserIdAndStartedAtLessThanAndEndedAtGreaterThan(
+        userId, endedAt, startedAt)) {
+      throw new ApiException(ErrorCode.CONFLICT, "이미 저장된 기록과 시간이 겹쳐요");
+    }
+
+    // 카드로 켠 공부 기록이라 과목은 비어 있습니다.
+    StudySession session =
+        new StudySession(
+            userId, null, startedAt, endedAt, 0, 0, null, targetMinutes, null, PlanKind.STUDY);
+    session.recordCard(myCardId, SessionMode.SELF_REPORT, false);
+    session.recordPauses(List.of());
+    if (endReport != null) {
+      applyEndReport(session, endReport);
+    }
+    return StudySessionResponse.from(studySessionRepository.save(session));
+  }
+
   // 기간 안의 내 기록 목록. from ~ to 는 둘 다 포함하는 날짜이고, 없는 기간은 빈 목록입니다.
   //
   // "하루" 는 새벽 4시에 바뀌므로(DayRule) from 날의 04:00 부터 to 다음 날의 04:00 직전까지 "시작한" 기록을 찾습니다.
@@ -429,14 +463,15 @@ public class StudySessionService {
   }
 
   // FE 가 보낸 글자("offline")를 세션 방법으로 바꿉니다. 안 보냈으면 타이머(NORMAL)입니다.
-  // 사후 입력(selfReport)은 여기서 받지 않습니다. 사후 입력에는 따로 지켜야 할 기한·한도가 있기 때문입니다.
+  // 사후 입력(selfReport)은 여기서 받지 않습니다. 사후 입력에는 따로 지켜야 할 기한·한도가 있어서
+  // POST /api/v1/cards/{id}/late-entry (createSelfReport) 로만 받습니다. (#225)
   private SessionMode parseMode(String value) {
     if (value == null) {
       return SessionMode.NORMAL;
     }
     SessionMode mode = SessionMode.fromValue(value);
     if (mode == SessionMode.SELF_REPORT) {
-      throw new ApiException(ErrorCode.VALIDATION_ERROR, "사후 입력(selfReport)은 여기서 저장할 수 없어요");
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "사후 입력은 카드의 사후 입력(late-entry)으로 보내 주세요");
     }
     if (mode == null) {
       throw new ApiException(ErrorCode.VALIDATION_ERROR, "세션 방법은 normal, offline 중에서 골라 주세요");
@@ -471,7 +506,7 @@ public class StudySessionService {
     return kind;
   }
 
-  // FE 가 보낸 글자("phone")를 그만둔 이유로 바꿉니다. 안 보냈으면 null, 7가지가 아니면 400 입니다.
+  // FE 가 보낸 글자("phone")를 그만둔 이유로 바꿉니다. 안 보냈으면 null, 8가지(MissReason)가 아니면 400 입니다.
   private MissReason parseStopReason(String value) {
     if (value == null) {
       return null;
@@ -480,7 +515,7 @@ public class StudySessionService {
     if (reason == null) {
       throw new ApiException(
           ErrorCode.VALIDATION_ERROR,
-          "그만둔 이유는 tired, event, phone, tooMuch, unwilling, sick, etc 중에서 골라 주세요");
+          "그만둔 이유는 tired, event, phone, tooMuch, unwilling, sick, procrastinated, etc 중에서 골라 주세요");
     }
     return reason;
   }
