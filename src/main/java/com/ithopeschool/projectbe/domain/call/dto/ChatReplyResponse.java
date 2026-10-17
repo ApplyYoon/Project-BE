@@ -13,11 +13,21 @@ public record ChatReplyResponse(
 
   // 보통의 답
   public static ChatReplyResponse of(Long chatId, String reply) {
-    return new ChatReplyResponse(String.valueOf(chatId), reply, false, List.of());
+    return of(String.valueOf(chatId), reply);
+  }
+
+  // 보통의 답 (대화 번호가 글자인 '목표 만들기' 대화, 이슈 #239)
+  public static ChatReplyResponse of(String chatId, String reply) {
+    return new ChatReplyResponse(chatId, reply, false, List.of());
   }
 
   // 위기 표현이 감지됐을 때의 답
   public static ChatReplyResponse crisis(Long chatId, String reply) {
-    return new ChatReplyResponse(String.valueOf(chatId), reply, true, HelpLine.ALL);
+    return crisis(String.valueOf(chatId), reply);
+  }
+
+  // 위기 표현이 감지됐을 때의 답 (대화 번호가 글자인 '목표 만들기' 대화)
+  public static ChatReplyResponse crisis(String chatId, String reply) {
+    return new ChatReplyResponse(chatId, reply, true, HelpLine.ALL);
   }
 }
