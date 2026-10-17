@@ -44,6 +44,8 @@ class TableSchemaTest {
     expected.put("USERS.ID", "BIGINT NOT NULL");
     expected.put("USERS.NICKNAME", "CHARACTER VARYING(50) NOT NULL");
     expected.put("USERS.CREATED_AT", "TIMESTAMP WITH TIME ZONE NOT NULL");
+    // 온보딩을 마친 시각. 안 마쳤으면 비어 있음 (2026-10-17 멘토 결정)
+    expected.put("USERS.ONBOARDED_AT", "TIMESTAMP WITH TIME ZONE NULL");
 
     expected.put("SUBJECTS.ID", "BIGINT NOT NULL");
     expected.put("SUBJECTS.USER_ID", "BIGINT NOT NULL");
