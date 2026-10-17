@@ -64,10 +64,15 @@ class TableSchemaTest {
 
     expected.put("STUDY_SESSIONS.ID", "BIGINT NOT NULL");
     expected.put("STUDY_SESSIONS.USER_ID", "BIGINT NOT NULL");
-    expected.put("STUDY_SESSIONS.SUBJECT_ID", "BIGINT NOT NULL");
+    expected.put("STUDY_SESSIONS.SUBJECT_ID", "BIGINT NULL");
     expected.put("STUDY_SESSIONS.STARTED_AT", "TIMESTAMP WITH TIME ZONE NOT NULL");
     expected.put("STUDY_SESSIONS.ENDED_AT", "TIMESTAMP WITH TIME ZONE NOT NULL");
     expected.put("STUDY_SESSIONS.PAUSE_COUNT", "INTEGER NOT NULL");
+    expected.put("STUDY_SESSIONS.PAUSED_MS", "BIGINT NOT NULL");
+    expected.put("STUDY_SESSIONS.PLAN_ID", "BIGINT NULL");
+    expected.put("STUDY_SESSIONS.TARGET_MINUTES", "INTEGER NULL");
+    expected.put("STUDY_SESSIONS.STOP_REASON", "ENUM NULL");
+    expected.put("STUDY_SESSIONS.KIND", "ENUM NOT NULL");
 
     Map<String, String> actual = new LinkedHashMap<>();
     for (Object[] row :

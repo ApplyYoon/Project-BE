@@ -30,6 +30,13 @@ erDiagram
     subjects ||--o{ study_plans : "subject_id"
     subjects ||--o{ study_sessions : "subject_id"
     subjects ||--o{ onboarding_answer_subject_levels : "subject_id"
+    users ||--o{ exams : "user_id"
+    users ||--o{ exam_scores : "user_id"
+    exams ||--o{ exam_scores : "exam_id"
+    subjects ||--o{ exam_scores : "subject_id"
+    users ||--o| care_settings : "user_id"
+    users ||--o{ focus_lock_apps : "user_id"
+    users ||--o{ setting_changes : "user_id"
 
     users {
         bigint id PK "사용자를 구분하는 고유 번호"
@@ -57,10 +64,15 @@ erDiagram
     study_sessions {
         bigint id PK "기록을 구분하는 고유 번호"
         bigint user_id FK "이 기록의 주인"
-        bigint subject_id FK "어떤 과목을 공부했는지"
+        bigint subject_id FK "어떤 과목을 공부했는지 (노는 기록이면 비어 있음)"
         timestamptz started_at "공부를 시작한 시각"
         timestamptz ended_at "공부를 끝낸 시각"
         int pause_count "일시정지를 누른 횟수"
+        bigint paused_ms "일시정지해 있던 시간의 합, 밀리초 (없으면 0, 순공에서 뺌)"
+        bigint plan_id "어느 계획을 하려고 켠 타이머인지 (계획 없이 켰으면 비어 있음)"
+        int target_minutes "시작할 때 약속한 목표 시간(분) (목표 없이 켰으면 비어 있음)"
+        varchar stop_reason "목표 전에 그만둔 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, ETC 중 하나, 안 골랐으면 비어 있음)"
+        varchar kind "공부 기록인지 노는 기록인지 (STUDY, PLAY 중 하나)"
     }
     accounts {
         bigint id PK "계정을 구분하는 고유 번호"
@@ -169,6 +181,47 @@ erDiagram
         int daily_minutes "하루에 공부하기로 한 시간(분) (60, 120, 180, 240, 300 중 하나)"
         int days_per_week "일주일에 며칠 하기로 했는지 (3, 5, 6, 7 중 하나)"
     }
+    exams {
+        bigint id PK "시험을 구분하는 고유 번호"
+        bigint user_id FK "이 시험의 주인"
+        varchar name "시험 이름 (50자까지)"
+        varchar type "시험 종류 (MOCK, SCHOOL, QUIZ, ETC 중 하나)"
+        date exam_date "시험 날짜"
+    }
+    exam_scores {
+        bigint id PK "점수 한 줄을 구분하는 고유 번호"
+        bigint user_id FK "이 점수의 주인"
+        bigint exam_id FK "어느 시험의 점수인지"
+        bigint subject_id FK "어느 과목의 점수인지 (같은 시험에 같은 과목은 한 번만)"
+        int expected_score "시험 전에 적은 예상 점수 (0 ~ 100)"
+        int actual_score "시험 후에 적은 실제 점수 (0 ~ 100, 아직 안 적었으면 비어 있음)"
+    }
+    care_settings {
+        bigint id PK "설정 한 줄을 구분하는 고유 번호"
+        bigint user_id FK "이 설정의 주인 (사용자 한 명에 한 줄, 중복 불가)"
+        time call_time "AI 가 전화하는 시각"
+        int daily_message_count "하루에 받을 AI 메시지 수 (0 ~ 5)"
+        time quiet_start "연락 금지 시작 시각"
+        time quiet_end "연락 금지 끝 시각"
+        int max_harshness "허용하는 독설 수위 (1 ~ 5)"
+        boolean allow_app_lock "앱 잠금(집중 모드)을 허용하는지"
+        int max_care_level "지금 적용 중인 제재 한도 (0 ~ 4)"
+        int pending_max_care_level "올렸는데 아직 적용 전인 한도 (없으면 비어 있음)"
+        date pending_effective_date "바뀔 한도가 적용되는 날짜 (없으면 비어 있음)"
+    }
+    focus_lock_apps {
+        bigint id PK "한 줄을 구분하는 고유 번호"
+        bigint user_id FK "이 앱을 고른 사람"
+        varchar app_name "잠글 앱 이름 (30자까지, 같은 사용자 안에서 중복 불가)"
+    }
+    setting_changes {
+        bigint id PK "기록 한 줄을 구분하는 고유 번호 (나중에 바꾼 것일수록 큼)"
+        bigint user_id FK "설정을 바꾼 사람"
+        timestamptz changed_at "바꾼 시각"
+        varchar field "바꾼 칸의 이름 (API 의 JSON 이름, 예: maxHarshness)"
+        varchar old_value "바꾸기 전 값 (글자, 1000자까지)"
+        varchar new_value "바꾼 뒤 값 (글자, 1000자까지)"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
@@ -180,7 +233,7 @@ erDiagram
 | `users` | 서비스를 쓰는 사람 한 명이 한 줄 (별명, 가입 시각) | #3 |
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
 | `study_plans` | 하루의 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부, 시작 시각, 공부/노는 계획, 루틴) | #3 · #12 |
-| `study_sessions` | 타이머로 한 번 공부한 기록 하나가 한 줄 (과목, 시작·끝 시각, 일시정지 횟수) | #3 |
+| `study_sessions` | 타이머로 한 번 잰 기록 하나가 한 줄 (과목, 시작·끝 시각, 일시정지 횟수·시간, 계획, 목표 시간, 그만둔 이유, 공부/노는 기록) | #3 · #13 |
 | `accounts` | 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시 또는 구글 고유 번호, 실명, 학교, 동의). 사용자 한 명에 하나 | #97 · #19 |
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
 | `messages` | AI 가 사용자에게 보낸 메시지 하나가 한 줄 (종류, 내용, 보낸 시각, 읽은 시각) | #30 |
@@ -193,6 +246,11 @@ erDiagram
 | `onboarding_answer_failure_causes` | 설문 하나에서 고른 "계획이 무너진 때" 가 한 줄씩 (`@ElementCollection`) | #21 |
 | `onboarding_answer_subject_levels` | 설문 하나의 과목별 최근 성적·자신감이 과목마다 한 줄씩 (`@ElementCollection`) | #21 |
 | `initial_plans` | 한 사람의 처음 계획이 한 줄. **한 사람에 한 줄**이고 "다시 세우기" 할 때만 그 줄을 고침 | #21 |
+| `exams` | 시험 하나가 한 줄 (이름, 종류, 날짜). 과목별 점수는 `exam_scores` 에 따로 적음 | #16 |
+| `exam_scores` | 시험 하나의 과목 하나의 점수가 한 줄 (예상 점수, 실제 점수). 같은 시험에 같은 과목은 한 번만 | #16 |
+| `care_settings` | 사용자 한 명의 관리 설정이 한 줄 (전화 시간, 메시지 횟수, 연락 금지, 독설 수위, 앱 잠금, 제재 한도와 바뀔 한도) | #22 |
+| `focus_lock_apps` | 한 사용자가 고른 잠금 대상 앱 하나가 한 줄. 같은 사용자 안에서 같은 앱은 한 번만 | #22 |
+| `setting_changes` | 설정 칸 하나를 한 번 바꾼 것이 한 줄 (바꾼 시각, 칸 이름, 이전 값, 새 값) | #22 |
 
 > `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
 > 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.
@@ -219,6 +277,22 @@ erDiagram
 > - 처음 계획은 규칙이 달라서(온보딩을 다시 해도 안 바뀌고 "다시 세우기" 때만 바뀜) 테이블을 따로 뒀습니다. 한 사람에 한 줄이라 그림의 선이 `||--o|` (0개 또는 1개) 입니다.
 > - 엔티티 이름은 `OnboardingAnswer` · `UserInitialPlan` 입니다. (`routine/InitialPlan` 은 루틴 초안 계산 도구라서 이름이 겹치지 않게 했습니다)
 > - 과목을 지우면 그 과목의 수준 줄은 DB 에 남지만 응답에서는 빼고 보여 줍니다.
+
+> `exams` 와 `exam_scores` 는 2026-10-17 에 이슈 #16 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 도왔고, 칸 이름의 영어 표기만 같이 정했습니다)
+> - **시험 하나 = 한 줄, 과목별 점수 = 딸린 테이블.** 과목은 사용자마다 달라서(`subjects`) 시험 표에 `국어 예상` 같은 칸을 미리 만들 수 없고, 시험마다 과목 수도 다르기 때문입니다. (모의고사 3과목, 쪽지시험 1과목)
+> - **두 테이블 모두 `user_id` 가 있습니다.** 그래서 탈퇴하면(`AccountService.withdraw`) 코드를 고치지 않아도 시험과 점수가 같이 지워집니다.
+> - 실제 점수(`actual_score`)만 비어도 됩니다. 시험 전에는 아직 모르기 때문입니다. 나머지 칸은 꼭 있어야 합니다.
+> - 점수는 **0 ~ 100 의 정수**입니다. 같은 시험에 같은 과목은 한 번만(`uk_exam_scores_exam_id_subject_id`) 적을 수 있습니다. 이 둘은 DB 에도 규칙(unique · check)으로 걸어 두었습니다.
+> - 시험 종류(`type`)는 이슈에는 3개(모의고사·내신·쪽지시험)였지만 FE 의 `ExamType` 과 화면(#80)에 **기타(`ETC`)** 가 있어서 4개로 정했습니다.
+> - 시험 후 회고(`reflection`)는 #17 에서 만듭니다. 아직 칸이 없습니다.
+
+> `care_settings` · `focus_lock_apps` · `setting_changes` 는 2026-10-17 에 이슈 #22 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 돕고 영어 이름만 같이 정했습니다)
+> - **사용자 한 명의 설정 = 한 줄.** 한 번도 바꾸지 않은 사람은 줄이 없고 처음 값을 보여 줍니다. 처음 바꿀 때 줄이 생깁니다.
+> - **제재 한도는 "지금 한도" 와 "바뀔 한도 · 적용 날짜" 를 따로 적습니다.** 높이면 다음 날부터 적용해야 해서, 오늘 값과 내일 값을 둘 다 기억해야 하기 때문입니다. 이 두 칸만 비어도 됩니다.
+> - **잠금 대상 앱은 여러 개라서 딸린 테이블**로 뺐습니다. (시험 점수와 같은 이유)
+> - **바꾼 기록은 칸 하나를 바꿀 때마다 한 줄**입니다. 값의 모양이 제각각이라 이전 값 · 새 값은 글자로 적습니다. 설정 표는 값을 덮어써서, 옛 값은 여기에만 남습니다.
+> - 세 테이블 모두 `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
+> - 처음 값은 FE 와 같습니다 (전화 시간 21:00 은 학생이 정함). FE 의 `allowOffHoursCall`(정해진 시간 외 독촉 전화 허용)은 이슈에 없어서 담지 않았습니다.
 
 > `study_plans` 의 `start_time` · `kind` · `routine_id` 는 2026-10-12 에 이슈 #12 에서 더했습니다. (칸 이름과 뜻은 Project#12 의 표, 시작 시각을 `time` 으로 저장하는 것은 학생이 정함)
 > - 공부 계획(`STUDY`)은 `subject_id` 가 꼭 있어야 하고, 노는 계획(`PLAY`)만 비어도 됩니다. DB 에도 검사 규칙(`ck_study_plans_study_has_subject`)으로 걸어 두었습니다.

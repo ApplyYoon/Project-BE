@@ -3,6 +3,8 @@ package com.ithopeschool.projectbe.domain.session;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -107,7 +109,6 @@ class StudySessionTest {
   static Stream<Arguments> missingValues() {
     return Stream.of(
         Arguments.of("USER_ID", new StudySession(null, 10L, START, END, 0)),
-        Arguments.of("SUBJECT_ID", new StudySession(1L, null, START, END, 0)),
         Arguments.of("STARTED_AT", new StudySession(1L, 10L, null, END, 0)),
         Arguments.of("ENDED_AT", new StudySession(1L, 10L, START, null, 0)));
   }
@@ -118,6 +119,55 @@ class StudySessionTest {
     assertThatThrownBy(() -> em.persistAndFlush(session))
         .isInstanceOf(ConstraintViolationException.class)
         .hasMessageContaining(column);
+  }
+
+  @Test
+  @DisplayName("공부 기록(STUDY)은 subjectId 가 없으면 저장되지 않는다")
+  void subjectIdRequiredForStudy() {
+    StudySession session = new StudySession(1L, null, START, END, 0);
+
+    // 검사 규칙(ck_study_sessions_study_has_subject)이 막습니다.
+    assertThatThrownBy(() -> em.persistAndFlush(session))
+        .isInstanceOf(ConstraintViolationException.class)
+        .hasMessageContaining("CK_STUDY_SESSIONS_STUDY_HAS_SUBJECT");
+  }
+
+  @Test
+  @DisplayName("노는 기록(PLAY)은 subjectId 없이 저장된다")
+  void playWithoutSubject() {
+    StudySession saved =
+        em.persistFlushFind(
+            new StudySession(1L, null, START, END, 0, 0, null, null, null, PlanKind.PLAY));
+
+    assertThat(saved.getSubjectId()).isNull();
+    assertThat(saved.getKind()).isEqualTo(PlanKind.PLAY);
+  }
+
+  @Test
+  @DisplayName("일시정지 시간·계획·목표 시간·그만둔 이유가 저장했다 꺼내도 그대로다")
+  void saveNewValues() {
+    StudySession saved =
+        em.persistFlushFind(
+            new StudySession(
+                1L, 10L, START, END, 2, 300_000, 7L, 50, MissReason.TOO_MUCH, PlanKind.STUDY));
+
+    assertThat(saved.getPausedMs()).isEqualTo(300_000);
+    assertThat(saved.getPlanId()).isEqualTo(7L);
+    assertThat(saved.getTargetMinutes()).isEqualTo(50);
+    assertThat(saved.getStopReason()).isEqualTo(MissReason.TOO_MUCH);
+    assertThat(saved.getKind()).isEqualTo(PlanKind.STUDY);
+  }
+
+  @Test
+  @DisplayName("짧은 생성자로 만든 기록은 공부 기록 · 일시정지 0 · 계획·목표·이유 없음으로 저장된다")
+  void shortConstructorDefaults() {
+    StudySession saved = em.persistFlushFind(new StudySession(1L, 10L, START, END, 0));
+
+    assertThat(saved.getKind()).isEqualTo(PlanKind.STUDY);
+    assertThat(saved.getPausedMs()).isZero();
+    assertThat(saved.getPlanId()).isNull();
+    assertThat(saved.getTargetMinutes()).isNull();
+    assertThat(saved.getStopReason()).isNull();
   }
 
   @Test
