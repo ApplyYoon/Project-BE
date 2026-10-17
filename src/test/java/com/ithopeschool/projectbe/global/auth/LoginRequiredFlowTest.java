@@ -74,6 +74,11 @@ class LoginRequiredFlowTest {
   // 로그인한 사람만 쓸 수 있는 API 들입니다. 새 API 를 만들면 여기에 한 줄을 더합니다.
   private static final List<Api> LOGIN_REQUIRED =
       List.of(
+          new Api(
+              "GET",
+              "/api/v1/study-sessions/target-recommendation",
+              "/api/v1/study-sessions/target-recommendation?subjectId=1&currentTargetMinutes=50",
+              null),
           // 내 정보 · 계정
           new Api("GET", "/api/v1/auth/me", "/api/v1/auth/me", null),
           new Api("GET", "/api/v1/auth/profile", "/api/v1/auth/profile", null),
