@@ -82,6 +82,12 @@ public class CurrentUserProvider {
     return userId;
   }
 
+  // GET 중 자동 저장이 필요한 기능에서 씁니다. 동의가 없으면 저장을 건너뛰고 기존 조회만 허용합니다.
+  public boolean canSaveForCurrentUser() {
+    Long userId = getCurrentUserIdWithoutConsent();
+    return isTestToken(readToken()) || hasAgreedToCurrentText(userId);
+  }
+
   // 동의 검사 없이, 지금 요청한 사용자의 번호만 돌려줍니다. 로그인하지 않은 요청이면 401 을 던집니다.
   // 동의하지 않은 사람도 해야 하는 일(다시 동의하기 · 로그아웃 · 탈퇴)에만 씁니다.
   public Long getCurrentUserIdWithoutConsent() {

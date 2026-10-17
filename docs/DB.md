@@ -12,6 +12,27 @@
 
 ```mermaid
 erDiagram
+    users ||--o{ routines : "user_id"
+    subjects ||--o{ routines : "subject_id"
+    users ||--o{ routine_applications : "user_id"
+    routines ||--o{ study_plans : "routine_id"
+    routines ||--o{ routine_applications : "routine_id"
+    routines {
+        bigint id PK "루틴 번호"
+        bigint user_id FK "주인"
+        varchar weekdays "반복 요일"
+        varchar kind "공부 또는 놀이"
+        bigint subject_id FK "과목"
+        varchar content "할 일"
+        int target_minutes "목표 분"
+        time start_time "시작 시각"
+    }
+    routine_applications {
+        bigint id PK "적용 기록 번호"
+        bigint user_id FK "주인"
+        bigint routine_id FK "원본 루틴 번호 (삭제 후에도 번호 유지)"
+        date plan_date "한 번 적용한 날짜"
+    }
     users ||--o{ subjects : "user_id"
     users ||--o{ study_plans : "user_id"
     users ||--o{ study_sessions : "user_id"
@@ -46,6 +67,7 @@ erDiagram
     users ||--o{ insights : "user_id"
     insights ||--o{ insight_evidence_dates : "insight_id"
     users ||--o{ checkins : "user_id"
+    users ||--o{ reflection_prescriptions : "user_id"
 
     users {
         bigint id PK "사용자를 구분하는 고유 번호"
@@ -68,7 +90,7 @@ erDiagram
         boolean done "다 했으면 true, 아직이면 false"
         time start_time "시작할 시각, 몇 시 몇 분 (안 정했으면 비어 있음)"
         varchar kind "공부 계획인지 노는 계획인지 (STUDY, PLAY 중 하나)"
-        bigint routine_id "어떤 루틴이 만든 계획인지 (직접 만들었으면 비어 있음)"
+        bigint routine_id FK "어떤 루틴이 만든 계획인지 (직접 만들었으면 비어 있음)"
     }
     study_sessions {
         bigint id PK "기록을 구분하는 고유 번호"
@@ -255,7 +277,7 @@ erDiagram
     gpt_usages {
         bigint id PK "기록 한 줄을 구분하는 고유 번호 (나중에 부른 것일수록 큼)"
         bigint user_id FK "GPT 를 부르게 한 사람"
-        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE 중 하나)"
+        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE, CHECKLIST 중 하나)"
         timestamptz called_at "부른 시각 (통화는 시작한 시각)"
         bigint call_record_id FK "어느 통화인지 (통화일 때만, 그 외엔 비어 있음)"
         int call_seconds "통화한 시간(초) (통화가 아니거나 아직 안 끝났으면 비어 있음)"
@@ -274,6 +296,17 @@ erDiagram
         varchar promise_if "오늘의 약속 만약 ~하면 (100자까지), 비어도 됨"
         varchar promise_then "오늘의 약속 ~한다 (100자까지), 비어도 됨"
         boolean suggestion_kept "개선안을 실천했는지, 비어도 됨"
+    }
+    reflection_prescriptions {
+        bigint id PK "처방을 구분하는 고유 번호 (나중에 내린 것일수록 큼)"
+        bigint user_id FK "처방을 받은 사람"
+        date start_date "처방 첫날 (처방을 내린 날)"
+        date end_date "처방 마지막 날 (이 날까지 포함)"
+        varchar miss_reason "처방한 이유가 된 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, ETC 중 하나)"
+        int reason_days "처방할 때 최근 7일 중 그 이유가 나온 날 수 (3 ~ 7)"
+        varchar question1 "첫 번째 질문 (100자까지)"
+        varchar question2 "두 번째 질문 (100자까지)"
+        varchar question3 "세 번째 질문 (100자까지)"
     }
     consent_records {
         bigint id PK "동의 기록을 구분하는 고유 번호 (나중에 한 동의일수록 큼)"
@@ -301,8 +334,35 @@ erDiagram
 
 ## 테이블 설명
 
+### 기능별 반영 현황 (#74)
+
+2026-10-17 `develop`의 엔티티와 아래 그림을 대조했습니다. 체크는 **그림 반영 여부**이며,
+운영 DB에 테이블이 만들어졌다는 뜻은 아닙니다. 아직 없는 테이블은 이름·컬럼을 미리 정하지 않습니다.
+
+| 기능 | 그림 반영 | 근거 / 남은 일 |
+| --- | --- | --- |
+| 사용자·과목·계획·기록 #3 | 완료 | `users`, `subjects`, `study_plans`, `study_sessions` |
+| 시험·점수 #16 | 완료 | `exams`, `exam_scores` |
+| 회고 #17 | 완료 | `reviews` |
+| 온보딩 #21 | 완료 | `onboarding_answers`와 선택 항목, `initial_plans` |
+| 관리 설정 #22 | 완료 | `care_settings`, `focus_lock_apps`, `setting_changes` |
+| 체크인 #24 | 완료 | `checkins` |
+| 통화 요약 #29 | 완료 | `call_records` |
+| AI 메시지 #30 | 완료 | `messages` |
+| 하루 요약 #34 | 대기 | 현재 `DaySummary` 계산 객체만 있고 저장 엔티티 없음 |
+| 개선안·실험 #52 | 대기 | 계산 객체만 있고 저장 엔티티 없음 |
+| 일기 #60 | 대기 | 저장 엔티티 없음 |
+| 잠금 해제 #67 | 작업 중 | 해당 기능 PR에서 엔티티·그림·운영 SQL을 함께 반영 |
+| 동의 기록 #71 | 완료 | PR #204가 반영되어 `consent_records` 이력과 그림이 있음 |
+| 계획 루틴 #85 | 작업 중 | 해당 기능 PR에서 엔티티·그림·운영 SQL을 함께 반영 |
+
+추가 테이블을 만드는 PR에서는 이 표의 상태도 함께 바꿉니다.
+미완료 기능이 있어 #74 전체를 완료 처리하지 않습니다.
+
 | 테이블 | 무엇을 담나 | 만든 이슈 |
 | ------ | ----------- | --------- |
+| routines | 요일마다 반복할 계획의 틀 | #85 |
+| routine_applications | 루틴을 날짜에 적용한 기록 (계획 삭제 후에도 유지) | #85 |
 | `users` | 서비스를 쓰는 사람 한 명이 한 줄 (별명, 가입 시각) | #3 |
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
 | `study_plans` | 하루의 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부, 시작 시각, 공부/노는 계획, 루틴) | #3 · #12 |
@@ -329,6 +389,7 @@ erDiagram
 | `setting_changes` | 설정 칸 하나를 한 번 바꾼 것이 한 줄 (바꾼 시각, 칸 이름, 이전 값, 새 값) | #22 |
 | `gpt_usages` | GPT 를 한 번 부른 것이 한 줄 (종류, 부른 시각, 통화 번호·통화 시간, 대략적인 비용). 하루 한도는 이 기록을 세서 지킴 | #33 |
 | `checkins` | 한 사람의 하루치 체크인이 한 줄 (컨디션, 기분, 어제 못 채운 이유와 기타 글, 예상 순공시간, 약속 두 칸, 개선안 실천 여부, 어디서 했는지). 같은 날을 다시 보내면 덮어씀. 누구·날짜·source 말고는 다 비어도 됨 | #24 |
+| `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
 | `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
 | `insight_evidence_dates` | 인사이트 하나의 근거 날짜가 한 줄씩 (`@ElementCollection`). 날짜로 찾기 쉽게 날짜로 저장 | #43 · #41 |
 
@@ -398,9 +459,15 @@ erDiagram
 > - **비용은 원 단위 정수**의 어림값입니다. (읽기 쉬워서 학생이 정함) 환산 기준은 `application.yml` 의 `cost-won-*` 설정에 있습니다.
 > - 종류는 지금 GPT 를 부르는 세 곳(통화 · 통화 요약 · 코치)만 있습니다. 인사이트 · 개선안 · 일기 분석이 생기면 하나씩 더합니다.
 
+> `reflection_prescriptions` 는 2026-10-17 에 **선생님이 "FE·BE·테이블까지 AI 가 만들라" 고 맡긴 기능**(통화 기록·회고·성찰)에서 AI 가 만든 테이블입니다. (이슈 #61)
+> - **처방 한 번 = 한 줄.** 언제 처방하는지는 `ReflectionRule` 과 docs/API.md "성찰일기 처방" 에 있습니다.
+> - **질문 글을 그대로 저장합니다.** 질문 세트(`ReflectionQuestions`)를 나중에 고쳐도 이미 내린 처방의 질문이 바뀌지 않게 하려는 것입니다. 질문은 늘 3개라서 `reviews` 처럼 칸 3개에 담았습니다.
+> - **답(일기 원문)은 저장하지 않습니다.** 지금은 FE 기기에만 있습니다. 서버에 둘지는 일기 저장(#60)·암호화(#68)에서 정합니다.
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
+
 > `study_plans` 의 `start_time` · `kind` · `routine_id` 는 2026-10-12 에 이슈 #12 에서 더했습니다. (칸 이름과 뜻은 Project#12 의 표, 시작 시각을 `time` 으로 저장하는 것은 학생이 정함)
 > - 공부 계획(`STUDY`)은 `subject_id` 가 꼭 있어야 하고, 노는 계획(`PLAY`)만 비어도 됩니다. DB 에도 검사 규칙(`ck_study_plans_study_has_subject`)으로 걸어 두었습니다.
-> - 루틴 테이블은 아직 없어서(#85) `routine_id` 는 지금 항상 비어 있고, 그림에 선도 없습니다.
+> - 루틴으로 만든 계획은 routine_id를 기록합니다(#85). 루틴 삭제 후에도 원본 번호와 적용 기록을 유지하므로 그림의 선은 논리적인 관계이고 DB의 삭제 제약은 아닙니다.
 
 ## 그림 읽는 법
 
