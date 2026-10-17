@@ -1199,14 +1199,31 @@ Authorization: Bearer 로그인할 때 받은 토큰
   "planId": "7",
   "targetMinutes": 50,
   "stopReason": "phone",
-  "kind": "study"
+  "kind": "study",
+  "cardId": "7",
+  "mode": "normal",
+  "pauses": [
+    { "startedAt": 1790000600000, "endedAt": 1790000780000, "tag": "toilet", "note": null },
+    { "startedAt": 1790001800000, "endedAt": 1790001920000, "tag": "phone", "note": null }
+  ],
+  "endedEarly": false,
+  "endReport": {
+    "checked": { "i1": 1790001000000, "i2": 1790002900000 },
+    "shortfallReason": null,
+    "withWhat": "music",
+    "proof": { "link": null, "summary": "42~45쪽 풀었음" },
+    "goodReasons": ["focus"]
+  },
+  "memos": [ { "at": 1790000700000, "text": "엄마한테 문자 보내기" } ],
+  "playTag": null,
+  "overRestMs": null
 }
 ```
 
 | 필드            | 무엇                                                                                     |
 | --------------- | ---------------------------------------------------------------------------------------- |
 | `id`            | 기록 번호. **글자**입니다                                                                |
-| `subjectId`     | 어떤 과목을 공부했는지 (과목의 `id`, 글자). **노는 기록은 빈 글자 `""`**                |
+| `subjectId`     | 어떤 과목을 공부했는지 (과목의 `id`, 글자). **노는 기록 · 과목 없이 카드로 켠 기록은 빈 글자 `""`** |
 | `startedAt`     | 시작한 시각. **밀리초 숫자** (2-2)                                                       |
 | `endedAt`       | 끝낸 시각. 밀리초 숫자                                                                   |
 | `pauseCount`    | 일시정지를 누른 횟수                                                                     |
@@ -1215,6 +1232,33 @@ Authorization: Bearer 로그인할 때 받은 토큰
 | `targetMinutes` | 시작할 때 약속한 목표 시간(분). 목표 없이 켰으면 `null`                                  |
 | `stopReason`    | 목표 전에 그만둔 이유. 체크인의 못 채운 이유 7가지와 같은 글자 (`tired` `event` `phone` `tooMuch` `unwilling` `sick` `etc`). 안 골랐으면 `null` |
 | `kind`          | **소문자** `study`(공부) / `play`(노는 기록)                                             |
+
+**카드 기준으로 넓힌 칸** (이슈 #224 · 최종 기획서 「4.4 타이머」 · FE `StudySession`). 옛 기록에는 비어 있습니다.
+
+| 필드            | 무엇                                                                                     |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| `cardId`        | 어느 카드의 세션인지 (카드의 `id`). 옛 기록이면 `null` (옛 기록은 `planId` 로 찾습니다)  |
+| `mode`          | 잰 방법 `normal`(타이머) / `offline`(폰을 내고 앱이 잰 세션) / `selfReport`(사후 입력). **옛 기록도 `"normal"`** |
+| `pauses`        | 일시정지 한 번 한 번 `[{ startedAt, endedAt, tag, note }]`. `tag` 는 `toilet` `snack` `phone` `mindWander` `stuck` `external` `other`. **옛 기록처럼 횟수만 있고 줄이 없으면 `null`(모름)**, 일시정지가 0번이면 `[]` |
+| `endedEarly`    | 예정 종료 전에 [끝내기] 를 눌렀으면 `true` (중도 종료). 옛 기록은 `false`                |
+| `endReport`     | 종료 팝업에서 받은 것. **팝업에 답하지 않았으면 `null`**. 아래 표                       |
+| `memos`         | 딴생각 주차장 메모 `[{ at, text }]`. 없으면 `null`                                       |
+| `playTag`       | 노는 기록일 때 무엇을 했는지 `youtube` `game` `sns` `webtoon` `rest` `etc`. 공부 기록은 `null` |
+| `overRestMs`    | 노는 기록일 때, 놀기가 끝난 뒤 [카드 시작] · [놀기 끝] 을 누를 때까지 더 쉰 시간(밀리초). 공부 기록은 `null` |
+
+`endReport` 의 칸 (FE `SessionEndReport`)
+
+| 필드              | 무엇                                                                                   |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `checked`         | 체크한 체크리스트 항목 — **카드 체크리스트 항목의 `id` → 체크한 시각(밀리초)**. 체크 상태는 카드가 아니라 여기에 남습니다 (#222) |
+| `shortfallReason` | 다 못 했을 때 고른 이유 `tooMuch` `stuck` `phone` `mindWander` `tired` `external` `etc`. 없으면 `null` |
+| `withWhat`        | 같이 한 것 `music` / `video` / `none`. 없으면 `null`                                   |
+| `proof`           | 산출물 증빙 `{ link, summary }`. 둘 다 없으면 `null`                                  |
+| `goodReasons`     | 잘 된 이유 `focus` `goodPlan` `condition` `environment` `helped` `luck` (FE 버튼 순서). 없으면 `null` |
+
+> 태그의 내부/외부 분류(귀인)는 서버 상수 `SessionTags` 에 있습니다. FE `src/lib/sessionTags.ts` 와 같습니다.
+> 일시정지: 폰 확인 · 딴생각 · 막힘 = 내 쪽(internal), 외부 방해 = 바깥(external), 화장실 · 물/간식 = 기본(basic), 기타 = 모름(unknown).
+> 잘 된 이유: 집중 · 계획 = 내 쪽, 컨디션 · 환경 · 도움 · 운 = 바깥.
 
 #### 저장
 
@@ -1229,12 +1273,25 @@ Authorization: Bearer 로그인할 때 받은 토큰
 노는 기록:
 
 ```json
-{ "startedAt": 1790000000000, "endedAt": 1790003600000, "pauseCount": 0, "kind": "play" }
+{ "startedAt": 1790000000000, "endedAt": 1790003600000, "pauseCount": 0, "kind": "play", "playTag": "game", "overRestMs": 120000 }
+```
+
+카드로 켠 세션 (FE `finishActiveSession` 이 만드는 모양):
+
+```json
+{
+  "subjectId": "", "startedAt": 1790000000000, "endedAt": 1790003000000, "pauseCount": 2, "targetMinutes": 60, "kind": "study",
+  "cardId": "7", "mode": "normal", "endedEarly": true,
+  "pauses": [ { "startedAt": 1790000600000, "endedAt": 1790000780000, "tag": "toilet" },
+              { "startedAt": 1790001800000, "endedAt": 1790001920000, "tag": "other", "note": "택배" } ],
+  "endReport": { "checked": { "i1": 1790001000000 }, "withWhat": "music", "proof": { "summary": "42~45쪽 풀었음" }, "goodReasons": ["focus"] },
+  "memos": [ { "at": 1790000700000, "text": "엄마한테 문자 보내기" } ]
+}
 ```
 
 | 필드            | 규칙                                                                                              |
 | --------------- | ------------------------------------------------------------------------------------------------- |
-| `subjectId`     | **공부 기록은 필수**이고 **내 과목**이어야 합니다 (없으면 400, 남의 과목·없는 과목은 404). 노는 기록은 보내지 않거나 `""` (보내도 비워서 저장합니다) |
+| `subjectId`     | **공부 기록은 과목이나 카드(`cardId`) 중 하나가 필수**입니다 (둘 다 없으면 400). 보내면 **내 과목**이어야 합니다 (남의 과목·없는 과목은 404). 노는 기록은 보내지 않거나 `""` (보내도 비워서 저장합니다) |
 | `startedAt`     | 필수. 밀리초 숫자. **2020-01-01 00:00(UTC) 보다 앞서면 400** (시계가 초기화된 기기의 1970년 기록 등. 저장되면 그 뒤 모든 기록이 겹침으로 막힙니다) |
 | `endedAt`       | 필수. 밀리초 숫자. **시작보다 뒤**이고 **미래가 아니어야** 합니다                                 |
 | `pauseCount`    | 필수. 0 이상                                                                                      |
@@ -1243,6 +1300,14 @@ Authorization: Bearer 로그인할 때 받은 토큰
 | `targetMinutes` | 선택. 1 ~ 600 (분)                                                                                |
 | `stopReason`    | 선택. 위 7가지 글자 중 하나                                                                       |
 | `kind`          | 선택. `"study"` / `"play"` (소문자). 안 보내면 `"study"`                                          |
+| `cardId`        | 선택. 보내면 **내 카드**여야 합니다 (남의 카드·없는 카드는 404). 숫자만, 18자리까지. `""` 는 안 보낸 것과 같습니다 |
+| `mode`          | 선택. `"normal"` / `"offline"`. 안 보내면 `"normal"`. **`"selfReport"` 는 여기서 받지 않습니다** (사후 입력은 기한·한도가 있어서 따로 받습니다) |
+| `pauses`        | 선택. 200개까지. 한 줄은 `startedAt` · `endedAt`(필수, **기록의 시작 ~ 끝 사이**) · `tag`(필수, 위 7가지) · `note`(100자까지). **보내면 `pauseCount` · `pausedMs` 는 보낸 값 대신 이 목록으로 계산해 저장합니다** (횟수 = 줄 수, 시간 = 각 줄 `max(0, 끝 − 시작)` 의 합. FE `summarizePauses` 와 같음) |
+| `endedEarly`    | 선택. 안 보내면 `false`                                                                           |
+| `endReport`     | 선택. 보내면 "팝업에 답했음" 으로 남습니다 (빈 `{}` 도). `checked` 는 20개까지 · 항목 `id` 1 ~ 40자 · 시각은 2020년 이후이고 미래가 아님. `shortfallReason` · `withWhat` · `goodReasons`(6개까지) 는 위 값 중 하나. `proof.link` · `proof.summary` 는 300자까지 (`""` 는 없는 것) |
+| `memos`         | 선택. 50개까지. 한 줄은 `at`(필수, 2020년 이후 · 미래 아님) · `text`(필수, 1 ~ 100자)              |
+| `playTag`       | 선택. 위 6가지. **노는 기록에만 저장합니다** (공부 기록에 보내면 무시)                            |
+| `overRestMs`    | 선택. 0 이상. **노는 기록에만 저장합니다**                                                        |
 
 - **순공(`endedAt − startedAt − pausedMs`)이 1분 미만이면 저장하지 않습니다** (400). FE 타이머와 같은 규칙입니다.
 - **이미 저장된 내 기록과 시간이 조금이라도 겹치면 거절합니다** (409). 끝과 시작이 딱 붙은 것(10:00 끝 → 10:00 시작)은 괜찮습니다.
@@ -1257,10 +1322,12 @@ Authorization: Bearer 로그인할 때 받은 토큰
 | 400  | `VALIDATION_ERROR` | 끝 시각이 미래                                                         | `"미래 시각은 저장할 수 없어요"`             |
 | 400  | `VALIDATION_ERROR` | 일시정지 시간이 기록 길이와 같거나 김                                  | `"일시정지 시간은 기록 길이보다 짧아야 해요"` |
 | 400  | `VALIDATION_ERROR` | 순공이 1분 미만                                                        | `"1분 미만의 기록은 저장하지 않아요"`        |
-| 400  | `VALIDATION_ERROR` | 종류가 study·play 가 아님 / 그만둔 이유가 7가지가 아님 / 공부 기록인데 과목이 없음 | `"기록 종류는 study, play 중에서 골라 주세요"` · `"공부 기록은 과목을 골라 주세요"` |
+| 400  | `VALIDATION_ERROR` | 종류가 study·play 가 아님 / 그만둔 이유가 7가지가 아님 / 공부 기록인데 과목도 카드도 없음 | `"기록 종류는 study, play 중에서 골라 주세요"` · `"공부 기록은 과목이나 카드를 골라 주세요"` |
+| 400  | `VALIDATION_ERROR` | (카드 칸) 카드 번호 모양이 틀림 / 방법이 normal·offline 이 아님 / 사후 입력을 보냄 / 일시정지가 기록 밖이거나 이유가 7가지가 아님 / 종료 팝업 값이 정해진 값이 아님 / 체크·메모 시각이 말이 안 됨 / 노는 종류가 6가지가 아님 | `"카드 번호가 올바르지 않아요"` · `"세션 방법은 normal, offline 중에서 골라 주세요"` · `"사후 입력(selfReport)은 여기서 저장할 수 없어요"` · `"일시정지 시각은 기록의 시작과 끝 사이여야 해요"` · `"같이 한 것은 music, video, none 중에서 골라 주세요"` · `"체크한 시각이 올바르지 않아요"` |
 | 401  | `UNAUTHORIZED`     | 로그인하지 않음 / 토큰이 틀림                                          | `"로그인이 필요해요"`                        |
 | 404  | `NOT_FOUND`        | `subjectId` 가 없는 과목, **또는 남의 과목**                            | `"과목을 찾을 수 없어요"`                    |
 | 404  | `NOT_FOUND`        | `planId` 가 없는 계획, **또는 남의 계획**                               | `"계획을 찾을 수 없어요"`                    |
+| 404  | `NOT_FOUND`        | `cardId` 가 없는 카드, **또는 남의 카드**                               | `"카드를 찾을 수 없어요"`                    |
 | 409  | `CONFLICT`         | 이미 저장된 내 기록과 시간이 겹침                                      | `"이미 저장된 기록과 시간이 겹쳐요"`         |
 
 #### 기간별 목록
