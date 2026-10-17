@@ -42,7 +42,8 @@ public class ChatService {
 
   // 학생의 말에서 위기 표현이 감지됐을 때 AI 대신 돌려주는 정해 둔 말입니다. 도움받을 곳은 응답의 helpLines 에 따로 담습니다.
   // ⚠️ 문구와 연결처는 전문가 검토(Tmax-IT-Hope-School/Project#8) 뒤에 확정합니다. (HelpLine 과 같음)
-  static final String CRISIS_REPLY =
+  // '목표 만들기' 대화(GoalChatService)도 같은 문장을 씁니다.
+  public static final String CRISIS_REPLY =
       "말해 줘서 고마워. 지금 많이 힘들구나. 공부 이야기는 여기서 멈출게."
           + " 혼자 견디지 말고 믿을 수 있는 어른에게 꼭 이야기해 줘. 지금 바로 이야기할 수 있는 곳도 아래에 있어.";
 

@@ -2,14 +2,23 @@ package com.ithopeschool.projectbe.domain.session;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ithopeschool.projectbe.domain.session.dto.SessionEndReportRequest;
+import com.ithopeschool.projectbe.domain.session.dto.SessionMemoRequest;
+import com.ithopeschool.projectbe.domain.session.dto.SessionPauseRequest;
+import com.ithopeschool.projectbe.domain.session.dto.StudySessionCreateRequest;
 import com.ithopeschool.projectbe.domain.session.dto.StudySessionResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,7 +54,7 @@ class StudySessionControllerTest {
   }
 
   @Test
-  @DisplayName("저장하면 201 이고, FE StudySession 의 열 칸을 돌려준다")
+  @DisplayName("저장하면 201 이고, FE StudySession 의 열여덟 칸(옛 열 칸 + 카드 칸 여덟)을 돌려준다")
   void create() throws Exception {
     given(studySessionService.create(any()))
         .willReturn(
@@ -67,7 +76,7 @@ class StudySessionControllerTest {
         .andExpect(jsonPath("$.targetMinutes").value(50))
         .andExpect(jsonPath("$.stopReason").value("tooMuch"))
         .andExpect(jsonPath("$.kind").value("study"))
-        .andExpect(jsonPath("$.length()").value(10))
+        .andExpect(jsonPath("$.length()").value(18))
         .andExpect(jsonPath("$.userId").doesNotExist());
   }
 
@@ -83,7 +92,13 @@ class StudySessionControllerTest {
         .andExpect(jsonPath("$.planId").isEmpty())
         .andExpect(jsonPath("$.targetMinutes").isEmpty())
         .andExpect(jsonPath("$.stopReason").isEmpty())
-        .andExpect(jsonPath("$.length()").value(10));
+        // 카드 칸도 빠지지 않습니다. 일시정지가 0번이면 pauses 는 빈 배열입니다.
+        .andExpect(jsonPath("$.cardId").isEmpty())
+        .andExpect(jsonPath("$.mode").value("normal"))
+        .andExpect(jsonPath("$.pauses.length()").value(0))
+        .andExpect(jsonPath("$.endedEarly").value(false))
+        .andExpect(jsonPath("$.endReport").isEmpty())
+        .andExpect(jsonPath("$.length()").value(18));
   }
 
   // 요청 모양이 틀린 경우들. 이때는 Service 까지 가지 않고 Controller 에서 400 으로 끝납니다.
@@ -118,7 +133,86 @@ class StudySessionControllerTest {
         Arguments.of("계획 번호가 숫자가 아님", "{" + VALID + ",\"planId\":\"x\"}", "계획 번호가 올바르지 않아요"),
         Arguments.of("목표 시간이 0분", "{" + VALID + ",\"targetMinutes\":0}", "목표 시간은 1분 이상이어야 해요"),
         Arguments.of(
-            "목표 시간이 601분", "{" + VALID + ",\"targetMinutes\":601}", "목표 시간은 600분(10시간) 이하여야 해요"));
+            "목표 시간이 601분", "{" + VALID + ",\"targetMinutes\":601}", "목표 시간은 600분(10시간) 이하여야 해요"),
+        // ---- 카드 칸 (이슈 #224) ----
+        Arguments.of("카드 번호가 숫자가 아님", "{" + VALID + ",\"cardId\":\"c1\"}", "카드 번호가 올바르지 않아요"),
+        Arguments.of(
+            "일시정지 이유 없음",
+            "{" + VALID + ",\"pauses\":[{\"startedAt\":" + START + ",\"endedAt\":" + END + "}]}",
+            "일시정지 이유를 보내 주세요"),
+        Arguments.of(
+            "일시정지 메모가 101자",
+            "{"
+                + VALID
+                + ",\"pauses\":[{\"startedAt\":"
+                + START
+                + ",\"endedAt\":"
+                + END
+                + ",\"tag\":\"other\",\"note\":\""
+                + "가".repeat(101)
+                + "\"}]}",
+            "일시정지 메모는 100자 이하로 적어 주세요"),
+        Arguments.of(
+            "메모가 비었음",
+            "{" + VALID + ",\"memos\":[{\"at\":" + START + ",\"text\":\" \"}]}",
+            "메모를 입력해 주세요"),
+        Arguments.of(
+            "증빙 링크가 301자",
+            "{" + VALID + ",\"endReport\":{\"proof\":{\"link\":\"" + "a".repeat(301) + "\"}}}",
+            "증빙 링크는 300자 이하로 보내 주세요"),
+        Arguments.of("초과 휴식이 음수", "{" + VALID + ",\"overRestMs\":-1}", "초과 휴식 시간은 0 이상이어야 해요"));
+  }
+
+  @Test
+  @DisplayName("카드 칸(일시정지 · 종료 팝업 · 메모)을 보내면 모양을 검사한 뒤 그대로 Service 로 넘긴다")
+  void createWithCardFields() throws Exception {
+    given(studySessionService.create(any()))
+        .willReturn(new StudySessionResponse("12", "", START, END, 0, 0, null, 60, null, "study"));
+
+    send("{\"subjectId\":\"\",\"startedAt\":"
+            + START
+            + ",\"endedAt\":"
+            + END
+            + ",\"pauseCount\":1,\"targetMinutes\":60,\"kind\":\"study\","
+            + "\"cardId\":\"7\",\"mode\":\"offline\",\"endedEarly\":true,"
+            + "\"pauses\":[{\"startedAt\":"
+            + (START + 60_000)
+            + ",\"endedAt\":"
+            + (START + 120_000)
+            + ",\"tag\":\"toilet\"}],"
+            + "\"endReport\":{\"checked\":{\"i1\":"
+            + (START + 300_000)
+            + "},\"withWhat\":\"music\",\"proof\":{\"summary\":\" 42쪽 \"},\"goodReasons\":[\"focus\"]},"
+            + "\"memos\":[{\"at\":"
+            + (START + 200_000)
+            + ",\"text\":\" 문자 보내기 \"}]}")
+        .andExpect(status().isCreated());
+
+    verify(studySessionService)
+        .create(
+            new StudySessionCreateRequest(
+                "",
+                START,
+                END,
+                1,
+                null,
+                null,
+                60,
+                null,
+                "study",
+                "7",
+                "offline",
+                List.of(new SessionPauseRequest(START + 60_000, START + 120_000, "toilet", null)),
+                true,
+                new SessionEndReportRequest(
+                    Map.of("i1", START + 300_000),
+                    null,
+                    "music",
+                    new SessionEndReportRequest.Proof(null, "42쪽"),
+                    List.of("focus")),
+                List.of(new SessionMemoRequest(START + 200_000, "문자 보내기")),
+                null,
+                null));
   }
 
   @ParameterizedTest(name = "{0} → 400")
@@ -162,5 +256,17 @@ class StudySessionControllerTest {
     send("{" + VALID + "}")
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+  }
+
+  @Test
+  @DisplayName("모두 지우기는 204(본문 없음)이고, 로그인하지 않았으면 401 이다")
+  void deletesAll() throws Exception {
+    mockMvc.perform(delete("/api/v1/study-sessions")).andExpect(status().isNoContent());
+    verify(studySessionService).deleteAll();
+
+    willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"))
+        .given(studySessionService)
+        .deleteAll();
+    mockMvc.perform(delete("/api/v1/study-sessions")).andExpect(status().isUnauthorized());
   }
 }

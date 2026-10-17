@@ -1,13 +1,22 @@
 package com.ithopeschool.projectbe.domain.ai;
 
+import com.ithopeschool.projectbe.domain.ai.dto.AnalysisRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.AnalysisResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.CardParseRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.CardParseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.ProfileLinesResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
@@ -42,6 +51,11 @@ public class AiController {
   private final RoutineCardService routineCardService;
   private final QuickCardService quickCardService;
   private final SettingsFromTextService settingsFromTextService;
+  private final ProfileLinesService profileLinesService;
+  private final CardParseService cardParseService;
+  private final CardDefaultsService cardDefaultsService;
+  private final SelfAnalysisService selfAnalysisService;
+  private final DayPlanService dayPlanService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -100,10 +114,48 @@ public class AiController {
 
   @Operation(
       summary =
+          "말로 카드 만들기: 문장 하나 → 카드 초안 여러 장 (날짜 · 시각 · 길이 · 체크리스트 · 목표, 길이를 안 말하면 내 기록의 한 칸 길이 · 저장 안 함 · 못 만들면 drafts: null · 토큰 필요)")
+  @PostMapping("/cards/parse")
+  public CardParseResponse parseCards(@Valid @RequestBody CardParseRequest request) {
+    return cardParseService.parse(request);
+  }
+
+  @Operation(
+      summary =
+          "카드 폼 기본값: 제목 → 목표 연결 · 유형 · 길이 (같은 제목 카드가 있으면 그대로 · 처음이면 AI 가 목표 · 유형, 길이는 내 기록 · 저장 안 함 · 토큰 필요)")
+  @PostMapping("/card-defaults")
+  public CardDefaultsResponse cardDefaults(@Valid @RequestBody CardDefaultsRequest request) {
+    return cardDefaultsService.suggest(request);
+  }
+
+  @Operation(
+      summary =
           "말로 설정 바꾸기: 부탁 한 줄 → 관리 설정 변경안 (바꾸지 않음 · 전화 시각·메시지 수·연락 금지만 · 수위·한도·잠금은 못 바꿈 · 토큰 필요)")
   @PostMapping("/settings-from-text")
   public SettingsFromTextResponse settingsFromText(
       @Valid @RequestBody SettingsFromTextRequest request) {
     return settingsFromTextService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "성향 요약 3줄: 내 가장 최근 심리검사에서 두드러진 척도 3개를 AI 가 한 줄씩 (본문 없음 · 저장 안 함 · 못 만들면 lines: null · 토큰 필요)")
+  @PostMapping("/profile-lines")
+  public ProfileLinesResponse profileLines() {
+    return profileLinesService.suggest();
+  }
+
+  @Operation(
+      summary =
+          "AI 자기 분석: 기록에서 계산한 숫자 → 성향 · 생각과 실제 · 약속 지키기 · 공부 효율 · 실패 원인 문단과 다음 실험 제안 (통화 생각 습관은 서버가 더함 · 저장 안 함 · 못 만들면 analysis: null · 토큰 필요)")
+  @PostMapping("/analysis")
+  public AnalysisResponse analysis(@Valid @RequestBody AnalysisRequest request) {
+    return selfAnalysisService.analyze(request);
+  }
+
+  @Operation(summary = "AI 하루 계획: 내 기록으로 한 칸 길이·총량·과목을 정하고 AI 가 할 일을 씀 (근거 문장 포함 · 저장 안 함 · 토큰 필요)")
+  @PostMapping("/day-plan")
+  public DayPlanResponse dayPlan(@Valid @RequestBody DayPlanRequest request) {
+    return dayPlanService.suggest(request);
   }
 }

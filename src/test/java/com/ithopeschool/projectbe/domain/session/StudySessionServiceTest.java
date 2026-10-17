@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
@@ -25,6 +26,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -53,6 +55,7 @@ class StudySessionServiceTest {
   private StudySessionRepository studySessionRepository;
   private SubjectRepository subjectRepository;
   private StudyPlanRepository studyPlanRepository;
+  private CardRepository cardRepository;
   private StudySessionService studySessionService;
 
   @BeforeEach
@@ -61,12 +64,14 @@ class StudySessionServiceTest {
     studySessionRepository = mock(StudySessionRepository.class);
     subjectRepository = mock(SubjectRepository.class);
     studyPlanRepository = mock(StudyPlanRepository.class);
+    cardRepository = mock(CardRepository.class);
     studySessionService =
         new StudySessionService(
             currentUserProvider,
             studySessionRepository,
             subjectRepository,
             studyPlanRepository,
+            cardRepository,
             Clock.fixed(NOW, ZoneOffset.UTC));
     given(currentUserProvider.getCurrentUserId()).willReturn(ME);
     // 3번 과목·7번 계획만 내 것이고, 그 밖의 번호는 없거나 남의 것입니다.
@@ -295,22 +300,22 @@ class StudySessionServiceTest {
     expectError(
         request("3", START, END, null, null, null, "bored", null),
         ErrorCode.VALIDATION_ERROR,
-        "그만둔 이유는 tired, event, phone, tooMuch, unwilling, sick, etc 중에서 골라 주세요");
+        "그만둔 이유는 tired, event, phone, tooMuch, unwilling, sick, procrastinated, etc 중에서 골라 주세요");
   }
 
   // ---- 과목 · 계획 ----
 
   @Test
-  @DisplayName("공부 기록인데 과목이 없으면 400")
+  @DisplayName("공부 기록인데 과목도 카드도 없으면 400")
   void studyWithoutSubject() {
     expectError(
         request(null, START, END, null, null, null, null, null),
         ErrorCode.VALIDATION_ERROR,
-        "공부 기록은 과목을 골라 주세요");
+        "공부 기록은 과목이나 카드를 골라 주세요");
     expectError(
         request("", START, END, null, null, null, null, null),
         ErrorCode.VALIDATION_ERROR,
-        "공부 기록은 과목을 골라 주세요");
+        "공부 기록은 과목이나 카드를 골라 주세요");
   }
 
   @Test
@@ -355,5 +360,16 @@ class StudySessionServiceTest {
         .willReturn(true);
 
     expectError(simple(START, END, null), ErrorCode.CONFLICT, "이미 저장된 기록과 시간이 겹쳐요");
+  }
+
+  @Test
+  @DisplayName("모두 지우기는 로그인한 사람의 기록만 찾아서 지운다")
+  void deleteAllUsesMyUserId() {
+    List<StudySession> mine = List.of(new StudySession(ME, MY_SUBJECT, NOW, NOW, 0));
+    given(studySessionRepository.findByUserId(ME)).willReturn(mine);
+
+    studySessionService.deleteAll();
+
+    verify(studySessionRepository).deleteAll(mine);
   }
 }

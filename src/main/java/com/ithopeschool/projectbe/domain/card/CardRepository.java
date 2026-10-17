@@ -1,0 +1,51 @@
+package com.ithopeschool.projectbe.domain.card;
+
+import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+// cards 테이블의 창구입니다. 모든 메서드에 userId 가 들어 있어서, 다른 사람의 카드가 섞이지 않습니다.
+public interface CardRepository extends JpaRepository<Card, Long> {
+
+  // 내 카드를 모두, 만든 순서(번호 순서)대로 찾습니다. 없으면 빈 목록입니다.
+  List<Card> findByUserIdOrderById(Long userId);
+
+  // 내 카드 중에서 번호로 하나 찾습니다. 없는 번호이거나 남의 카드면 빈 Optional 입니다.
+  Optional<Card> findByIdAndUserId(Long id, Long userId);
+
+  // 그 날짜에 "할 수도 있는" 내 카드를 번호 순서로 찾습니다. (후보)
+  //   - 1회성 카드(repeatDays 가 비어 있음): 카드 날짜가 그날인 것
+  //   - 반복 카드: 반복을 시작한 날짜가 그날이거나 그 전인 것
+  // 요일이 맞는지는 여기서 보지 않습니다. 요일은 "1,3,5" 같은 글자라 SQL 로 보기 어려워서,
+  // Service 가 후보마다 Card.isOnDate 로 한 번 더 봅니다. (FE 의 isCardOnDate 와 같은 규칙을 자바 한 곳에 두려는 것)
+  // 값은 SQL 문자열에 붙이지 않고 :이름 자리에 넘깁니다.
+  @Query(
+      "select c from Card c"
+          + " where c.userId = :userId"
+          + " and ((c.repeatDays is null and c.cardDate = :date)"
+          + "   or (c.repeatDays is not null and c.cardDate <= :date))"
+          + " order by c.id")
+  List<Card> findCandidatesOn(@Param("userId") Long userId, @Param("date") LocalDate date);
+
+  // from ~ to (두 날짜 모두 포함) 기간에 "할 수도 있는" 내 카드를 번호 순서로 찾습니다. (후보, 카드 결과 판정 #229)
+  //   - 1회성 카드: 카드 날짜가 기간 안인 것
+  //   - 반복 카드: 반복을 시작한 날짜가 기간의 끝 날이거나 그 전인 것
+  // 날마다 findCandidatesOn 을 부르면 31일이면 31번 묻게 되어서, 기간을 한 번에 묻습니다.
+  // 요일이 맞는지는 위와 똑같이 Service 가 날짜마다 Card.isOnDate 로 봅니다.
+  @Query(
+      "select c from Card c"
+          + " where c.userId = :userId"
+          + " and ((c.repeatDays is null and c.cardDate between :from and :to)"
+          + "   or (c.repeatDays is not null and c.cardDate <= :to))"
+          + " order by c.id")
+  List<Card> findCandidatesBetween(
+      @Param("userId") Long userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
+
+  // 내 카드 중에서 이 번호들을 찾습니다. 남의 카드 번호는 빠집니다.
+  // 미룬 1회성 카드는 카드가 새 날짜로 옮겨져서, 원래 날짜의 "미룸" 표시로 카드를 다시 찾을 때 씁니다. (#229)
+  List<Card> findByUserIdAndIdIn(Long userId, Collection<Long> ids);
+}

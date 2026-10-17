@@ -16,20 +16,32 @@ import com.ithopeschool.projectbe.domain.auth.dto.WithdrawRequest;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallRecord;
+import com.ithopeschool.projectbe.domain.card.Card;
+import com.ithopeschool.projectbe.domain.card.ChecklistItem;
 import com.ithopeschool.projectbe.domain.checkin.CheckIn;
 import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
 import com.ithopeschool.projectbe.domain.checkin.EmotionTag;
 import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
 import com.ithopeschool.projectbe.domain.consent.ConsentService;
+import com.ithopeschool.projectbe.domain.goal.Goal;
+import com.ithopeschool.projectbe.domain.goal.GoalKind;
 import com.ithopeschool.projectbe.domain.insight.Insight;
 import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
 import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.SubjectLevel;
+import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
+import com.ithopeschool.projectbe.domain.psychtest.PsychItem;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTest;
 import com.ithopeschool.projectbe.domain.risk.RiskForecast;
 import com.ithopeschool.projectbe.domain.risk.RiskLevel;
 import com.ithopeschool.projectbe.domain.risk.RiskReason;
+import com.ithopeschool.projectbe.domain.session.SessionMemo;
+import com.ithopeschool.projectbe.domain.session.SessionMode;
+import com.ithopeschool.projectbe.domain.session.SessionPause;
+import com.ithopeschool.projectbe.domain.session.SessionTags.GoodReason;
+import com.ithopeschool.projectbe.domain.session.SessionTags.PauseTag;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.subject.Subject;
 import com.ithopeschool.projectbe.domain.subject.SubjectColor;
@@ -48,6 +60,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -503,8 +516,8 @@ class AccountServiceTest {
             .count();
     long allTables = entityManager.getMetamodel().getEntities().size();
 
-    // users 하나만 userId 가 없습니다.
-    assertThat(tablesWithUserId).isEqualTo(allTables - 1);
+    // users 와 학교 공개 자료(PUBLIC_TABLES)만 userId 가 없습니다.
+    assertThat(tablesWithUserId).isEqualTo(allTables - 1 - PUBLIC_TABLES.size());
   }
 
   @Test
@@ -537,26 +550,69 @@ class AccountServiceTest {
     assertThat(countCollectionRows("thinking_test_weaknesses")).isEqualTo(2);
   }
 
+  @Test
+  @DisplayName("탈퇴하면 심리검사(딸린 답 테이블까지)도 지워지고, 남의 것은 그대로다")
+  void withdrawDeletesPsychTests() {
+    for (Long userId : new Long[] {idOfA, idOfB}) {
+      Map<PsychItem, Integer> answers = new EnumMap<>(PsychItem.class);
+      for (PsychItem item : PsychItem.values()) {
+        answers.put(item, 4);
+      }
+      entityManager.persist(new PsychTest(userId, NOW, answers));
+    }
+    entityManager.flush();
+    callWith(tokenOfA);
+
+    accountService.withdraw(new WithdrawRequest(PASSWORD, null));
+    entityManager.flush();
+    entityManager.clear();
+
+    assertThat(countRows("PsychTest", idOfA)).isZero();
+    assertThat(countRows("PsychTest", idOfB)).isEqualTo(1);
+    // 딸린 답 테이블도 에이 것(35줄)은 남지 않고, 비이 것 35줄만 남습니다.
+    assertThat(countCollectionRows("psych_test_answers")).isEqualTo(35);
+  }
+
   // ---- 실제 DB 의 모든 테이블 확인 (이슈 #69 "모든 테이블에서 그 사용자의 행이 사라지는 테스트") ----
 
   // user_id 칸이 없는데도 탈퇴 때 지워지는 "딸린 테이블" 과, 그 줄이 가리키는 부모 테이블 · 부모를 가리키는 칸입니다.
   // 부모 줄(예: thinking_tests 의 한 줄)이 지워지면 같이 지워집니다.
   // ⚠️ user_id 가 없는 새 테이블을 만들면 아래 테스트가 실패합니다. 탈퇴 때 지워지는지 확인한 뒤 여기에 한 줄 더해 주세요.
   private static final Map<String, String[]> CHILD_TABLES =
-      Map.of(
-          "THINKING_TEST_SCORES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"},
-          "THINKING_TEST_WEAKNESSES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"},
+      // 딸린 테이블이 10개를 넘어서 Map.of 대신 Map.ofEntries 를 씁니다. (Map.of 는 10쌍까지만 받습니다)
+      Map.ofEntries(
+          Map.entry("THINKING_TEST_SCORES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"}),
+          Map.entry(
+              "THINKING_TEST_WEAKNESSES", new String[] {"THINKING_TESTS", "THINKING_TEST_ID"}),
           // 온보딩 설문(onboarding_answers)에 매달린 "계획이 무너진 때" 와 "과목별 수준" (이슈 #21)
-          "ONBOARDING_ANSWER_FAILURE_CAUSES",
-              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
-          "ONBOARDING_ANSWER_SUBJECT_LEVELS",
-              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
+          Map.entry(
+              "ONBOARDING_ANSWER_FAILURE_CAUSES",
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"}),
+          Map.entry(
+              "ONBOARDING_ANSWER_SUBJECT_LEVELS",
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"}),
+          // 카드(cards)에 매달린 체크리스트와 예상 실패 원인 (이슈 #222)
+          Map.entry("CARD_CHECKLIST_ITEMS", new String[] {"CARDS", "CARD_ID"}),
+          Map.entry("CARD_EXPECTED_FAIL_CAUSES", new String[] {"CARDS", "CARD_ID"}),
+          // 공부 기록(study_sessions)에 매달린 일시정지 · 체크한 항목 · 잘 된 이유 · 메모 (이슈 #224)
+          Map.entry("SESSION_PAUSES", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"}),
+          Map.entry("SESSION_CHECKED_ITEMS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"}),
+          Map.entry("SESSION_GOOD_REASONS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"}),
+          Map.entry("SESSION_MEMOS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"}),
+          // 목표(goals)에 매달린 "목표값을 고치기 전의 값" (이슈 #221)
+          Map.entry("GOAL_TARGET_SNAPSHOTS", new String[] {"GOALS", "GOAL_ID"}),
           // 체크인(checkins)에 매달린 하루 첫 태그의 감정들 (이슈 #220)
-          "CHECKIN_EMOTIONS", new String[] {"CHECKINS", "CHECKIN_ID"},
+          Map.entry("CHECKIN_EMOTIONS", new String[] {"CHECKINS", "CHECKIN_ID"}),
           // 보여 준 인사이트(insights)에 매달린 근거 날짜 (이슈 #43)
-          "INSIGHT_EVIDENCE_DATES", new String[] {"INSIGHTS", "INSIGHT_ID"},
+          Map.entry("INSIGHT_EVIDENCE_DATES", new String[] {"INSIGHTS", "INSIGHT_ID"}),
           // 위험 예측(risk_forecasts)에 매달린 "위험하다고 본 이유" (이슈 #49)
-          "RISK_FORECAST_REASONS", new String[] {"RISK_FORECASTS", "RISK_FORECAST_ID"});
+          Map.entry("RISK_FORECAST_REASONS", new String[] {"RISK_FORECASTS", "RISK_FORECAST_ID"}),
+          // 심리검사(psych_tests)에 매달린 문장 14개의 답 (이슈 #219)
+          Map.entry("PSYCH_TEST_ANSWERS", new String[] {"PSYCH_TESTS", "PSYCH_TEST_ID"}));
+
+  // 사람이 아니라 학교마다 한 벌인 공개 자료(NEIS 학사일정, 이슈 #282)입니다. 개인 정보가 없고
+  // 같은 학교 학생들이 같이 쓰므로 탈퇴해도 지우지 않습니다.
+  private static final Set<String> PUBLIC_TABLES = Set.of("SCHOOL_EVENTS", "SCHOOL_EVENT_FETCHES");
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
@@ -577,6 +633,56 @@ class AccountServiceTest {
       answer.pastFailureCauses = EnumSet.of(FailureCause.WEEKEND);
       answer.subjectLevels = List.of(new SubjectLevel(1L, 2, null, 4));
       entityManager.persist(new OnboardingAnswer(userId, NOW, answer));
+      Card card =
+          new Card(
+              userId,
+              "수학",
+              LocalDate.of(2026, 10, 12),
+              60,
+              List.of(new ChecklistItem("i1", "42쪽")),
+              NOW);
+      card.changeExpectedFailCauses(List.of("폰을 볼 것 같다"));
+      entityManager.persist(card);
+      // 카드로 켠 공부 기록 하나 (딸린 테이블 네 개에 한 줄씩)
+      StudySession cardSession =
+          new StudySession(
+              userId,
+              null,
+              NOW.minusSeconds(7200),
+              NOW.minusSeconds(3600),
+              1,
+              60_000,
+              null,
+              60,
+              null,
+              PlanKind.STUDY);
+      cardSession.recordCard(card.getId(), SessionMode.NORMAL, false);
+      cardSession.recordPauses(
+          List.of(
+              new SessionPause(
+                  NOW.minusSeconds(7000), NOW.minusSeconds(6940), PauseTag.TOILET, null)));
+      cardSession.recordEndReport(
+          Map.of("i1", NOW.minusSeconds(4000)),
+          null,
+          null,
+          null,
+          null,
+          EnumSet.of(GoodReason.FOCUS));
+      cardSession.recordMemos(List.of(new SessionMemo(NOW.minusSeconds(5000), "메모")));
+      entityManager.persist(cardSession);
+      // 목표값을 한 번 고친 목표 (딸린 테이블 goal_target_snapshots 에 줄이 생깁니다)
+      Goal goal =
+          new Goal(
+              userId,
+              GoalKind.SCORE,
+              new Goal.Target("수학 3등급", LocalDate.of(2026, 11, 19), "5등급", null, null),
+              new Goal.Woop("자신감", "후회", "폰", "폰을 다른 방에"),
+              NOW);
+      goal.changeTarget(
+          new Goal.Target("수학 4등급", LocalDate.of(2026, 11, 19), "5등급", null, null),
+          "시간이 모자라서",
+          NOW);
+      entityManager.persist(goal);
       // 감정 태그가 붙은 체크인 (딸린 테이블 checkin_emotions 에 줄이 생깁니다)
       CheckIn checkIn =
           new CheckIn(
@@ -636,6 +742,9 @@ class AccountServiceTest {
         assertThat(nativeCount("select count(*) from " + table + " where user_id = :userId", idOfA))
             .as("%s 에 남은 에이의 줄", table)
             .isZero();
+      } else if (PUBLIC_TABLES.contains(table)) {
+        // 학교 공개 자료라 그 사람의 줄이 따로 없습니다.
+        continue;
       } else if (CHILD_TABLES.containsKey(table)) {
         String parent = CHILD_TABLES.get(table)[0];
         String parentIdColumn = CHILD_TABLES.get(table)[1];

@@ -56,6 +56,7 @@ src/main/java/com/ithopeschool/projectbe/
     └── health/                 예시: Controller + Service + 응답 DTO
 src/main/resources/             설정 파일 (application.yml, -local.yml, -neon.yml, -prod.yml)
 db/schema.sql                   운영 DB(Neon)의 테이블을 만드는 SQL (사람이 Neon SQL Editor 에서 실행)
+db/migrations/                  이미 있는 Neon 을 다음 배포 상태로 올리는 SQL (번호 순서대로, 여러 번 실행해도 됨)
 src/test/java/                  테스트 (main 과 같은 폴더 구조로)
 build.gradle                    라이브러리 목록과 빌드 설정
 gradlew, gradlew.bat, gradle/   Gradle 실행 파일 (고치지 않음)
@@ -132,11 +133,17 @@ AI 는 테이블·컬럼을 **먼저 정해 주지 않습니다.** 질문으로 
 - 운영 DB 의 테이블은 서버가 만들거나 바꾸지 않습니다. (`ddl-auto: update` 는 쓰지 않습니다 — 운영 DB 가 코드에 따라 멋대로 바뀌어 사고가 나기 쉽습니다)
   배포 설정이 검사(`validate`)까지 빼고 `none` 인 이유: DB 주소가 틀려도 서버가 꺼지지 않게 하려고 켜질 때 DB 에 접속하지 않습니다. (이슈 #4)
 - **엔티티를 만들거나 고치면 `db/schema.sql` 도 같은 커밋에서 고칩니다.** 안 고치면 `SchemaSqlTest` 가 실패합니다.
-  이미 만든 Neon 브랜치에는 바뀐 부분만 `alter table` 로 사람이 실행합니다. (dev 먼저, main 은 그다음)
+  이미 만든 Neon 브랜치에는 바뀐 부분만 사람이 실행합니다. (dev 먼저, main 은 그다음)
+  그 SQL 은 `db/migrations/NN-설명.sql` 파일로 남기고, **여러 번 실행해도 되게** 씁니다. (`if not exists` · `drop … if exists` → `add`, `MigrationSqlTest` 가 검사)
 - `create-drop`·`update` 를 `neon`·`prod` 설정에 넣지 않습니다. `create-drop` 은 서버를 끌 때 Neon 의 테이블을 전부 지웁니다.
 - 접속 정보는 지금은 **환경변수**로 받습니다. 시크릿 매니저로 받는 방법은 이슈 #76 에서 정하면 이 문단을 고칩니다.
-  Neon 주소·비밀번호를 대화·이슈·PR·파일에 붙여 넣지 않습니다. Claude 에게도 주지 않습니다.
-- Neon 가입·브랜치 만들기·SQL Editor 실행·접속 확인은 **사람이** 합니다. 순서는 README "운영 DB(Neon)".
+  Neon 주소·비밀번호·API 키를 대화·이슈·PR·파일에 붙여 넣지 않습니다. Claude 에게도 주지 않습니다.
+- Neon 가입·브랜치 만들기·접속 확인은 **사람이** 합니다. 순서는 README "운영 DB(Neon)".
+- Neon 은 이 팀 프로젝트의 **개발용 DB** 입니다(실제 사용자 없음, 2026-10-17 멘토 결정). 그래서 **멘토가 Neon MCP 를 연결해 둔 경우에만** Claude 도 Neon 에 SQL 을 실행합니다. (연결은 README "Neon MCP")
+  - **해도 되는 것:** `db/migrations/` 파일을 번호 순서대로 실행(`dev` 먼저, `main` 은 그다음), 읽기만 하는 확인 쿼리(`select`, `information_schema`)
+  - **먼저 묻는 것:** 지우는 문장(`drop` · `delete` · `truncate`), `db/migrations` 에 없는 SQL, 브랜치 만들기·지우기
+  - 실행한 브랜치 · 파일 번호 · 결과를 그 PR 이나 이슈에 남깁니다.
+  - MCP 가 없으면 지금처럼 **사람이** SQL Editor 에서 실행합니다.
 
 ---
 
@@ -165,7 +172,7 @@ Windows 는 `./gradlew` 대신 `gradlew.bat` 을 씁니다. Claude Code 에서�
   잘 되는 경우뿐 아니라 **일부러 틀리게 보낸 경우**(빈 값 → 400, 없는 번호 → 404)도 확인합니다.
 - 엔티티를 만들거나 고쳤으면 `/db` 로 **다이어그램을 새로 그리고** `docs/DB.md` 에 반영합니다.
 - `.githooks/` 나 `.claude/hooks/` 를 고쳤으면 **직접 실행해서** 막을 것은 막고 통과시킬 것은 통과시키는지 확인합니다.
-- 원격 DB(Neon)에서 해야 하는 확인은 **사람에게 부탁합니다.** (AI 는 Neon 계정이 없습니다)
+- 원격 DB(Neon)에서 해야 하는 확인은 **사람에게 부탁합니다.** Neon MCP 가 연결돼 있으면 3장의 "해도 되는 것" 만 Claude 가 직접 합니다.
 - 실패하면 **커밋하지 말고** 고친 뒤 다시 확인합니다.
 - 고쳐도 안 되면 **에러 메시지 원문을 그대로 보여주고** 사람에게 물어봅니다.
 

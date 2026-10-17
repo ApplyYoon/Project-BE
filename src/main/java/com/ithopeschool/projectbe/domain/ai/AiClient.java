@@ -51,6 +51,8 @@ public class AiClient {
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
   // 답을 기다리는 최대 시간. 학생이 입력 칸 앞에서 기다리는 중이라 길게 잡지 않습니다.
   private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
+  // 긴 답(자기 분석처럼 문단 여러 개)을 기다리는 최대 시간. 화면은 그동안 코드가 쓴 기본 문장을 먼저 보여 줍니다.
+  private static final Duration LONG_READ_TIMEOUT = Duration.ofSeconds(25);
 
   // 받은 JSON 글자를 자바 값으로 바꾸는 도구
   private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -59,6 +61,8 @@ public class AiClient {
   private final String model;
   private final GptUsageGuard gptUsageGuard;
   private final RestClient restClient;
+  // 긴 답용 (askLong). 기다리는 시간만 다르고 나머지는 restClient 와 같습니다.
+  private final RestClient longRestClient;
 
   // Spring 이 쓰는 생성자입니다. 키와 모델 이름 중 하나라도 비어 있으면 꺼진 상태입니다.
   @Autowired
@@ -70,15 +74,26 @@ public class AiClient {
         apiKey,
         model,
         gptUsageGuard,
-        RestClient.builder().requestFactory(requestFactoryWithTimeouts()));
+        RestClient.builder().requestFactory(requestFactoryWithTimeouts(READ_TIMEOUT)),
+        RestClient.builder().requestFactory(requestFactoryWithTimeouts(LONG_READ_TIMEOUT)));
   }
 
-  // 테스트에서 가짜 OpenAI 를 끼워 넣을 때 쓰는 생성자입니다. (AiClientTest)
+  // 테스트에서 가짜 OpenAI 를 끼워 넣을 때 쓰는 생성자입니다. (AiClientTest) 긴 답도 같은 가짜 서버로 갑니다.
   AiClient(String apiKey, String model, GptUsageGuard gptUsageGuard, RestClient.Builder builder) {
+    this(apiKey, model, gptUsageGuard, builder, builder);
+  }
+
+  private AiClient(
+      String apiKey,
+      String model,
+      GptUsageGuard gptUsageGuard,
+      RestClient.Builder builder,
+      RestClient.Builder longBuilder) {
     this.apiKey = apiKey == null ? "" : apiKey.trim();
     this.model = model == null ? "" : model.trim();
     this.gptUsageGuard = gptUsageGuard;
     this.restClient = builder.baseUrl(OPENAI_BASE_URL).build();
+    this.longRestClient = longBuilder.baseUrl(OPENAI_BASE_URL).build();
   }
 
   // GPT 를 부를 수 있는 서버인지 알려줍니다. 키와 모델 이름이 둘 다 있어야 true 입니다.
@@ -91,6 +106,17 @@ public class AiClient {
   //   kind   : 무슨 기능인지 (gpt_usages 에 이 종류로 남습니다)
   public <T> Optional<T> ask(
       Long userId, GptUsageKind kind, AiQuestion question, Class<T> answerType) {
+    return send(restClient, userId, kind, question, answerType);
+  }
+
+  // ask 와 같고, 답을 25초까지 기다립니다. 답이 긴 기능(자기 분석 SelfAnalysisService)에서만 씁니다.
+  public <T> Optional<T> askLong(
+      Long userId, GptUsageKind kind, AiQuestion question, Class<T> answerType) {
+    return send(longRestClient, userId, kind, question, answerType);
+  }
+
+  private <T> Optional<T> send(
+      RestClient client, Long userId, GptUsageKind kind, AiQuestion question, Class<T> answerType) {
     // 1) 꺼져 있음. 부르지 않았으니 한도도 쓰지 않습니다.
     if (!isEnabled()) {
       return Optional.empty();
@@ -110,7 +136,7 @@ public class AiClient {
               false,
               new TextOption(new Format("json_schema", question.name(), true, question.schema())));
       OpenAiResponse response =
-          restClient
+          client
               .post()
               .uri("/responses")
               .header("Authorization", "Bearer " + apiKey)
@@ -155,10 +181,10 @@ public class AiClient {
   }
 
   // 기다리는 시간을 정한 연결 도구를 만듭니다. 정하지 않으면 GPT 가 멈췄을 때 끝없이 기다립니다.
-  private static JdkClientHttpRequestFactory requestFactoryWithTimeouts() {
+  private static JdkClientHttpRequestFactory requestFactoryWithTimeouts(Duration readTimeout) {
     HttpClient httpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
     JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-    factory.setReadTimeout(READ_TIMEOUT);
+    factory.setReadTimeout(readTimeout);
     return factory;
   }
 

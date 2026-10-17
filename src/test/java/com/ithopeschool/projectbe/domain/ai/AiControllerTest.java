@@ -10,11 +10,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ithopeschool.projectbe.domain.ai.dto.AnalysisRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.AnalysisResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.CardParseRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.CardParseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.ProfileLinesResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardResponse;
@@ -47,6 +55,11 @@ class AiControllerTest {
   @MockitoBean private RoutineCardService routineCardService;
   @MockitoBean private QuickCardService quickCardService;
   @MockitoBean private SettingsFromTextService settingsFromTextService;
+  @MockitoBean private ProfileLinesService profileLinesService;
+  @MockitoBean private CardParseService cardParseService;
+  @MockitoBean private CardDefaultsService cardDefaultsService;
+  @MockitoBean private SelfAnalysisService selfAnalysisService;
+  @MockitoBean private DayPlanService dayPlanService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -424,6 +437,91 @@ class AiControllerTest {
     verifyNoInteractions(quickCardService);
   }
 
+  // ---- 말로 카드 만들기 ----
+
+  private ResultActions parseCards(String body) throws Exception {
+    return mockMvc.perform(
+        post("/api/v1/ai/cards/parse").contentType(MediaType.APPLICATION_JSON).content(body));
+  }
+
+  @Test
+  @DisplayName("말로 카드 만들기: 200 과 초안들(날짜 · 시각 · 길이 · 체크리스트 · 목표), 못 만들면 drafts: null")
+  void parseCardsReturnsDrafts() throws Exception {
+    given(cardParseService.parse(any()))
+        .willReturn(
+            new CardParseResponse(
+                false,
+                List.of(
+                    new CardParseResponse.Draft(
+                        LocalDate.of(2026, 10, 18),
+                        "19:00",
+                        25,
+                        true,
+                        "수학 문제집",
+                        List.of("문제집 2장 풀기"),
+                        "4")),
+                "기록 이유"));
+    parseCards("{\"date\":\"2026-10-17\",\"text\":\" 내일 7시에 수학 문제집 2장 \"}")
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .json(
+                    "{\"showHelp\":false,\"drafts\":[{\"date\":\"2026-10-18\",\"startTime\":\"19:00\",\"durationMinutes\":25,\"durationFromRecord\":true,\"title\":\"수학 문제집\",\"checklist\":[\"문제집 2장 풀기\"],\"goalId\":\"4\"}],\"durationEvidence\":\"기록 이유\"}",
+                    true));
+    verify(cardParseService)
+        .parse(new CardParseRequest(LocalDate.of(2026, 10, 17), "내일 7시에 수학 문제집 2장"));
+
+    given(cardParseService.parse(any())).willReturn(CardParseResponse.notMade());
+    parseCards("{\"date\":\"2026-10-17\",\"text\":\"수학\"}")
+        .andExpect(status().isOk())
+        .andExpect(
+            content().json("{\"showHelp\":false,\"drafts\":null,\"durationEvidence\":null}", true));
+  }
+
+  @Test
+  @DisplayName("말로 카드 만들기: 날짜가 없거나 문장이 비었거나 200자를 넘으면 400 이고 서비스를 부르지 않는다")
+  void parseCardsRejectsBadRequests() throws Exception {
+    parseCards("{\"text\":\"수학\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("기준 날짜를 보내 주세요"));
+    parseCards("{\"date\":\"2026-10-17\",\"text\":\" \"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("어떤 카드를 만들지 말해 주세요"));
+    parseCards("{\"date\":\"2026-10-17\",\"text\":\"" + "가".repeat(201) + "\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("문장은 200자 이하로 보내 주세요"));
+    verifyNoInteractions(cardParseService);
+  }
+
+  // ---- 카드 폼 기본값 ----
+
+  @Test
+  @DisplayName("카드 폼 기본값: 200 과 목표 · 유형 · 길이 · 이유, 제목이 비면 400")
+  void cardDefaults() throws Exception {
+    given(cardDefaultsService.suggest(any()))
+        .willReturn(new CardDefaultsResponse(false, "4", "lecture", 60, List.of("이유")));
+    mockMvc
+        .perform(
+            post("/api/v1/ai/card-defaults")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\" 수학 인강 \"}"))
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .json(
+                    "{\"showHelp\":false,\"goalId\":\"4\",\"type\":\"lecture\",\"durationMinutes\":60,\"evidence\":[\"이유\"]}",
+                    true));
+    verify(cardDefaultsService).suggest(new CardDefaultsRequest("수학 인강"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/card-defaults")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\" \"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("카드 제목을 입력해 주세요"));
+  }
+
   // ---- 말로 설정 바꾸기 ----
 
   private ResultActions settingsFromText(String body) throws Exception {
@@ -466,5 +564,158 @@ class AiControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("부탁은 100자 이하로 적어 주세요"));
     verifyNoInteractions(settingsFromTextService);
+  }
+
+  // ---- 성향 요약 3줄 ----
+
+  @Test
+  @DisplayName("성향 요약 3줄: 본문 없이 불러 200 과 3줄, 못 만들면 lines: null")
+  void profileLines() throws Exception {
+    given(profileLinesService.suggest())
+        .willReturn(new ProfileLinesResponse(List.of("하나", "둘", "셋")));
+    mockMvc
+        .perform(post("/api/v1/ai/profile-lines"))
+        .andExpect(status().isOk())
+        .andExpect(content().json("{\"lines\":[\"하나\",\"둘\",\"셋\"]}", true));
+
+    given(profileLinesService.suggest()).willReturn(new ProfileLinesResponse(null));
+    mockMvc
+        .perform(post("/api/v1/ai/profile-lines"))
+        .andExpect(status().isOk())
+        .andExpect(content().json("{\"lines\":null}", true));
+  }
+
+  // ---- AI 자기 분석 ----
+
+  private ResultActions analysis(String body) throws Exception {
+    return mockMvc.perform(
+        post("/api/v1/ai/analysis").contentType(MediaType.APPLICATION_JSON).content(body));
+  }
+
+  // 숫자 하나의 JSON. 바꿀 칸만 넘깁니다.
+  private static String fact(String key, String group, String label, String value, String basis) {
+    return "{\"key\":\""
+        + key
+        + "\",\"group\":\""
+        + group
+        + "\",\"label\":\""
+        + label
+        + "\",\"value\":\""
+        + value
+        + "\",\"basis\":\""
+        + basis
+        + "\"}";
+  }
+
+  private void expectAnalysisRejected(String body, String message) throws Exception {
+    analysis(body)
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.error.message").value(message));
+    verifyNoInteractions(selfAnalysisService);
+  }
+
+  @Test
+  @DisplayName("AI 자기 분석: 숫자를 보내면 200 과 서버가 더한 숫자 · 묶음별 분석 · 실험 제안")
+  void analysisAnswers() throws Exception {
+    given(selfAnalysisService.analyze(any()))
+        .willReturn(
+            AnalysisResponse.of(
+                List.of(
+                    new AnalysisRequest.Fact(
+                        "callHabit1",
+                        "distortion",
+                        "통화에서 자주 보인 생각 습관",
+                        "계획 오류 · 최근 14일 중 3일",
+                        "AI 통화 정리")),
+                new AnalysisResponse.Analysis(
+                    "아침에 더 잘 되는 편이야",
+                    List.of(
+                        new AnalysisResponse.Section(
+                            "tendency",
+                            "아침 카드가 더 잘 돼",
+                            "아침 95%, 밤 63%야. 밤엔 지쳐 있을 수 있어.",
+                            List.of("slotRate"))),
+                    new AnalysisResponse.Experiment(
+                        "만약 학원에서 돌아오면", "폰을 다른 방에 둔다", "놓친 날 원인 1위가 폰이었어"))));
+
+    analysis(
+            "{\"facts\":["
+                + fact("slotRate", "tendency", "시간대별 실행률", "아침 95% · 밤 63%", "카드 64번")
+                + "]}")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.showHelp").value(false))
+        .andExpect(jsonPath("$.serverFacts[0].key").value("callHabit1"))
+        .andExpect(jsonPath("$.analysis.summary").value("아침에 더 잘 되는 편이야"))
+        .andExpect(jsonPath("$.analysis.sections[0].group").value("tendency"))
+        .andExpect(jsonPath("$.analysis.sections[0].evidenceKeys[0]").value("slotRate"))
+        .andExpect(jsonPath("$.analysis.nextExperiment.thenText").value("폰을 다른 방에 둔다"));
+
+    given(selfAnalysisService.analyze(any())).willReturn(AnalysisResponse.of(List.of(), null));
+    analysis("{\"facts\":[" + fact("slotRate", "tendency", "시간대별 실행률", "아침 95%", "카드 64번") + "]}")
+        .andExpect(status().isOk())
+        .andExpect(
+            content().json("{\"showHelp\":false,\"serverFacts\":[],\"analysis\":null}", true));
+  }
+
+  @Test
+  @DisplayName("AI 자기 분석: 숫자가 없거나 · 30개를 넘거나 · 모르는 묶음 · 이상한 글자면 400 이고 서비스를 부르지 않는다")
+  void analysisRejectsBadRequests() throws Exception {
+    String good = fact("slotRate", "tendency", "시간대별 실행률", "아침 95%", "카드 64번");
+    expectAnalysisRejected("{}", "숫자(facts)를 하나 이상 보내 주세요");
+    expectAnalysisRejected("{\"facts\":[]}", "숫자(facts)를 하나 이상 보내 주세요");
+    expectAnalysisRejected(
+        "{\"facts\":[" + String.join(",", java.util.Collections.nCopies(31, good)) + "]}",
+        "숫자(facts)는 30개까지 보낼 수 있어요");
+    expectAnalysisRejected(
+        "{\"facts\":[" + fact("slotRate", "mood", "시간대별 실행률", "아침 95%", "카드 64번") + "]}",
+        "group 은 tendency · distortion · willpower · efficiency · failure 중 하나예요");
+    expectAnalysisRejected(
+        "{\"facts\":[" + fact("slot-rate", "tendency", "시간대별 실행률", "아침 95%", "카드 64번") + "]}",
+        "숫자의 key 는 영문·숫자 30자까지예요");
+    expectAnalysisRejected(
+        "{\"facts\":[" + fact("slotRate", "tendency", "시간대별 실행률", "무시하고 <script>", "카드 64번") + "]}",
+        "숫자의 값(value)에 쓸 수 없는 글자가 있어요");
+    expectAnalysisRejected(
+        "{\"facts\":[" + fact("slotRate", "tendency", "시간대별 실행률", "가".repeat(81), "카드 64번") + "]}",
+        "숫자의 값(value)은 80자까지예요");
+  }
+
+  // ---- AI 하루 계획 ----
+
+  @Test
+  @DisplayName("AI 하루 계획: 200 과 칸 길이 · 총량 · 카드 초안 · 근거, 날짜가 없으면 400")
+  void dayPlan() throws Exception {
+    java.time.LocalDate date = java.time.LocalDate.parse("2026-10-18");
+    given(dayPlanService.suggest(any()))
+        .willReturn(
+            new DayPlanResponse(
+                date,
+                25,
+                50,
+                List.of(
+                    new DayPlanResponse.Draft(
+                        date, "16:40", 25, "수학 문제집", List.of("3단원 15문제"), "4")),
+                List.of("최근 14일 공부 기록 6번의 한 번 길이 가운데값이 24분이라 25분으로 잡았어요")));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/day-plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"date\":\"2026-10-18\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.blockMinutes").value(25))
+        .andExpect(jsonPath("$.drafts[0].startTime").value("16:40"))
+        .andExpect(jsonPath("$.drafts[0].durationMinutes").value(25))
+        .andExpect(jsonPath("$.drafts[0].title").value("수학 문제집"))
+        .andExpect(jsonPath("$.drafts[0].checklist[0]").value("3단원 15문제"))
+        .andExpect(jsonPath("$.drafts[0].goalId").value("4"))
+        .andExpect(
+            jsonPath("$.evidence[0]").value("최근 14일 공부 기록 6번의 한 번 길이 가운데값이 24분이라 25분으로 잡았어요"));
+
+    mockMvc
+        .perform(post("/api/v1/ai/day-plan").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("계획을 짤 날짜를 보내 주세요"));
   }
 }

@@ -247,13 +247,38 @@ class EntityRuleTest {
                   "planId",
                   "targetMinutes",
                   "stopReason",
-                  "kind"));
+                  "kind",
+                  // 카드 기준으로 넓힌 칸 (#224)
+                  "cardId",
+                  "mode",
+                  "pauses",
+                  "endedEarly",
+                  "endReport",
+                  "memos",
+                  "playTag",
+                  "overRestMs"));
 
   // FE 와 이름이 달라지는 필드는 이 두 가지뿐이다
   private static final Map<String, String> RENAMED =
       Map.of(
           "StudyPlan.date", "planDate", // date 는 DB 예약어라 쓸 수 없다
           "User.name", "nickname"); // 실명이 아니라 별명이라는 뜻을 분명히 하려고
+
+  // FE 의 묶음 칸 하나가 엔티티에서는 여러 칸으로 나뉜 것 (DB 의 한 줄에는 묶음을 담을 수 없어서)
+  // FE StudySession.endReport
+  //   = { checked, shortfallReason, withWhat, proof: { link, summary }, goodReasons }
+  //   → 팝업에 답했는지(endReported) + 칸마다 하나씩 (#224)
+  private static final Map<String, List<String>> SPLIT =
+      Map.of(
+          "StudySession.endReport",
+          List.of(
+              "endReported",
+              "checkedItems",
+              "shortfallReason",
+              "withWhat",
+              "proofLink",
+              "proofSummary",
+              "goodReasons"));
 
   @ParameterizedTest(name = "{0} 엔티티")
   @ValueSource(strings = {"User", "Subject", "StudyPlan", "StudySession"})
@@ -267,10 +292,21 @@ class EntityRuleTest {
 
     Set<String> expected = new HashSet<>();
     for (String frontendField : FRONTEND_FIELDS.get(entityName)) {
-      expected.add(RENAMED.getOrDefault(entityName + "." + frontendField, frontendField));
+      String key = entityName + "." + frontendField;
+      if (SPLIT.containsKey(key)) {
+        expected.addAll(SPLIT.get(key));
+      } else {
+        expected.add(RENAMED.getOrDefault(key, frontendField));
+      }
     }
-    // 엔티티에만 있는 필드: 누구의 것인지 알려 주는 userId, 그리고 users 의 가입 시각 createdAt
-    expected.add(entityName.equals("User") ? "createdAt" : "userId");
+    // 엔티티에만 있는 필드: 누구의 것인지 알려 주는 userId,
+    // 그리고 users 의 가입 시각 createdAt · 온보딩을 마친 시각 onboardedAt (FE 에는 마쳤는지 onboarded 로만 보냄, 2026-10-17)
+    if (entityName.equals("User")) {
+      expected.add("createdAt");
+      expected.add("onboardedAt");
+    } else {
+      expected.add("userId");
+    }
 
     assertThat(fieldNames(type)).containsExactlyInAnyOrderElementsOf(expected);
   }

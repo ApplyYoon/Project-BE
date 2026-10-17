@@ -3,8 +3,12 @@ package com.ithopeschool.projectbe.domain.session;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
+import com.ithopeschool.projectbe.domain.session.SessionTags.GoodReason;
+import com.ithopeschool.projectbe.domain.session.SessionTags.PauseTag;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -172,5 +176,40 @@ class StudySessionRepositoryTest {
         .extracting(StudySession::getStartedAt)
         .isEqualTo(at(0));
     assertThat(studySessionRepository.findFirstByUserIdOrderByStartedAtAscIdAsc(999L)).isEmpty();
+  }
+
+  // ---- 모두 지우기 (StudySessionService.deleteAll 이 쓰는 방법) ----
+
+  // 딸린 표(session_pauses 등)에 남은 줄 수
+  private long countRows(String table) {
+    return ((Number)
+            em.getEntityManager()
+                .createNativeQuery("select count(*) from " + table)
+                .getSingleResult())
+        .longValue();
+  }
+
+  @Test
+  @DisplayName("내 기록을 불러와 지우면 일시정지 · 체크 · 잘 된 이유 · 메모 줄도 같이 지워지고, 남의 기록은 남는다")
+  void deleteAllOfMineWithChildRows() {
+    StudySession withDetails = new StudySession(1L, null, at(200), at(260), 1);
+    withDetails.recordCard(5L, SessionMode.NORMAL, false);
+    withDetails.recordPauses(List.of(new SessionPause(at(210), at(215), PauseTag.TOILET, null)));
+    withDetails.recordEndReport(
+        Map.of("i1", at(250)), null, null, null, "42쪽", Set.of(GoodReason.FOCUS));
+    withDetails.recordMemos(List.of(new SessionMemo(at(220), "엄마한테 문자")));
+    em.persistAndFlush(withDetails);
+    assertThat(countRows("session_pauses")).isEqualTo(1);
+
+    studySessionRepository.deleteAll(studySessionRepository.findByUserId(1L));
+    em.flush();
+    em.clear();
+
+    assertThat(studySessionRepository.findByUserId(1L)).isEmpty();
+    assertThat(studySessionRepository.findByUserId(2L)).hasSize(1);
+    assertThat(countRows("session_pauses")).isZero();
+    assertThat(countRows("session_checked_items")).isZero();
+    assertThat(countRows("session_good_reasons")).isZero();
+    assertThat(countRows("session_memos")).isZero();
   }
 }
