@@ -11,6 +11,8 @@ public enum GptUsageKind {
   COACH,
   // 말로 계획 세우기: 문장 → 계획 초안 (PlanParseClient, 이슈 #86)
   PLAN_PARSE,
+  // 상담 채팅에서 AI 가 한 번 답한 것 (ChatAiClient, 이슈 #238). 채팅을 열 때 첫 인사도 한 번입니다.
+  CHAT,
   // 작은 AI 기능: 카드의 체크리스트 추천 · 첫 준비 행동 (AiClient, 이슈 #236)
   //   작은 AI 기능은 위의 글 호출과 하루 한도를 따로 셉니다. (GptUsageGuard.ASSIST_KINDS)
   CHECKLIST,

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -104,6 +105,23 @@ class CheckInRepositoryTest {
   }
 
   @Test
+  @DisplayName("감정 태그가 딸린 테이블에 저장되고 그대로 꺼내진다. 태그가 없던 옛 체크인은 빈 목록이다")
+  void savesAndLoadsEmotions() {
+    CheckIn withTags = save(1L, "2026-10-16", 3);
+    withTags.replaceEmotions(EnumSet.of(EmotionTag.MOTIVATED, EmotionTag.CALM));
+    checkInRepository.saveAndFlush(withTags);
+    save(1L, "2026-10-15", 4);
+
+    List<CheckIn> found =
+        checkInRepository.findByUserIdAndCheckInDateBetweenOrderByCheckInDateAsc(
+            1L, LocalDate.parse("2026-10-01"), LocalDate.parse("2026-10-31"));
+
+    assertThat(found.get(0).getEmotions()).isEmpty();
+    assertThat(found.get(1).getEmotions())
+        .containsExactlyInAnyOrder(EmotionTag.CALM, EmotionTag.MOTIVATED);
+  }
+
+  @Test
   @DisplayName("모두 지우기는 내 체크인만 지우고, 지운 줄 수를 돌려준다. 남의 체크인은 그대로다")
   void deletesOnlyMine() {
     save(1L, "2026-10-15", 3);
@@ -122,5 +140,24 @@ class CheckInRepositoryTest {
         .hasSize(1);
     // 지울 것이 없어도 에러 없이 0 입니다.
     assertThat(checkInRepository.deleteAllOfUser(1L)).isZero();
+  }
+
+  @Test
+  @DisplayName("모두 지우기는 감정 태그(딸린 테이블)가 붙은 체크인도 지운다 (외래 키에 걸리지 않음)")
+  void deleteAllAlsoRemovesEmotions() {
+    CheckIn withTags = save(1L, "2026-10-16", 3);
+    withTags.replaceEmotions(EnumSet.of(EmotionTag.STUCK, EmotionTag.TIRED));
+    checkInRepository.saveAndFlush(withTags);
+    CheckIn others = save(2L, "2026-10-16", 4);
+    others.replaceEmotions(EnumSet.of(EmotionTag.CALM));
+    checkInRepository.saveAndFlush(others);
+
+    assertThat(checkInRepository.deleteAllOfUser(1L)).isEqualTo(1);
+
+    assertThat(
+            checkInRepository.findByUserIdAndCheckInDateBetweenOrderByCheckInDateAsc(
+                2L, LocalDate.parse("2026-10-01"), LocalDate.parse("2026-10-31")))
+        .singleElement()
+        .satisfies(checkIn -> assertThat(checkIn.getEmotions()).containsExactly(EmotionTag.CALM));
   }
 }
