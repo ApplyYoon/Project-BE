@@ -264,6 +264,19 @@ class GptUsageGuardTest {
   }
 
   @Test
+  @DisplayName("체크리스트(CHECKLIST)와 작은 AI 기능 묶음(ASSIST)은 한도를 함께 쓴다")
+  void checklistAndAssistShareLimit() {
+    GptUsageGuard guard = guardAt(NOON);
+
+    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
+    assertThat(guard.tryUseText(ME, GptUsageKind.ASSIST)).isTrue();
+    assertThat(guard.tryUseText(ME, GptUsageKind.ASSIST)).isTrue();
+    // 합쳐서 3번이라 오늘은 더 못 부릅니다.
+    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isFalse();
+    assertThat(guard.tryUseText(ME, GptUsageKind.ASSIST)).isFalse();
+  }
+
+  @Test
   @DisplayName("작은 AI 기능과 글 호출은 한도를 따로 센다: 한쪽을 다 써도 다른 쪽은 그대로 쓸 수 있다")
   void assistLimitIsSeparateFromTextLimit() {
     GptUsageGuard guard = guardAt(NOON);
