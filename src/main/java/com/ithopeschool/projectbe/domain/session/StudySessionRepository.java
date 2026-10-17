@@ -11,6 +11,14 @@ import org.springframework.data.repository.query.Param;
 // study_sessions 테이블의 창구입니다. 모든 메서드에 userId 가 들어 있어서, 다른 사람의 기록이 섞이지 않습니다.
 public interface StudySessionRepository extends JpaRepository<StudySession, Long> {
 
+  // 추천에는 내 과목의 목표가 있는 공부 기록 세 개만 필요합니다. 같은 시작 시각은 번호로 정렬합니다.
+  List<StudySession>
+      findTop3ByUserIdAndSubjectIdAndKindAndTargetMinutesGreaterThanOrderByStartedAtDescIdDesc(
+          Long userId,
+          Long subjectId,
+          com.ithopeschool.projectbe.domain.plan.PlanKind kind,
+          int targetMinutes);
+
   // 내 기록 중에 [startedAt ~ endedAt] 과 시간이 겹치는 것이 있는지 알려줍니다.
   //
   // 두 기록이 겹친다 = "다른 기록의 시작이 내 끝보다 앞" 이고 "다른 기록의 끝이 내 시작보다 뒤"

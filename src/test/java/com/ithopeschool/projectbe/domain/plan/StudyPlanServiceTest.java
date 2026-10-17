@@ -51,7 +51,11 @@ class StudyPlanServiceTest {
     studyPlanRepository = mock(StudyPlanRepository.class);
     subjectRepository = mock(SubjectRepository.class);
     studyPlanService =
-        new StudyPlanService(currentUserProvider, studyPlanRepository, subjectRepository);
+        new StudyPlanService(
+            currentUserProvider,
+            studyPlanRepository,
+            subjectRepository,
+            mock(com.ithopeschool.projectbe.domain.routine.RoutineService.class));
     given(currentUserProvider.getCurrentUserId()).willReturn(ME);
     // 3번은 내 과목이고, 그 밖의 번호는 없는 과목이거나 남의 과목입니다.
     given(subjectRepository.findByIdAndUserId(any(), any())).willReturn(Optional.empty());

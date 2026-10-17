@@ -3,6 +3,7 @@ package com.ithopeschool.projectbe.domain.care;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ithopeschool.projectbe.domain.care.GoalAdjust.Kind;
+import com.ithopeschool.projectbe.domain.risk.RiskLevel;
 import com.ithopeschool.projectbe.domain.suggestion.ExperimentEffect;
 import com.ithopeschool.projectbe.domain.suggestion.SuggestionGrade;
 import java.time.Instant;
@@ -30,6 +31,34 @@ class GoalAdjustTest {
     // FE 예) goal-down: 최근 실제 평균 × 1.1 (반올림). 평균 100분, 지금 목표 240 → 110
     assertThat(GoalAdjust.propose(CareAction.GOAL_DOWN, 240, 100))
         .isEqualTo(new GoalAdjust(Kind.LOWER, 240, 110));
+  }
+
+  // ─── propose: 위험한 날(이슈 #49) ───
+
+  @Test
+  void riskyDayDoesNotRaiseTheGoal() {
+    // 무너지기 쉬운 날(주의 · 높음)에는 목표를 올리자고 하지 않습니다.
+    assertThat(GoalAdjust.propose(CareAction.CARROT_RAISE, 240, null, RiskLevel.WATCH)).isNull();
+    assertThat(GoalAdjust.propose(CareAction.CARROT_RAISE, 240, null, RiskLevel.HIGH)).isNull();
+  }
+
+  @Test
+  void riskyDayStillLowersTheGoal() {
+    // 낮추는 제안은 위험한 날에도 그대로입니다. 부담을 줄이는 쪽이라 막을 이유가 없습니다.
+    assertThat(GoalAdjust.propose(CareAction.GOAL_DOWN, 240, 100, RiskLevel.HIGH))
+        .isEqualTo(new GoalAdjust(Kind.LOWER, 240, 110));
+  }
+
+  @Test
+  void noRiskIsTheSameAsBefore() {
+    // 위험 없음(NONE)이면 위험 수준을 안 넘기는 propose 와 결과가 같습니다.
+    for (CareAction action : CareAction.values()) {
+      assertThat(GoalAdjust.propose(action, 240, 100, RiskLevel.NONE))
+          .as("%s", action)
+          .isEqualTo(GoalAdjust.propose(action, 240, 100));
+    }
+    assertThat(GoalAdjust.propose(CareAction.CARROT_RAISE, 240, null, RiskLevel.NONE))
+        .isEqualTo(new GoalAdjust(Kind.RAISE, 240, 264));
   }
 
   @Test
