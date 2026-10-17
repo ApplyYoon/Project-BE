@@ -2,6 +2,7 @@ package com.ithopeschool.projectbe.domain.checkin.dto;
 
 import com.ithopeschool.projectbe.domain.checkin.CheckIn;
 import com.ithopeschool.projectbe.domain.checkin.EmotionTag;
+import com.ithopeschool.projectbe.domain.safety.HelpLine;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -27,9 +28,51 @@ public record CheckInResponse(
     String promiseIf,
     String promiseThen,
     Boolean suggestionKept,
-    List<String> emotions) {
+    List<String> emotions,
+    boolean showHelp,
+    List<HelpLine> helpLines) {
+
+  @com.fasterxml.jackson.annotation.JsonProperty
+  public String helpMessage() {
+    return showHelp ? com.ithopeschool.projectbe.domain.safety.SafetyService.HELP_MESSAGE : null;
+  }
+
+  // 기존 호출자도 도움 안내가 없는 응답을 만들 수 있습니다.
+  public CheckInResponse(
+      String id,
+      LocalDate date,
+      String source,
+      Integer condition,
+      Integer mood,
+      String missReason,
+      String missReasonNote,
+      Integer expectedMinutes,
+      String promiseIf,
+      String promiseThen,
+      Boolean suggestionKept,
+      List<String> emotions) {
+    this(
+        id,
+        date,
+        source,
+        condition,
+        mood,
+        missReason,
+        missReasonNote,
+        expectedMinutes,
+        promiseIf,
+        promiseThen,
+        suggestionKept,
+        emotions,
+        false,
+        List.of());
+  }
 
   public static CheckInResponse from(CheckIn checkIn) {
+    return from(checkIn, false);
+  }
+
+  public static CheckInResponse from(CheckIn checkIn, boolean showHelp) {
     return new CheckInResponse(
         String.valueOf(checkIn.getId()),
         checkIn.getCheckInDate(),
@@ -43,6 +86,8 @@ public record CheckInResponse(
         checkIn.getPromiseThen(),
         checkIn.getSuggestionKept(),
         // EnumSet 이 아니어도 늘 같은 순서가 되도록 EmotionTag 순서로 다시 줄 세웁니다.
-        checkIn.getEmotions().stream().sorted().map(EmotionTag::name).toList());
+        checkIn.getEmotions().stream().sorted().map(EmotionTag::name).toList(),
+        showHelp,
+        showHelp ? HelpLine.ALL : List.of());
   }
 }

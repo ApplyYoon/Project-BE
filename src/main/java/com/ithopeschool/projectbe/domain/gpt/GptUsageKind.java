@@ -7,7 +7,7 @@ public enum GptUsageKind {
   CALL,
   // 통화가 끝난 뒤 대화를 요약 (CallReviewClient)
   CALL_REVIEW,
-  // 주간·월간·어제 한 줄 코치 문단 (CoachAiClient)
+  // 주간·월간·어제 한 줄 코치 문단과 입력 안전 판단 (CoachAiClient)
   COACH,
   // 말로 계획 세우기: 문장 → 계획 초안 (PlanParseClient, 이슈 #86)
   PLAN_PARSE,

@@ -102,6 +102,15 @@ class LoginRequiredFlowTest {
               "{\"name\":\"수학\",\"color\":\"red\"}"),
           new Api("PATCH", "/api/v1/subjects/{id}", "/api/v1/subjects/1", "{\"name\":\"수학\"}"),
           new Api("DELETE", "/api/v1/subjects/{id}", "/api/v1/subjects/1", null),
+          // 계획 루틴
+          new Api("GET", "/api/v1/routines", "/api/v1/routines", null),
+          new Api(
+              "POST",
+              "/api/v1/routines",
+              "/api/v1/routines",
+              "{\"weekdays\":[1],\"kind\":\"play\",\"content\":\"rest\",\"targetMinutes\":20}"),
+          new Api("PATCH", "/api/v1/routines/{id}", "/api/v1/routines/1", "{\"targetMinutes\":20}"),
+          new Api("DELETE", "/api/v1/routines/{id}", "/api/v1/routines/1", null),
           // 공부 계획
           new Api("GET", "/api/v1/study-plans", "/api/v1/study-plans?date=2026-10-12", null),
           new Api("POST", "/api/v1/study-plans", "/api/v1/study-plans", PLAN_BODY),
@@ -268,7 +277,10 @@ class LoginRequiredFlowTest {
           // 실패 원인 분석 (못 채운 날과 그 이유라서 학생의 정보입니다)
           new Api("GET", "/api/v1/stats/miss-reasons", "/api/v1/stats/miss-reasons", null),
           // 리듬·패턴 분석 (공부한 날·시간대·시험 날이라 학생의 정보입니다)
-          new Api("GET", "/api/v1/stats/rhythm", "/api/v1/stats/rhythm", null));
+          new Api("GET", "/api/v1/stats/rhythm", "/api/v1/stats/rhythm", null),
+          // 카드 체크리스트 추천 (내 지난 기록을 보고 AI 를 부릅니다. 이슈 #236)
+          new Api(
+              "POST", "/api/v1/ai/checklist", "/api/v1/ai/checklist", "{\"title\":\"수학 문제집\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

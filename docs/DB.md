@@ -12,6 +12,27 @@
 
 ```mermaid
 erDiagram
+    users ||--o{ routines : "user_id"
+    subjects ||--o{ routines : "subject_id"
+    users ||--o{ routine_applications : "user_id"
+    routines ||--o{ study_plans : "routine_id"
+    routines ||--o{ routine_applications : "routine_id"
+    routines {
+        bigint id PK "루틴 번호"
+        bigint user_id FK "주인"
+        varchar weekdays "반복 요일"
+        varchar kind "공부 또는 놀이"
+        bigint subject_id FK "과목"
+        varchar content "할 일"
+        int target_minutes "목표 분"
+        time start_time "시작 시각"
+    }
+    routine_applications {
+        bigint id PK "적용 기록 번호"
+        bigint user_id FK "주인"
+        bigint routine_id FK "원본 루틴 번호 (삭제 후에도 번호 유지)"
+        date plan_date "한 번 적용한 날짜"
+    }
     users ||--o{ subjects : "user_id"
     users ||--o{ study_plans : "user_id"
     users ||--o{ study_sessions : "user_id"
@@ -68,7 +89,7 @@ erDiagram
         boolean done "다 했으면 true, 아직이면 false"
         time start_time "시작할 시각, 몇 시 몇 분 (안 정했으면 비어 있음)"
         varchar kind "공부 계획인지 노는 계획인지 (STUDY, PLAY 중 하나)"
-        bigint routine_id "어떤 루틴이 만든 계획인지 (직접 만들었으면 비어 있음)"
+        bigint routine_id FK "어떤 루틴이 만든 계획인지 (직접 만들었으면 비어 있음)"
     }
     study_sessions {
         bigint id PK "기록을 구분하는 고유 번호"
@@ -330,6 +351,8 @@ erDiagram
 
 | 테이블 | 무엇을 담나 | 만든 이슈 |
 | ------ | ----------- | --------- |
+| routines | 요일마다 반복할 계획의 틀 | #85 |
+| routine_applications | 루틴을 날짜에 적용한 기록 (계획 삭제 후에도 유지) | #85 |
 | `users` | 서비스를 쓰는 사람 한 명이 한 줄 (별명, 가입 시각) | #3 |
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
 | `study_plans` | 하루의 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부, 시작 시각, 공부/노는 계획, 루틴) | #3 · #12 |
@@ -438,7 +461,7 @@ erDiagram
 
 > `study_plans` 의 `start_time` · `kind` · `routine_id` 는 2026-10-12 에 이슈 #12 에서 더했습니다. (칸 이름과 뜻은 Project#12 의 표, 시작 시각을 `time` 으로 저장하는 것은 학생이 정함)
 > - 공부 계획(`STUDY`)은 `subject_id` 가 꼭 있어야 하고, 노는 계획(`PLAY`)만 비어도 됩니다. DB 에도 검사 규칙(`ck_study_plans_study_has_subject`)으로 걸어 두었습니다.
-> - 루틴 테이블은 아직 없어서(#85) `routine_id` 는 지금 항상 비어 있고, 그림에 선도 없습니다.
+> - 루틴으로 만든 계획은 routine_id를 기록합니다(#85). 루틴 삭제 후에도 원본 번호와 적용 기록을 유지하므로 그림의 선은 논리적인 관계이고 DB의 삭제 제약은 아닙니다.
 
 ## 그림 읽는 법
 
