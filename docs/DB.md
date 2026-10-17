@@ -12,6 +12,14 @@
 
 ```mermaid
 erDiagram
+    users ||--o{ lock_events : "user_id"
+    lock_events {
+        bigint id PK "해제 기록 번호"
+        bigint user_id FK "기록의 주인"
+        timestamptz occurred_at "해제 시각"
+        varchar app_name "앱 이름"
+        varchar reason "한 줄 이유"
+    }
     users ||--o{ routines : "user_id"
     subjects ||--o{ routines : "subject_id"
     users ||--o{ routine_applications : "user_id"
@@ -358,9 +366,9 @@ erDiagram
 | 하루 요약 #34 | 대기 | 현재 `DaySummary` 계산 객체만 있고 저장 엔티티 없음 |
 | 개선안·실험 #52 | 대기 | 계산 객체만 있고 저장 엔티티 없음 |
 | 일기 #60 | 대기 | 저장 엔티티 없음 |
-| 잠금 해제 #67 | 작업 중 | 해당 기능 PR에서 엔티티·그림·운영 SQL을 함께 반영 |
+| 잠금 해제 #67 | 완료 | `lock_events` 엔티티·그림·운영 SQL 반영 |
 | 동의 기록 #71 | 완료 | PR #204가 반영되어 `consent_records` 이력과 그림이 있음 |
-| 계획 루틴 #85 | 작업 중 | 해당 기능 PR에서 엔티티·그림·운영 SQL을 함께 반영 |
+| 계획 루틴 #85 | 완료 | `routines`, `routine_applications` 엔티티·그림·운영 SQL 반영 |
 
 추가 테이블을 만드는 PR에서는 이 표의 상태도 함께 바꿉니다.
 미완료 기능이 있어 #74 전체를 완료 처리하지 않습니다.
@@ -369,6 +377,7 @@ erDiagram
 | ------ | ----------- | --------- |
 | routines | 요일마다 반복할 계획의 틀 | #85 |
 | routine_applications | 루틴을 날짜에 적용한 기록 (계획 삭제 후에도 유지) | #85 |
+| lock_events | 사용자별 잠금 해제 시각·앱·한 줄 이유 | #67 |
 | `users` | 서비스를 쓰는 사람 한 명이 한 줄 (별명, 가입 시각) | #3 |
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
 | `study_plans` | 하루의 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부, 시작 시각, 공부/노는 계획, 루틴) | #3 · #12 |

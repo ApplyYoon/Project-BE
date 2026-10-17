@@ -20,13 +20,19 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 
 // docs/DB.md 의 그림(mermaid)이 H2 에 "실제로 만들어진" 테이블과 같은지 확인합니다.
 // 컬럼을 바꿨는데 그림을 안 고치면(또는 그 반대면) 이 테스트가 실패합니다.
-// 이슈 #3·#85 에서 만든 6개 테이블을 비교하므로, 다른 사람이 그림에 테이블을 더해도 영향이 없습니다.
+// 이슈 #3·#67·#85 에서 만든 7개 테이블을 비교하므로, 다른 사람이 그림에 테이블을 더해도 영향이 없습니다.
 @DataJpaTest
 class DbDiagramTest {
 
   private static final List<String> OUR_TABLES =
       List.of(
-          "users", "subjects", "study_plans", "study_sessions", "routines", "routine_applications");
+          "users",
+          "subjects",
+          "study_plans",
+          "study_sessions",
+          "routines",
+          "routine_applications",
+          "lock_events");
 
   // 그림에서 쓰는 타입 이름 → H2 가 실제로 만든 타입 이름
   // (color 는 그림에서 varchar 라고 적지만 H2 는 ENUM 으로 만들고, PostgreSQL 은 varchar + check 로 만듭니다)
@@ -46,7 +52,7 @@ class DbDiagramTest {
   @Autowired private EntityManager em;
 
   @Test
-  @DisplayName("그림에 6개 테이블이 모두 그려져 있다")
+  @DisplayName("그림에 7개 테이블이 모두 그려져 있다")
   void diagramHasOurFourTables() throws IOException {
     assertThat(diagramTables().keySet()).containsAll(OUR_TABLES);
   }

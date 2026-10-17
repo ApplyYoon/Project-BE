@@ -127,6 +127,17 @@ class LoginRequiredFlowTest {
               "{\"date\":\"2026-10-12\",\"text\":\"수학 문제집 2시간\"}"),
           new Api("PATCH", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", "{\"done\":true}"),
           new Api("DELETE", "/api/v1/study-plans/{id}", "/api/v1/study-plans/1", null),
+          // 잠금 해제 기록
+          new Api(
+              "POST",
+              "/api/v1/lock-events",
+              "/api/v1/lock-events",
+              "{\"occurredAt\":\"2026-10-17T10:00:00Z\",\"appName\":\"app\",\"reason\":\"reason\"}"),
+          new Api(
+              "GET",
+              "/api/v1/lock-events/stats",
+              "/api/v1/lock-events/stats?startDate=2026-10-17&endDate=2026-10-17",
+              null),
           // 관리 설정
           new Api("GET", "/api/v1/settings", "/api/v1/settings", null),
           new Api("PATCH", "/api/v1/settings", "/api/v1/settings", "{\"maxHarshness\":5}"),
