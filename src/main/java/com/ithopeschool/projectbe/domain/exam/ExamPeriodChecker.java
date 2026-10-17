@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 // 한 학생이 오늘 "시험 기간"(시험 직전 3일 ~ 직후 2일)인지, DB 에 등록한 시험(#16)으로 알려 줍니다. (이슈 #58)
-// 시험 기간이면 안전 브레이크가 켜져서 관리 강도가 0(회복)이 됩니다. (SafetyBrake → CareLevel.of)
+// 시험 기간이면 관리 강도가 2(넛지)를 넘지 않습니다. (ExamPeriod.capCareLevel, 이슈 #232)
 //
 // 관리 강도를 정하는 쪽(#62)과 예약 작업이 "이 학생은 오늘 시험 기간인가" 를 볼 때 씁니다.
 // 로그인과 상관없이, 받을 사람의 번호로 그 사람의 시험만 찾습니다. (다른 사람의 시험은 섞이지 않습니다)

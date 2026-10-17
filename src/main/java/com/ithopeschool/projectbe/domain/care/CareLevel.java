@@ -62,7 +62,7 @@ public final class CareLevel {
   // yesterdayLevel: 어제의 관리 강도 (0~4)
   // action: 어제 결과에 따라 정한 대응 (CareDecision.decide 결과의 action)
   // maxLevel: 사용자가 정한 최대 한도 (0~4). 이 단계를 넘는 강도는 절대 쓰지 않습니다.
-  // isSafetyBrakeOn: 안전 브레이크가 켜졌는지 (위기 표현·시험 기간·기분 저하 등)
+  // isSafetyBrakeOn: 안전 브레이크가 켜졌는지 (위기 표현·기분 저하. 시험 기간은 0 이 아니라 ExamPeriod.capCareLevel 로 2 까지)
   public static int of(
       int yesterdayLevel, CareAction action, int maxLevel, boolean isSafetyBrakeOn) {
     checkLevel("어제 단계", yesterdayLevel);
