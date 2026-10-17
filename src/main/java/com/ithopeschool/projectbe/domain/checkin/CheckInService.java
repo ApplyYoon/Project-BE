@@ -109,6 +109,14 @@ public class CheckInService {
     return CheckInResponse.from(checkIn);
   }
 
+  // 내 체크인을 모두 지웁니다. 되돌릴 수 없습니다. 하나도 없어도 그대로 끝납니다. (설정의 "모든 기록 지우기", FE #321)
+  // 내 번호로만 지워서 다른 사람의 체크인은 그대로입니다.
+  @Transactional
+  public void deleteAll() {
+    Long userId = currentUserProvider.getCurrentUserId();
+    checkInRepository.deleteAllOfUser(userId);
+  }
+
   // 기간 안의 내 체크인 목록. from ~ to 는 둘 다 포함하는 날짜이고, 날짜 순서입니다.
   // 체크인을 안 한 날은 목록에 없고, 하나도 없으면 빈 목록입니다.
   @Transactional(readOnly = true)

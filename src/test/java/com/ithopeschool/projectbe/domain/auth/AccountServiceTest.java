@@ -153,7 +153,7 @@ class AccountServiceTest {
     ProfileResponse mine = accountService.getProfile();
 
     assertThat(mine.email()).isEqualTo("a@starflow.com");
-    assertThat(mine.name()).isEqualTo("김티맥");
+    assertThat(mine.name()).isEqualTo("에이");
     assertThat(mine.nickname()).isEqualTo("에이");
     assertThat(mine.schoolCode()).isEqualTo("7530560");
     assertThat(mine.schoolName()).isEqualTo("한국디지털미디어고등학교");
@@ -191,6 +191,20 @@ class AccountServiceTest {
   // ---- 내 정보 고치기 ----
 
   @Test
+  @DisplayName("기존 DB 실명은 응답에서 숨기고, 프로필 수정으로 덮어쓰거나 삭제하지 않는다")
+  void legacyRealNameIsNeverReturnedOrReplaced() {
+    Account account = accountRepository.findByUserId(idOfA).orElseThrow();
+    account.updateProfile("기존실명", null, null, false);
+    callWith(tokenOfA);
+    assertThat(accountService.getProfile().name()).isEqualTo("에이");
+
+    ProfileResponse updated =
+        accountService.updateProfile(new ProfileUpdateRequest("새실명", "새별명", null, null, false));
+    assertThat(updated.name()).isEqualTo("새별명");
+    assertThat(account.getName()).isEqualTo("기존실명");
+  }
+
+  @Test
   @DisplayName("이름·닉네임·학교·일기 분석 동의를 고치면 DB 에 반영되고, 남의 정보는 그대로다")
   void updateProfileChangesOnlyMine() {
     callWith(tokenOfA);
@@ -198,7 +212,7 @@ class AccountServiceTest {
         accountService.updateProfile(
             new ProfileUpdateRequest("김하늘", "하늘이", "1234567", "별빛고등학교", true));
 
-    assertThat(updated.name()).isEqualTo("김하늘");
+    assertThat(updated.name()).isEqualTo("하늘이");
     assertThat(updated.nickname()).isEqualTo("하늘이");
     assertThat(updated.schoolName()).isEqualTo("별빛고등학교");
     assertThat(updated.diaryAnalysis()).isTrue();
@@ -211,7 +225,7 @@ class AccountServiceTest {
     assertThat(accountRepository.findByUserId(idOfA).orElseThrow().isDiaryAnalysisAgreed())
         .isTrue();
     assertThat(userRepository.findById(idOfB).orElseThrow().getNickname()).isEqualTo("비이");
-    assertThat(accountRepository.findByUserId(idOfB).orElseThrow().getName()).isEqualTo("김티맥");
+    assertThat(accountRepository.findByUserId(idOfB).orElseThrow().getName()).isNull();
   }
 
   @Test

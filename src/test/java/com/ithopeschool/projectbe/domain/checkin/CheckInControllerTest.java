@@ -3,7 +3,10 @@ package com.ithopeschool.projectbe.domain.checkin;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -187,5 +190,17 @@ class CheckInControllerTest {
                 + "[\"STUCK\",\"ANXIOUS\",\"TIRED\",\"ANNOYED\",\"CALM\",\"MOTIVATED\",\"CALM\"]}")
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("감정 태그는 6개까지 고를 수 있어요"));
+  }
+
+  @Test
+  @DisplayName("모두 지우기는 204(본문 없음)이고, 로그인하지 않았으면 401 이다")
+  void deletesAll() throws Exception {
+    mockMvc.perform(delete("/api/v1/checkins")).andExpect(status().isNoContent());
+    verify(checkInService).deleteAll();
+
+    willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"))
+        .given(checkInService)
+        .deleteAll();
+    mockMvc.perform(delete("/api/v1/checkins")).andExpect(status().isUnauthorized());
   }
 }
