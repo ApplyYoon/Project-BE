@@ -58,6 +58,9 @@ erDiagram
     thinking_tests ||--o{ thinking_test_weaknesses : "thinking_test_id"
     users ||--o{ psych_tests : "user_id"
     users ||--o{ fixed_blocks : "user_id"
+    users ||--o{ goals : "user_id"
+    goals ||--o{ goal_target_snapshots : "goal_id"
+    goals ||--o{ cards : "goal_id"
     psych_tests ||--o{ psych_test_answers : "psych_test_id"
     onboarding_answers ||--o{ onboarding_answer_failure_causes : "onboarding_answer_id"
     onboarding_answers ||--o{ onboarding_answer_subject_levels : "onboarding_answer_id"
@@ -232,6 +235,35 @@ erDiagram
         bigint thinking_test_id FK "어느 테스트의 약점인지"
         varchar weakness "내가 꼽은 약점 칩 (GAME, PHONE, VIDEO, SLEEP, LAZY, DELAY, FOCUS, FRIENDS, TIRED, MOOD, PLANNING 중 하나)"
     }
+    goals {
+        bigint id PK "목표를 구분하는 고유 번호 (카드의 goal_id 가 가리킴)"
+        bigint user_id FK "목표의 주인"
+        varchar kind "유형 (SCORE 점수형, COMPLETION 완주형)"
+        varchar title "W 소망 - 목표 한 줄 (40자까지)"
+        date d_day "D-day"
+        varchar current_score "점수형의 지금 점수 · 등급 (20자까지, 완주형이면 비어 있음)"
+        int total_amount "완주형의 전체 분량 (점수형이면 비어 있음)"
+        varchar amount_unit "완주형의 분량 단위 (5자까지)"
+        varchar benefit "O 결과 - 이루면 좋은 점"
+        varchar cost "O 결과 - 안 하면 생길 일"
+        varchar obstacle "O 방해물 - 내 안의 방해물 1개"
+        varchar plan "P 계획 - 방해물이 생겼을 때의 대처"
+        varchar status "상태 (ACTIVE 진행, DONE 완료, GIVEN_UP 포기)"
+        varchar result "D-day 뒤에 적은 결과"
+        varchar given_up_reason "포기한 이유"
+        timestamptz created_at "목표를 만든 시각"
+    }
+    goal_target_snapshots {
+        bigint goal_id FK "어느 목표의 이력인지"
+        int position "몇 번째로 고쳤는지 (0부터)"
+        varchar title "고치기 전의 목표 한 줄"
+        date d_day "고치기 전의 D-day"
+        varchar current_score "고치기 전의 지금 점수"
+        int total_amount "고치기 전의 전체 분량"
+        varchar amount_unit "고치기 전의 단위"
+        timestamptz changed_at "이 값에서 바꾼 시각"
+        varchar reason "왜 바꿨는지"
+    }
     fixed_blocks {
         bigint id PK "고정 일정을 구분하는 고유 번호"
         bigint user_id FK "일정의 주인"
@@ -405,7 +437,7 @@ erDiagram
         varchar repeat_days "반복 요일을 쉼표로 이은 글자 (0 일 ~ 6 토, 예 1,3,5). 1회성 카드면 비어 있음"
         time start_time "시작 시각, 몇 시 몇 분 (옛 계획에서 옮긴 카드만 비어 있음)"
         int duration_minutes "길이(분), 1 ~ 600"
-        bigint goal_id "연결한 목표 번호 (목표 없음이면 비어 있음, 목표 테이블은 아직 없음 #221)"
+        bigint goal_id FK "연결한 목표 번호 (목표 없음이면 비어 있음)"
         varchar priority "우선순위 (ABSOLUTE 절대, FLEXIBLE 유연 중 하나)"
         varchar type "유형 (SELF 자습, LECTURE 인강 중 하나)"
         int expected_done "예상 달성 개수 (비어 있으면 체크리스트 전부)"
@@ -530,6 +562,8 @@ erDiagram
 | `psych_tests` | 온보딩 심리검사 한 번이 한 줄 (마친 시각). 다시 하면 새 줄이 쌓임. 척도 7개 점수는 답으로 계산(저장 안 함) | #219 |
 | `psych_test_answers` | 검사 한 번의 문장마다의 답(1 ~ 7)이 한 줄씩. 지금 검사 35개 · 옛 검사 14개 (`@ElementCollection`) | #219 |
 | `fixed_blocks` | 학교 · 학원처럼 요일마다 정해진 시간 하나가 한 줄 (이름, 반복 요일, 시작 · 끝 시각). 카드가 아니라 타이머 · 의지력 계산에서 빠짐 | #223 |
+| `goals` | 목표 하나가 한 줄 (WOOP: 목표 한 줄 · D-day · 지금 점수 또는 분량 · 이루면 좋은 점 · 안 하면 생길 일 · 방해물 · 대처, 상태). 지우지 않고 포기로 남김 | #221 |
+| `goal_target_snapshots` | 목표값을 고치기 전의 값과 이유가 고칠 때마다 한 줄씩. 지우지 않음 (`@ElementCollection`) | #221 |
 | `onboarding_answers` | 온보딩 설문 하나가 한 줄. 고칠 때마다 원래 줄을 두고 **새 줄이 쌓임** (처음 답한 자기 인식을 남기려고) | #21 |
 | `onboarding_answer_failure_causes` | 설문 하나에서 고른 "계획이 무너진 때" 가 한 줄씩 (`@ElementCollection`) | #21 |
 | `onboarding_answer_subject_levels` | 설문 하나의 과목별 최근 성적·자신감이 과목마다 한 줄씩 (`@ElementCollection`) | #21 |
@@ -614,6 +648,10 @@ erDiagram
 
 > `gpt_usages` 는 2026-10-17 에 이슈 #33 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 돕고 영어 이름만 같이 정했습니다)
 
+> `goals` · `goal_target_snapshots` 는 2026-10-17 에 이슈 #221 을 따라 **AI(Claude)가 만든** 테이블입니다. 고정 일정과 같은 이유로 멘토가 AI 가 만들기로 정했습니다. 칸은 FE 의 `Goal` 과 같은 이름입니다.
+> - **목표값 이력은 지우지 않습니다.** 목표를 슬쩍 낮추면 원래 목표를 잊기 쉬워서(기획서 3 · 7번 오류), 고칠 때마다 원래 값과 이유를 딸린 테이블에 쌓습니다.
+> - 다짐 녹음은 서버에 두지 않습니다. (미성년자 음성, 기기에만 — 2026-10-05 결정)
+
 > `fixed_blocks` 는 2026-10-17 에 이슈 #223 을 따라 **AI(Claude)가 만든** 테이블입니다. AI 하루 계획이 학교 · 학원 시간을 보려면 서버에 있어야 해서, 멘토가 AI 가 만들기로 정했습니다. (그전에는 FE 의 localStorage 에만 있었습니다) 칸은 FE 의 `FixedBlock` 과 같은 이름이고, 반복 요일은 카드(`cards.repeat_days`)와 같은 모양으로 한 칸에 적었습니다.
 
 > `psych_tests` · `psych_test_answers` 는 2026-10-17 에 이슈 #219 · 최종 기획서 6장을 따라 **AI(Claude)가 만든** 테이블입니다. 멘토가 "데이터가 쌓여야 AI 가 분석한다" 며 심리검사 결과를 서버에 쌓자고 정했고, 칸은 생각 습관 테스트(`thinking_tests`)와 같은 모양으로 했습니다. 문장마다의 답을 그대로 남기고 척도 점수는 저장하지 않습니다.
@@ -627,7 +665,7 @@ erDiagram
 > - 처음 이슈는 `study_plans` 에 칸을 더하는 것이었지만, **새 테이블 `cards`** 로 바꿨습니다. (#222 댓글) 반복 카드는 한 장이라 "날짜마다 한 줄" 인 `study_plans` 와 모양이 다르고, 옛 화면이 쓰는 `/study-plans` 를 깨지 않으려고 입니다.
 > - **반복 요일은 한 칸(`repeat_days`)에 `"1,3,5"` 처럼** 적습니다. 요일은 7개뿐이라 딸린 테이블로 빼지 않았습니다. 그날 하는 카드인지는 `Card.isOnDate` 가 FE 의 `isCardOnDate` 와 같은 규칙으로 봅니다.
 > - **체크리스트 · 예상 실패 원인은 여러 개라서 딸린 테이블**에 담았습니다. `position` 은 보낸 순서입니다. 체크했는지(`doneAt`)는 카드가 아니라 **그날의 세션 기록**(#224)에 남깁니다.
-> - `goal_id` 는 목표 테이블(#221)이 아직 없어서 **번호만 적고, 그림에 선도 없습니다.** 목표 테이블이 생기면 "내 목표인지" 검사를 더합니다.
+> - `goal_id` 는 목표 테이블(`goals`, #221)의 번호입니다. DB 의 외래 키는 걸지 않았습니다. 카드를 저장할 때 "내 목표인지" 검사는 #221 다음 PR 에서 더합니다.
 > - 알림 세 칸(`alert_*`)이 모두 비어 있으면 **기본 알림**(정각 · 메시지 · 기본 문구)입니다.
 > - 모든 줄에 `user_id` 가 있어서(딸린 테이블은 카드를 따라) 탈퇴하면 같이 지워집니다.
 

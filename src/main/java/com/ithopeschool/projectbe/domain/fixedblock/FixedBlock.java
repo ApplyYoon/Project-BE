@@ -109,8 +109,8 @@ public class FixedBlock {
   }
 
   // 끝 시각이 시작보다 뒤인지 (하루 시작 새벽 4시 기준). FE 의 validateFixedBlock 과 같습니다.
-  //   18:00 ~ 21:00 → true      18:00 ~ 17:00 → false      23:00 ~ 01:00 → true      03:00 ~ 05:00
-  // → false
+  //   18:00 ~ 21:00 → true      18:00 ~ 17:00 → false
+  //   23:00 ~ 01:00 → true      03:00 ~ 05:00 → false (새벽 4시를 넘으면 다음 날)
   public static boolean isEndAfterStart(LocalTime startTime, LocalTime endTime) {
     return dayMinutesOf(endTime) > dayMinutesOf(startTime);
   }

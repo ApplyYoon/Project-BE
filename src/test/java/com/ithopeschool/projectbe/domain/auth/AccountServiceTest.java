@@ -23,6 +23,8 @@ import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
 import com.ithopeschool.projectbe.domain.checkin.EmotionTag;
 import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
 import com.ithopeschool.projectbe.domain.consent.ConsentService;
+import com.ithopeschool.projectbe.domain.goal.Goal;
+import com.ithopeschool.projectbe.domain.goal.GoalKind;
 import com.ithopeschool.projectbe.domain.insight.Insight;
 import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
 import com.ithopeschool.projectbe.domain.onboarding.Grade;
@@ -596,6 +598,8 @@ class AccountServiceTest {
           Map.entry("SESSION_CHECKED_ITEMS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"}),
           Map.entry("SESSION_GOOD_REASONS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"}),
           Map.entry("SESSION_MEMOS", new String[] {"STUDY_SESSIONS", "STUDY_SESSION_ID"}),
+          // 목표(goals)에 매달린 "목표값을 고치기 전의 값" (이슈 #221)
+          Map.entry("GOAL_TARGET_SNAPSHOTS", new String[] {"GOALS", "GOAL_ID"}),
           // 체크인(checkins)에 매달린 하루 첫 태그의 감정들 (이슈 #220)
           Map.entry("CHECKIN_EMOTIONS", new String[] {"CHECKINS", "CHECKIN_ID"}),
           // 보여 준 인사이트(insights)에 매달린 근거 날짜 (이슈 #43)
@@ -661,6 +665,19 @@ class AccountServiceTest {
           EnumSet.of(GoodReason.FOCUS));
       cardSession.recordMemos(List.of(new SessionMemo(NOW.minusSeconds(5000), "메모")));
       entityManager.persist(cardSession);
+      // 목표값을 한 번 고친 목표 (딸린 테이블 goal_target_snapshots 에 줄이 생깁니다)
+      Goal goal =
+          new Goal(
+              userId,
+              GoalKind.SCORE,
+              new Goal.Target("수학 3등급", LocalDate.of(2026, 11, 19), "5등급", null, null),
+              new Goal.Woop("자신감", "후회", "폰", "폰을 다른 방에"),
+              NOW);
+      goal.changeTarget(
+          new Goal.Target("수학 4등급", LocalDate.of(2026, 11, 19), "5등급", null, null),
+          "시간이 모자라서",
+          NOW);
+      entityManager.persist(goal);
       // 감정 태그가 붙은 체크인 (딸린 테이블 checkin_emotions 에 줄이 생깁니다)
       CheckIn checkIn =
           new CheckIn(
