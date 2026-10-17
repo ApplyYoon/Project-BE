@@ -3,7 +3,10 @@ package com.ithopeschool.projectbe.domain.checkin;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -70,7 +73,18 @@ class CheckInControllerTest {
     given(checkInService.save(eq(DATE), any()))
         .willReturn(
             new CheckInResponse(
-                "3", DATE, "manual", 4, 3, "etc", "동아리 발표", 120, "폰을 보고 싶으면", "물 한 잔 마신다", true));
+                "3",
+                DATE,
+                "manual",
+                4,
+                3,
+                "etc",
+                "동아리 발표",
+                120,
+                "폰을 보고 싶으면",
+                "물 한 잔 마신다",
+                true,
+                List.of("STUCK")));
 
     save(
             "2026-10-17",
@@ -93,7 +107,7 @@ class CheckInControllerTest {
     given(checkInService.save(eq(DATE), any()))
         .willReturn(
             new CheckInResponse(
-                "3", DATE, "quick", null, null, null, null, null, null, null, null));
+                "3", DATE, "quick", null, null, null, null, null, null, null, null, List.of()));
 
     save("2026-10-17", "{\"source\":\"quick\"}")
         .andExpect(status().isOk())
@@ -134,7 +148,8 @@ class CheckInControllerTest {
     given(checkInService.getCheckIns(LocalDate.parse("2026-10-01"), LocalDate.parse("2026-10-07")))
         .willReturn(
             List.of(
-                new CheckInResponse("3", DATE, "quick", 3, 3, null, null, 90, null, null, null)));
+                new CheckInResponse(
+                    "3", DATE, "quick", 3, 3, null, null, 90, null, null, null, List.of())));
 
     mockMvc
         .perform(get("/api/v1/checkins?from=2026-10-01&to=2026-10-07"))
@@ -155,5 +170,37 @@ class CheckInControllerTest {
         .willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"));
 
     save("2026-10-17", "{\"source\":\"manual\"}").andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("감정 태그는 응답에 배열로 나오고, 7개 이상 보내면 400")
+  void emotionsInAndOut() throws Exception {
+    given(checkInService.save(eq(DATE), any()))
+        .willReturn(
+            new CheckInResponse(
+                "3", DATE, "quick", 2, null, null, null, 90, null, null, null, List.of("STUCK")));
+
+    save("2026-10-17", "{\"source\":\"quick\",\"condition\":2,\"emotions\":[\"STUCK\"]}")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.emotions[0]").value("STUCK"));
+
+    save(
+            "2026-10-17",
+            "{\"source\":\"quick\",\"emotions\":"
+                + "[\"STUCK\",\"ANXIOUS\",\"TIRED\",\"ANNOYED\",\"CALM\",\"MOTIVATED\",\"CALM\"]}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("감정 태그는 6개까지 고를 수 있어요"));
+  }
+
+  @Test
+  @DisplayName("모두 지우기는 204(본문 없음)이고, 로그인하지 않았으면 401 이다")
+  void deletesAll() throws Exception {
+    mockMvc.perform(delete("/api/v1/checkins")).andExpect(status().isNoContent());
+    verify(checkInService).deleteAll();
+
+    willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"))
+        .given(checkInService)
+        .deleteAll();
+    mockMvc.perform(delete("/api/v1/checkins")).andExpect(status().isUnauthorized());
   }
 }

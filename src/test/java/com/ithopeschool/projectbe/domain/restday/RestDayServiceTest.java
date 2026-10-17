@@ -65,22 +65,26 @@ class RestDayServiceTest {
   }
 
   @Test
-  @DisplayName("내일은 400, 이미 처리한 날은 409, 그달 4번을 다 썼으면 409")
+  @DisplayName("내일 · 8일째는 400, 이미 처리한 날은 409, 그달 4번을 다 썼으면 409")
   void checks() {
     assertError(
         () -> service.rest(OCT_12.plusDays(1)),
         ErrorCode.VALIDATION_ERROR,
-        "휴식 처리는 지난 날이나 오늘만 할 수 있어요");
+        "휴식 처리는 오늘부터 7일 전까지만 할 수 있어요");
+    assertError(
+        () -> service.rest(OCT_12.minusDays(7)),
+        ErrorCode.VALIDATION_ERROR,
+        "휴식 처리는 오늘부터 7일 전까지만 할 수 있어요");
 
     given(restDayRepository.existsByUserIdAndRestDate(ME, OCT_12)).willReturn(true);
     assertError(() -> service.rest(OCT_12), ErrorCode.CONFLICT, "이미 휴식으로 처리한 날이에요");
 
+    // 한도는 그 날짜의 달(10월)로 셉니다. (7일 안의 날짜여야 해서 10월 10일로 봅니다)
     given(
             restDayRepository.countByUserIdAndRestDateBetween(
-                ME, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30)))
+                ME, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31)))
         .willReturn(4L);
-    assertError(
-        () -> service.rest(LocalDate.of(2026, 9, 20)), ErrorCode.CONFLICT, "휴식 처리는 한 달에 4번까지예요");
+    assertError(() -> service.rest(OCT_12.minusDays(2)), ErrorCode.CONFLICT, "휴식 처리는 한 달에 4번까지예요");
     verify(restDayRepository, never()).save(any());
   }
 

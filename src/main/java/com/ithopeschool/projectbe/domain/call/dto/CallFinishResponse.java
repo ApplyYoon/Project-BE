@@ -1,6 +1,9 @@
 package com.ithopeschool.projectbe.domain.call.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
+import com.ithopeschool.projectbe.domain.safety.HelpLine;
+import java.util.List;
 
 // 통화를 마무리한 결과입니다. FE 의 통화 결과 화면(/call/result)이 이 값으로 "오늘의 결론" 을 보여 줍니다.
 //
@@ -26,6 +29,16 @@ public record CallFinishResponse(
     Boolean promiseKept,
     Integer mood,
     Integer expectedMinutes) {
+
+  @JsonProperty
+  public String helpMessage() {
+    return showHelp ? com.ithopeschool.projectbe.domain.safety.SafetyService.HELP_MESSAGE : null;
+  }
+
+  @JsonProperty
+  public List<HelpLine> helpLines() {
+    return showHelp ? HelpLine.ALL : List.of();
+  }
 
   // 대답에서 보인 생각 습관 하나. 이름은 생각에 붙이는 이름입니다. ("너는 ~형" 이 아니라 "그런 생각을 ~라고 해")
   // key: 습관을 구분하는 이름 (CognitiveBias 의 이름 그대로) / label: 보여 줄 이름 / description: 어떤 생각인지
