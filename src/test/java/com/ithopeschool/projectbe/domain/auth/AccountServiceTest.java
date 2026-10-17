@@ -18,13 +18,20 @@ import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallRecord;
 import com.ithopeschool.projectbe.domain.card.Card;
 import com.ithopeschool.projectbe.domain.card.ChecklistItem;
+import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
+import com.ithopeschool.projectbe.domain.checkin.EmotionTag;
 import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
 import com.ithopeschool.projectbe.domain.consent.ConsentService;
+import com.ithopeschool.projectbe.domain.insight.Insight;
 import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
 import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.SubjectLevel;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
+import com.ithopeschool.projectbe.domain.risk.RiskForecast;
+import com.ithopeschool.projectbe.domain.risk.RiskLevel;
+import com.ithopeschool.projectbe.domain.risk.RiskReason;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.subject.Subject;
 import com.ithopeschool.projectbe.domain.subject.SubjectColor;
@@ -548,7 +555,13 @@ class AccountServiceTest {
               new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
           // 카드(cards)에 매달린 체크리스트와 예상 실패 원인 (이슈 #222)
           "CARD_CHECKLIST_ITEMS", new String[] {"CARDS", "CARD_ID"},
-          "CARD_EXPECTED_FAIL_CAUSES", new String[] {"CARDS", "CARD_ID"});
+          "CARD_EXPECTED_FAIL_CAUSES", new String[] {"CARDS", "CARD_ID"},
+          // 체크인(checkins)에 매달린 하루 첫 태그의 감정들 (이슈 #220)
+          "CHECKIN_EMOTIONS", new String[] {"CHECKINS", "CHECKIN_ID"},
+          // 보여 준 인사이트(insights)에 매달린 근거 날짜 (이슈 #43)
+          "INSIGHT_EVIDENCE_DATES", new String[] {"INSIGHTS", "INSIGHT_ID"},
+          // 위험 예측(risk_forecasts)에 매달린 "위험하다고 본 이유" (이슈 #49)
+          "RISK_FORECAST_REASONS", new String[] {"RISK_FORECASTS", "RISK_FORECAST_ID"});
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
@@ -579,6 +592,38 @@ class AccountServiceTest {
               NOW);
       card.changeExpectedFailCauses(List.of("폰을 볼 것 같다"));
       entityManager.persist(card);
+      // 감정 태그가 붙은 체크인 (딸린 테이블 checkin_emotions 에 줄이 생깁니다)
+      CheckIn checkIn =
+          new CheckIn(
+              userId,
+              LocalDate.of(2026, 10, 15),
+              CheckInSource.QUICK,
+              3,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null);
+      checkIn.replaceEmotions(EnumSet.of(EmotionTag.STUCK, EmotionTag.TIRED));
+      entityManager.persist(checkIn);
+      // 인사이트의 근거 날짜(딸린 테이블)에도 줄이 있어야 합니다.
+      entityManager.persist(
+          new Insight(
+              userId,
+              "오전에 더 오래 집중했어요",
+              "morning-vs-night",
+              false,
+              LocalDate.of(2026, 10, 17),
+              List.of(LocalDate.of(2026, 10, 3), LocalDate.of(2026, 10, 10))));
+      // 위험 예측의 딸린 테이블(이유)도 같은 이유로 줄을 넣어 둡니다.
+      entityManager.persist(
+          new RiskForecast(
+              userId,
+              LocalDate.of(2026, 10, 12),
+              RiskLevel.WATCH,
+              EnumSet.of(RiskReason.LATE_SLEEP)));
     }
     entityManager.flush();
     callWith(tokenOfA);
@@ -586,6 +631,9 @@ class AccountServiceTest {
     accountService.withdraw(new WithdrawRequest(PASSWORD, null));
     entityManager.flush();
     entityManager.clear();
+
+    // 비이의 감정 2줄만 남고, 에이의 감정은 체크인과 함께 지워집니다.
+    assertThat(countCollectionRows("checkin_emotions")).isEqualTo(2);
 
     // information_schema 는 DB 가 자기 테이블 정보를 적어 두는 곳입니다. 엔티티 목록이 아니라 "실제로 만들어진 테이블" 을 봅니다.
     List<String> tables =

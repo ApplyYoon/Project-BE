@@ -10,6 +10,7 @@ import com.ithopeschool.projectbe.domain.message.MessageKind;
 import com.ithopeschool.projectbe.domain.message.MessageRepository;
 import com.ithopeschool.projectbe.domain.message.MessageService;
 import com.ithopeschool.projectbe.domain.safety.QuietHours;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.domain.settings.QuietHoursSettings;
 import com.ithopeschool.projectbe.domain.thinkingtest.StudyStyle;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
@@ -56,6 +57,7 @@ public class HabitNudgeJob implements ScheduledJob {
   private final JobResultStore resultStore;
   // 학생마다 관리 설정의 연락 금지 시간을 읽어 옵니다. (#22, #57)
   private final QuietHoursSettings quietHoursSettings;
+  private final SafetyService safetyService;
 
   @Override
   public String name() {
@@ -80,6 +82,9 @@ public class HabitNudgeJob implements ScheduledJob {
 
   // 한 학생에게 보냅니다. 보냈으면(앱 목록에 남겼으면) true
   private boolean sendTo(Long userId, JobContext context) {
+    if (safetyService.isActive(userId)) {
+      return false;
+    }
     // 1) 그 학생의 연락 금지 시간 (보내도 될 때만 SEND)
     QuietHours.Decision decision =
         QuietHours.decide(

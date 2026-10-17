@@ -11,6 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.ithopeschool.projectbe.domain.coach.dto.CoachCommentRequest;
+import com.ithopeschool.projectbe.domain.coach.dto.CoachParagraphResponse;
 import com.ithopeschool.projectbe.domain.coach.dto.WeeklyCoachRequest;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
@@ -385,5 +386,19 @@ class CoachServiceTest {
         .isInstanceOf(ApiException.class);
     assertThatThrownBy(() -> coachService.monthlyParagraph(COMMENT_REQUEST))
         .isInstanceOf(ApiException.class);
+  }
+
+  @Test
+  @DisplayName("근거 숫자 목록은 받은 숫자 그대로다. 문단이 있어도, 없어도(AI 꺼짐) 들어 있다 (이슈 #87)")
+  void evidenceIsTheNumbersWeGot() {
+    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
+    assertThat(coachService.weeklyParagraph(REQUEST).evidence()).isEqualTo(NUMBERS);
+    // 두 번째는 받아 둔 문단을 돌려줄 때입니다.
+    assertThat(coachService.weeklyParagraph(REQUEST).evidence()).isEqualTo(NUMBERS);
+
+    given(coachAiClient.isEnabled()).willReturn(false);
+    CoachParagraphResponse none = coachService.weeklyParagraph(weekOf("2026-09-28"));
+    assertThat(none.paragraph()).isNull();
+    assertThat(none.evidence()).isEqualTo(NUMBERS);
   }
 }
