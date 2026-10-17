@@ -40,6 +40,7 @@ cron-job.org (알람 시계)                         Render 의 BE 서버
 | `domain/push/HabitNudgeJob.java` | `habit-nudge` 작업. 하루 한 번 "오늘의 작전" 알림 (아래 6-4) |
 | `domain/push/CallRingJob.java` | `call-ring` 작업. 정해 둔 AI 전화 시간에 전화 알림 (아래 6-5) |
 | `domain/risk/RiskConfirmJob.java` | `risk-confirm` 작업. 그날이 지난 위험 예측에 실제 달성률과 맞았는지를 채움 (아래 6-6) |
+| `domain/school/SchoolEventsJob.java` | `school-events` 작업. 우리 학생이 고른 학교의 학사일정을 NEIS 에서 새로 받음 (아래 6-7) |
 | `domain/job/JobResultStore.java` | 결과를 "작업 이름 + 날짜" 한 칸에 **덮어써서** 저장 (연습용 메모리 저장소) |
 | `global/time/DayRule.java` | **하루의 기준(새벽 4시, 한국 시간)** 계산기. 날짜별로 세는 곳은 모두 이걸 씀 |
 | `global/config/ClockConfig.java` | 시계. 테스트에서 시간을 고정하려고 따로 둠 |
@@ -261,6 +262,29 @@ curl -i -X POST http://localhost:8080/api/v1/jobs/call-ring -H "X-Job-Key: local
 
 ```bash
 curl -i -X POST http://localhost:8080/api/v1/jobs/risk-confirm -H "X-Job-Key: local-job-key"
+```
+
+### 6-7. 학교 학사일정 새로 받기 (`school-events`)
+
+우리 학생이 가입 때 고른 학교마다 **학사일정**(정기시험 · 모의평가 · 방학)을 교육부 NEIS 에서 새로 받아 둡니다. (이슈 #282, `domain/school/SchoolEventsJob.java`)
+화면이 물을 때도 24시간이 지났으면 새로 받지만, 앱을 안 여는 날에도 일정이 최신이도록 하루 한 번 돌립니다.
+
+| 칸 | 값 |
+| -- | -- |
+| URL | `https://<받은 주소>/api/v1/jobs/school-events` |
+| 실행 주기 | **하루 한 번, 새벽 5시** |
+| 요청 방법 | **POST** |
+| 헤더 | 이름 `X-Job-Key`, 값 = Render 에 넣은 **같은 키** |
+
+- 받은 지 **20시간이 안 된 학교는 건너뜁니다.** 그래서 같은 작업이 두 번 돌아도 NEIS 를 두 번 부르지 않습니다.
+- 학교마다 그 기간 일정을 **통째로 바꿔 넣습니다.** NEIS 가 멈추면 그 학교는 받아 둔 일정을 그대로 둡니다.
+- Render 에 `NEIS_API_KEY` 가 있으면 학교마다 한 번에 받습니다. **없으면** 한 주씩 나눠 받아서 학교 하나에 15~20번을 부릅니다. 학교가 많아지면 30초 제한에 걸리니 키를 꼭 넣어 주세요.
+- 로그에는 `[학사일정] 학교 n곳 중 m곳의 일정이 최신이에요.` 처럼 **숫자만** 남깁니다.
+
+**내 컴퓨터에서 시험**
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/jobs/school-events -H "X-Job-Key: local-job-key"
 ```
 
 ## 7. 알아 둘 점
