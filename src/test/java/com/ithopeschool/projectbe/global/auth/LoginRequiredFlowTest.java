@@ -349,7 +349,20 @@ class LoginRequiredFlowTest {
               "POST",
               "/api/v1/ai/settings-from-text",
               "/api/v1/ai/settings-from-text",
-              "{\"text\":\"아침엔 알림 꺼 줘\"}"));
+              "{\"text\":\"아침엔 알림 꺼 줘\"}"),
+          // 위험 예측 (무너질 가능성이 높은 날과 그 이유라서 학생의 정보입니다. 이슈 #49)
+          new Api(
+              "POST",
+              "/api/v1/risk-forecasts",
+              "/api/v1/risk-forecasts",
+              "{\"date\":\"2026-10-13\"}"),
+          new Api(
+              "GET", "/api/v1/risk-forecasts/{date}", "/api/v1/risk-forecasts/2026-10-13", null),
+          new Api(
+              "GET",
+              "/api/v1/risk-forecasts",
+              "/api/v1/risk-forecasts?from=2026-10-01&to=2026-10-31",
+              null));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

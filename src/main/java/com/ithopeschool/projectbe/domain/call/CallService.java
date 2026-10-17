@@ -12,6 +12,8 @@ import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
 import com.ithopeschool.projectbe.domain.exam.Exam;
 import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.risk.RiskLevel;
+import com.ithopeschool.projectbe.domain.risk.RiskService;
 import com.ithopeschool.projectbe.domain.safety.LowMoodStreak;
 import com.ithopeschool.projectbe.domain.safety.SafetyBrake;
 import com.ithopeschool.projectbe.domain.safety.SafetyService;
@@ -46,6 +48,7 @@ import org.springframework.stereotype.Service;
 //   6. 학생 카드와 지난 통화로 대본(지침)을 만든다 (CallScript: 기록에 따라 질문과 말투가 달라집니다)
 //      학생 카드의 숫자는 서버 DB 의 그 사람 기록으로 계산합니다. (CallCardLoader, 이슈 #28)
 //      서버에 계획·공부 기록이 아직 없으면(FE 가 기기에만 저장하던 학생) FE 가 보낸 카드를 씁니다.
+//      오늘이 무너지기 쉬운 날이면 대본에 "표시" 를 넣습니다. (RiskService.levelOn: 위험 예측 이슈 #49. 저장하지 않고 지금 기록으로 계산)
 //   7. OpenAI 에서 그 대본이 묶인 임시 키를 받는다 (못 받으면 503)
 //   8. 통화 기록을 한 줄 만들고, GPT 호출 기록에도 "통화 시작" 을 남긴 뒤, 임시 키와 기록 번호를 돌려준다
 //
@@ -78,6 +81,8 @@ public class CallService {
   private final CallCardLoader callCardLoader;
   private final Clock clock;
   private final SafetyService safetyService;
+  // 오늘이 무너지기 쉬운 날인지 알려 줍니다. (이슈 #49)
+  private final RiskService riskService;
 
   public CallService(
       CurrentUserProvider currentUserProvider,
@@ -90,7 +95,8 @@ public class CallService {
       ExamRepository examRepository,
       CallCardLoader callCardLoader,
       Clock clock,
-      SafetyService safetyService) {
+      SafetyService safetyService,
+      RiskService riskService) {
     this.currentUserProvider = currentUserProvider;
     this.callKeyClient = callKeyClient;
     this.gptUsageGuard = gptUsageGuard;
@@ -102,6 +108,7 @@ public class CallService {
     this.callCardLoader = callCardLoader;
     this.clock = clock;
     this.safetyService = safetyService;
+    this.riskService = riskService;
   }
 
   public CallSessionResponse startSession(CallSessionRequest request) {
@@ -173,6 +180,8 @@ public class CallService {
             foundBiasesOf(recentCalls),
             askedQuestionKeysOf(recentCalls),
             selfReport.biases());
+    // 오늘이 무너지기 쉬운 날이면 대본에 "표시" 로 넘깁니다. 이유(수면 등)는 넘기지 않고 위험 정도만 넘깁니다.
+    RiskLevel riskLevel = riskService.levelOn(userId, today);
     String instructions =
         channel == CallChannel.CHAT
             ? CallScript.chatInstructions(
@@ -181,14 +190,16 @@ public class CallService {
                 card,
                 biasQuestion,
                 pastCallsOf(recentCalls),
-                selfReport)
+                selfReport,
+                riskLevel)
             : CallScript.instructions(
                 careLevel,
                 request.maxHarshness(),
                 card,
                 biasQuestion,
                 pastCallsOf(recentCalls),
-                selfReport);
+                selfReport,
+                riskLevel);
     return new Script(instructions, biasQuestion);
   }
 
