@@ -146,7 +146,7 @@ public class AuthService {
     if (accountRepository.existsByEmail(normalizeEmail(profile.email()))) {
       throw new ApiException(ErrorCode.CONFLICT, EMAIL_ACCOUNT_EXISTS_MESSAGE);
     }
-    return GoogleLoginResponse.signupRequired(profile.name(), profile.email());
+    return GoogleLoginResponse.signupRequired("", profile.email());
   }
 
   // 구글로 가입하기: 가입 화면에서 받은 정보와 동의로 계정을 만들고, 바로 로그인 토큰을 돌려줍니다.
