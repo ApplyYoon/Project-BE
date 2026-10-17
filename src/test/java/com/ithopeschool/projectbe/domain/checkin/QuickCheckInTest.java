@@ -8,13 +8,18 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-// "1탭 체크인" 규칙(이슈 #24)을 확인합니다.
+// "하루 첫 태그(1탭 체크인)" 규칙(이슈 #24 · #220)을 확인합니다.
 // feExample 로 시작하는 테스트는 FE 함수(src/lib/quickCheckIn.ts) 주석의 예시를 그대로 옮긴 것입니다.
 // 나머지 기대값도 FE 함수를 직접 돌려서 나온 값과 같습니다.
 class QuickCheckInTest {
+
+  // 감정 태그를 안 고른 경우
+  private static final Set<EmotionTag> NONE = EnumSet.noneOf(EmotionTag.class);
 
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
@@ -84,58 +89,66 @@ class QuickCheckInTest {
     assertThat(QuickCheckIn.plannedMinutes(plans, 120)).isEqualTo(60);
   }
 
-  // ─── 기분 하나로 체크인 만들기 ───
+  // ─── 컨디션 · 감정 태그 (이슈 #220) ───
 
   @Test
-  void feExampleConditionIsFilledWithTheMood() {
-    // FE 예) makeQuickCheckIn('2026-10-10', 4, 90) → 날짜 10/10, 컨디션 4, 기분 4, 예상 90분
-    assertThat(QuickCheckIn.of(october(10), 4, 90))
-        .isEqualTo(new QuickCheckIn(october(10), 4, 4, 90));
+  void conditionAndEmotionsAreKeptAsGiven() {
+    // 10/10 09:00 에 컨디션 4 · [막막함, 피곤함] → 컨디션 4 그대로, 감정 태그 그대로 (기분에 복사하지 않습니다)
+    QuickCheckIn checkIn =
+        QuickCheckIn.of(
+            at(10, 9, 0), 4, EnumSet.of(EmotionTag.STUCK, EmotionTag.TIRED), PLANS, DAILY_GOAL);
+
+    assertThat(checkIn.condition()).isEqualTo(4);
+    assertThat(checkIn.emotions()).containsExactly(EmotionTag.STUCK, EmotionTag.TIRED);
   }
 
   @Test
-  void lowestMoodAlsoFillsTheCondition() {
-    assertThat(QuickCheckIn.of(october(10), 1, 0))
-        .isEqualTo(new QuickCheckIn(october(10), 1, 1, 0));
+  void emotionsAreCopiedSoLaterChangesDoNotLeakIn() {
+    Set<EmotionTag> picked = EnumSet.of(EmotionTag.CALM);
+    QuickCheckIn checkIn = QuickCheckIn.of(at(10, 9, 0), 3, picked, PLANS, DAILY_GOAL);
+
+    // 고른 목록을 나중에 바꿔도 이미 만든 체크인은 그대로입니다.
+    picked.add(EmotionTag.ANXIOUS);
+    assertThat(checkIn.emotions()).containsExactly(EmotionTag.CALM);
   }
 
-  // ─── 지금 고른 기분으로 오늘의 체크인 만들기 ───
+  // ─── 지금 고른 컨디션으로 오늘의 체크인 만들기 ───
 
   @Test
   void usesTodaysStudyPlansAsTheExpectedMinutes() {
-    // 10/10 09:00 에 기분 4 → 10/10 의 공부 계획 60 + 30 = 90분 (놀기 20분과 10/09 계획은 세지 않습니다)
-    assertThat(QuickCheckIn.of(at(10, 9, 0), 4, PLANS, DAILY_GOAL))
-        .isEqualTo(new QuickCheckIn(october(10), 4, 4, 90));
+    // 10/10 09:00 에 컨디션 4 → 10/10 의 공부 계획 60 + 30 = 90분 (놀기 20분과 10/09 계획은 세지 않습니다)
+    assertThat(QuickCheckIn.of(at(10, 9, 0), 4, NONE, PLANS, DAILY_GOAL))
+        .isEqualTo(new QuickCheckIn(october(10), 4, NONE, 90));
   }
 
   @Test
   void beforeFourAmIsThePreviousDay() {
     // 새벽 1시에 누르면 전날(10/09)의 체크인이고, 예상 시간도 10/09 계획(45분)입니다.
-    assertThat(QuickCheckIn.of(at(10, 1, 0), 2, PLANS, DAILY_GOAL))
-        .isEqualTo(new QuickCheckIn(october(9), 2, 2, 45));
+    assertThat(QuickCheckIn.of(at(10, 1, 0), 2, NONE, PLANS, DAILY_GOAL))
+        .isEqualTo(new QuickCheckIn(october(9), 2, NONE, 45));
     // 03:59 까지는 전날입니다.
-    assertThat(QuickCheckIn.of(at(10, 3, 59), 2, PLANS, DAILY_GOAL))
-        .isEqualTo(new QuickCheckIn(october(9), 2, 2, 45));
+    assertThat(QuickCheckIn.of(at(10, 3, 59), 2, NONE, PLANS, DAILY_GOAL))
+        .isEqualTo(new QuickCheckIn(october(9), 2, NONE, 45));
   }
 
   @Test
   void fourAmStartsTheNewDay() {
     // 04:00 부터는 그날(10/10)입니다.
-    assertThat(QuickCheckIn.of(at(10, 4, 0), 2, PLANS, DAILY_GOAL))
-        .isEqualTo(new QuickCheckIn(october(10), 2, 2, 90));
+    assertThat(QuickCheckIn.of(at(10, 4, 0), 2, NONE, PLANS, DAILY_GOAL))
+        .isEqualTo(new QuickCheckIn(october(10), 2, NONE, 90));
   }
 
   @Test
   void dayWithoutPlansUsesTheDailyGoal() {
     // 10/11 에는 계획이 없어서, 처음 계획에서 정한 하루 목표(120분)를 예상으로 씁니다.
-    assertThat(QuickCheckIn.of(at(11, 9, 0), 3, PLANS, DAILY_GOAL))
-        .isEqualTo(new QuickCheckIn(october(11), 3, 3, 120));
+    assertThat(QuickCheckIn.of(at(11, 9, 0), 3, NONE, PLANS, DAILY_GOAL))
+        .isEqualTo(new QuickCheckIn(october(11), 3, NONE, 120));
   }
 
   @Test
   void dayWithoutPlansAndWithoutDailyGoalIsZero() {
     // 계획도 없고 처음 계획도 세우지 않았으면 예상은 0분입니다.
-    assertThat(QuickCheckIn.of(at(11, 9, 0), 3, PLANS, 0))
-        .isEqualTo(new QuickCheckIn(october(11), 3, 3, 0));
+    assertThat(QuickCheckIn.of(at(11, 9, 0), 3, NONE, PLANS, 0))
+        .isEqualTo(new QuickCheckIn(october(11), 3, NONE, 0));
   }
 }

@@ -12,6 +12,27 @@
 
 ```mermaid
 erDiagram
+    users ||--o{ routines : "user_id"
+    subjects ||--o{ routines : "subject_id"
+    users ||--o{ routine_applications : "user_id"
+    routines ||--o{ study_plans : "routine_id"
+    routines ||--o{ routine_applications : "routine_id"
+    routines {
+        bigint id PK "루틴 번호"
+        bigint user_id FK "주인"
+        varchar weekdays "반복 요일"
+        varchar kind "공부 또는 놀이"
+        bigint subject_id FK "과목"
+        varchar content "할 일"
+        int target_minutes "목표 분"
+        time start_time "시작 시각"
+    }
+    routine_applications {
+        bigint id PK "적용 기록 번호"
+        bigint user_id FK "주인"
+        bigint routine_id FK "원본 루틴 번호 (삭제 후에도 번호 유지)"
+        date plan_date "한 번 적용한 날짜"
+    }
     users ||--o{ subjects : "user_id"
     users ||--o{ study_plans : "user_id"
     users ||--o{ study_sessions : "user_id"
@@ -21,6 +42,7 @@ erDiagram
     users ||--o{ call_records : "user_id"
     users ||--o{ thinking_tests : "user_id"
     users ||--o{ push_subscriptions : "user_id"
+    users ||--o{ consent_records : "user_id"
     users ||--o{ onboarding_answers : "user_id"
     users ||--o| initial_plans : "user_id"
     users ||--o{ daily_signals : "user_id"
@@ -43,6 +65,8 @@ erDiagram
     users ||--o{ gpt_usages : "user_id"
     call_records ||--o| gpt_usages : "call_record_id"
     users ||--o{ checkins : "user_id"
+    checkins ||--o{ checkin_emotions : "checkin_id"
+    users ||--o{ reflection_prescriptions : "user_id"
 
     users {
         bigint id PK "사용자를 구분하는 고유 번호"
@@ -65,7 +89,7 @@ erDiagram
         boolean done "다 했으면 true, 아직이면 false"
         time start_time "시작할 시각, 몇 시 몇 분 (안 정했으면 비어 있음)"
         varchar kind "공부 계획인지 노는 계획인지 (STUDY, PLAY 중 하나)"
-        bigint routine_id "어떤 루틴이 만든 계획인지 (직접 만들었으면 비어 있음)"
+        bigint routine_id FK "어떤 루틴이 만든 계획인지 (직접 만들었으면 비어 있음)"
     }
     study_sessions {
         bigint id PK "기록을 구분하는 고유 번호"
@@ -86,7 +110,7 @@ erDiagram
         varchar email "로그인할 때 쓰는 이메일 (소문자로 저장, 중복 불가, 100자까지)"
         varchar password_hash "비밀번호를 되돌릴 수 없게 바꾼 값 (진짜 비밀번호는 저장하지 않음, 구글로 가입했으면 비어 있음)"
         varchar google_subject "구글로 가입했으면 구글이 정해 준 고유 번호 (중복 불가, 이메일로 가입했으면 비어 있음)"
-        varchar name "실명 (20자까지)"
+        varchar name "실명 (20자까지, 비어 있을 수 있음. 실명은 받지 않는 방향이라 FE 가 입력을 없애면 이 칸을 지움)"
         varchar school_code "고른 고등학교의 번호 (안 골랐으면 비어 있음)"
         varchar school_name "고른 고등학교의 이름 (안 골랐으면 비어 있음)"
         boolean diary_analysis_agreed "일기·감정 기록을 분석에 써도 된다고 했으면 true (선택 동의)"
@@ -102,7 +126,7 @@ erDiagram
     messages {
         bigint id PK "메시지를 구분하는 고유 번호 (나중에 보낸 것일수록 큼)"
         bigint user_id FK "이 메시지를 받은 사람"
-        varchar kind "메시지 종류 (CARROT, NUDGE, STICK, EVENT, RECOVERY 중 하나)"
+        varchar kind "메시지 종류 (CARROT, NUDGE, STICK, EVENT, RECOVERY, CALL 중 하나)"
         varchar text "메시지 내용 (500자까지)"
         timestamptz sent_at "메시지를 보낸 시각"
         timestamptz read_at "처음 읽은 시각 (아직 안 읽었으면 비어 있음)"
@@ -253,7 +277,7 @@ erDiagram
     gpt_usages {
         bigint id PK "기록 한 줄을 구분하는 고유 번호 (나중에 부른 것일수록 큼)"
         bigint user_id FK "GPT 를 부르게 한 사람"
-        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE, CHAT 중 하나)"
+        varchar kind "무엇 때문에 불렀는지 (CALL, CALL_REVIEW, COACH, PLAN_PARSE, CHAT, CHECKLIST, ASSIST 중 하나)"
         timestamptz called_at "부른 시각 (통화는 시작한 시각)"
         bigint call_record_id FK "어느 통화인지 (통화일 때만, 그 외엔 비어 있음)"
         int call_seconds "통화한 시간(초) (통화가 아니거나 아직 안 끝났으면 비어 있음)"
@@ -273,20 +297,70 @@ erDiagram
         varchar promise_then "오늘의 약속 ~한다 (100자까지), 비어도 됨"
         boolean suggestion_kept "개선안을 실천했는지, 비어도 됨"
     }
+    checkin_emotions {
+        bigint checkin_id FK "어느 체크인의 감정인지"
+        varchar emotion "하루 첫 태그에서 고른 감정 (STUCK, ANXIOUS, TIRED, ANNOYED, CALM, MOTIVATED 중 하나)"
+    }
+    reflection_prescriptions {
+        bigint id PK "처방을 구분하는 고유 번호 (나중에 내린 것일수록 큼)"
+        bigint user_id FK "처방을 받은 사람"
+        date start_date "처방 첫날 (처방을 내린 날)"
+        date end_date "처방 마지막 날 (이 날까지 포함)"
+        varchar miss_reason "처방한 이유가 된 못 채운 이유 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, ETC 중 하나)"
+        int reason_days "처방할 때 최근 7일 중 그 이유가 나온 날 수 (3 ~ 7)"
+        varchar question1 "첫 번째 질문 (100자까지)"
+        varchar question2 "두 번째 질문 (100자까지)"
+        varchar question3 "세 번째 질문 (100자까지)"
+    }
+    consent_records {
+        bigint id PK "동의 기록을 구분하는 고유 번호 (나중에 한 동의일수록 큼)"
+        bigint user_id FK "누가 동의했는지"
+        timestamptz agreed_at "동의한 시각"
+        varchar text_version "동의한 문구의 버전 (20자까지, 지금은 v1)"
+        boolean age_confirmed_over14 "만 14세 이상 확인 (true 면 확인함, 비어 있으면 확인받은 적 없음)"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
 
 ## 테이블 설명
 
+### 기능별 반영 현황 (#74)
+
+2026-10-17 `develop`의 엔티티와 아래 그림을 대조했습니다. 체크는 **그림 반영 여부**이며,
+운영 DB에 테이블이 만들어졌다는 뜻은 아닙니다. 아직 없는 테이블은 이름·컬럼을 미리 정하지 않습니다.
+
+| 기능 | 그림 반영 | 근거 / 남은 일 |
+| --- | --- | --- |
+| 사용자·과목·계획·기록 #3 | 완료 | `users`, `subjects`, `study_plans`, `study_sessions` |
+| 시험·점수 #16 | 완료 | `exams`, `exam_scores` |
+| 회고 #17 | 완료 | `reviews` |
+| 온보딩 #21 | 완료 | `onboarding_answers`와 선택 항목, `initial_plans` |
+| 관리 설정 #22 | 완료 | `care_settings`, `focus_lock_apps`, `setting_changes` |
+| 체크인 #24 | 완료 | `checkins` |
+| 통화 요약 #29 | 완료 | `call_records` |
+| AI 메시지 #30 | 완료 | `messages` |
+| 하루 요약 #34 | 대기 | 현재 `DaySummary` 계산 객체만 있고 저장 엔티티 없음 |
+| 개선안·실험 #52 | 대기 | 계산 객체만 있고 저장 엔티티 없음 |
+| 일기 #60 | 대기 | 저장 엔티티 없음 |
+| 잠금 해제 #67 | 작업 중 | 해당 기능 PR에서 엔티티·그림·운영 SQL을 함께 반영 |
+| 동의 기록 #71 | 완료 | PR #204가 반영되어 `consent_records` 이력과 그림이 있음 |
+| 계획 루틴 #85 | 작업 중 | 해당 기능 PR에서 엔티티·그림·운영 SQL을 함께 반영 |
+
+추가 테이블을 만드는 PR에서는 이 표의 상태도 함께 바꿉니다.
+미완료 기능이 있어 #74 전체를 완료 처리하지 않습니다.
+
 | 테이블 | 무엇을 담나 | 만든 이슈 |
 | ------ | ----------- | --------- |
+| routines | 요일마다 반복할 계획의 틀 | #85 |
+| routine_applications | 루틴을 날짜에 적용한 기록 (계획 삭제 후에도 유지) | #85 |
 | `users` | 서비스를 쓰는 사람 한 명이 한 줄 (별명, 가입 시각) | #3 |
 | `subjects` | 사용자가 만든 과목 하나가 한 줄 (이름, 색) | #3 |
 | `study_plans` | 하루의 계획 하나가 한 줄 (날짜, 과목, 내용, 목표 시간, 완료 여부, 시작 시각, 공부/노는 계획, 루틴) | #3 · #12 |
 | `study_sessions` | 타이머로 한 번 잰 기록 하나가 한 줄 (과목, 시작·끝 시각, 일시정지 횟수·시간, 계획, 목표 시간, 그만둔 이유, 공부/노는 기록) | #3 · #13 |
-| `accounts` | 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시 또는 구글 고유 번호, 실명, 학교, 동의). 사용자 한 명에 하나 | #97 · #19 |
+| `accounts` | 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시 또는 구글 고유 번호, 실명(선택), 학교, 동의). 사용자 한 명에 하나 | #97 · #19 |
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
+| `consent_records` | 개인정보 동의 한 번이 한 줄 (동의 시각, 문구 버전, 만 14세 확인). 다시 동의하면 **새 줄이 쌓여** 이력이 남음 | #71 |
 | `messages` | AI 가 사용자에게 보낸 메시지 하나가 한 줄 (종류, 내용, 보낸 시각, 읽은 시각) | #30 |
 | `call_records` | AI 통화 한 번이 한 줄 (확인하려던 생각 습관, 요약, 보인 생각 습관과 근거, 약속, 위기 표현 표시) | #28 · #29 |
 | `push_subscriptions` | 웹 푸시(앱을 닫아도 오는 알림)를 받겠다고 한 기기 하나가 한 줄 (보낼 주소, 잠금 열쇠) | #32 |
@@ -306,9 +380,20 @@ erDiagram
 | `setting_changes` | 설정 칸 하나를 한 번 바꾼 것이 한 줄 (바꾼 시각, 칸 이름, 이전 값, 새 값) | #22 |
 | `gpt_usages` | GPT 를 한 번 부른 것이 한 줄 (종류, 부른 시각, 통화 번호·통화 시간, 대략적인 비용). 하루 한도는 이 기록을 세서 지킴 | #33 |
 | `checkins` | 한 사람의 하루치 체크인이 한 줄 (컨디션, 기분, 어제 못 채운 이유와 기타 글, 예상 순공시간, 약속 두 칸, 개선안 실천 여부, 어디서 했는지). 같은 날을 다시 보내면 덮어씀. 누구·날짜·source 말고는 다 비어도 됨 | #24 |
+| `checkin_emotions` | 체크인 하나에서 고른 감정 태그가 한 줄씩 (`@ElementCollection`). 안 골랐으면 줄이 없음 | #220 |
+| `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
 
 > `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
 > 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.
+
+> `consent_records` 는 2026-10-17 에 이슈 #71 에서 **학생이 설계**했습니다. (AI 는 질문으로만 도왔습니다)
+> - 한 줄 = 동의 한 번. 다시 동의하면 **옛 줄을 고치지 않고 새 줄을 더합니다.** 그래서 "언제 어떤 문구에 동의했는지" 이력이 남습니다.
+> - 지금 동의 상태 = 이 사람의 줄 중 번호(`id`)가 가장 큰 줄입니다. 그 줄의 `text_version` 이 서버가 지금 받는 버전(`ConsentPolicy.CURRENT_VERSION`)과 다르면 "최신 문구에 동의하지 않은 사람" 이고, 그 사람은 저장(POST · PUT · PATCH)이 403 입니다.
+> - 칸은 동의 시각 · 문구 버전 · 만 14세 확인 셋과 `user_id` 입니다. 필수 동의(이용약관 · 개인정보)는 칸을 따로 두지 않았습니다. 동의하지 않으면 가입이 안 되어서, 줄이 있다는 것이 곧 필수 동의를 했다는 뜻이기 때문입니다.
+> - **만 14세 확인만 비어도 됩니다.** 이 확인을 받기 전에 가입한 계정의 옛 동의는 확인받은 적이 없어서 비워 둡니다.
+> - `accounts.agreed_at`(가입할 때의 동의 시각)은 그대로 둡니다. 두 곳에 같은 시각이 남지만, 학생이 그렇게 정했습니다.
+> - 칸 이름은 AI 가 정했습니다. `age_confirmed_over14` 로 한 이유: `over14_confirmed` 처럼 숫자 뒤에 대문자가 오면 Spring 이 밑줄을 넣지 않아 `over14confirmed` 가 될 수 있어서입니다. 그림에서 생각한 이름과 같은지 봐 주세요.
+> - 실명(`accounts.name`)은 이 이슈에서 **선택**으로 바꿨습니다. (이슈 완료 조건: 실명·전화번호·생년월일은 받지 않는다) FE 가 실명 입력을 없앤 뒤에 칸을 지우는 PR 을 따로 만듭니다.
 
 > `messages` 는 2026-10-12 에 이슈 #30 을 만들면서 **AI 가 초안을 먼저 만든 테이블**입니다. (사용자가 "AI 가 초안을 만들어 달라" 고 해서 예외로 했습니다)
 > 이슈 완료 조건에 적힌 것(종류, 보낸 시각, 읽은 시각, 주인)에 메시지 내용 글자(`text`)만 더했습니다.
@@ -365,9 +450,20 @@ erDiagram
 > - **비용은 원 단위 정수**의 어림값입니다. (읽기 쉬워서 학생이 정함) 환산 기준은 `application.yml` 의 `cost-won-*` 설정에 있습니다.
 > - 종류는 지금 GPT 를 부르는 세 곳(통화 · 통화 요약 · 코치)만 있습니다. 인사이트 · 개선안 · 일기 분석이 생기면 하나씩 더합니다.
 
+> `checkin_emotions` 는 2026-10-17 에 이슈 #220(최종 기획서 4.2 「홈」의 하루 첫 태그)에서 **AI 가 만든 딸린 테이블**입니다. (체크인은 선생님이 AI 에게 맡긴 범위)
+> - 하루 첫 태그 = 컨디션(1~5) + 감정 태그 여러 개. 감정은 한 체크인에 여러 개라서 `thinking_test_weaknesses` 처럼 딸린 테이블에 담았습니다. 엔티티는 `CheckIn` 하나입니다.
+> - 감정 이름은 이슈에 적힌 6개(`EmotionTag`)이고, DB 에도 이름 그대로 저장합니다.
+> - 감정 태그를 보내면 그날의 감정이 **전부 바뀝니다.** 다른 칸과 달리 **안 보내면 그대로 둡니다**(감정 태그를 모르는 화면이 다시 보내도 지워지지 않게). 체크인 줄이 지워지면(탈퇴) 같이 지워집니다.
+
+> `reflection_prescriptions` 는 2026-10-17 에 **선생님이 "FE·BE·테이블까지 AI 가 만들라" 고 맡긴 기능**(통화 기록·회고·성찰)에서 AI 가 만든 테이블입니다. (이슈 #61)
+> - **처방 한 번 = 한 줄.** 언제 처방하는지는 `ReflectionRule` 과 docs/API.md "성찰일기 처방" 에 있습니다.
+> - **질문 글을 그대로 저장합니다.** 질문 세트(`ReflectionQuestions`)를 나중에 고쳐도 이미 내린 처방의 질문이 바뀌지 않게 하려는 것입니다. 질문은 늘 3개라서 `reviews` 처럼 칸 3개에 담았습니다.
+> - **답(일기 원문)은 저장하지 않습니다.** 지금은 FE 기기에만 있습니다. 서버에 둘지는 일기 저장(#60)·암호화(#68)에서 정합니다.
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
+
 > `study_plans` 의 `start_time` · `kind` · `routine_id` 는 2026-10-12 에 이슈 #12 에서 더했습니다. (칸 이름과 뜻은 Project#12 의 표, 시작 시각을 `time` 으로 저장하는 것은 학생이 정함)
 > - 공부 계획(`STUDY`)은 `subject_id` 가 꼭 있어야 하고, 노는 계획(`PLAY`)만 비어도 됩니다. DB 에도 검사 규칙(`ck_study_plans_study_has_subject`)으로 걸어 두었습니다.
-> - 루틴 테이블은 아직 없어서(#85) `routine_id` 는 지금 항상 비어 있고, 그림에 선도 없습니다.
+> - 루틴으로 만든 계획은 routine_id를 기록합니다(#85). 루틴 삭제 후에도 원본 번호와 적용 기록을 유지하므로 그림의 선은 논리적인 관계이고 DB의 삭제 제약은 아닙니다.
 
 ## 그림 읽는 법
 

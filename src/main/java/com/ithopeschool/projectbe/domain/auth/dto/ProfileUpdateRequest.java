@@ -1,13 +1,15 @@
 package com.ithopeschool.projectbe.domain.auth.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 // "내 정보 고치기" 요청의 모양입니다. 고칠 수 있는 값을 한꺼번에 보냅니다. (일부만 보내는 방식이 아닙니다)
-// 이름·닉네임 규칙은 가입할 때(SignupRequest)와 같습니다. 이메일은 여기서 바꿀 수 없습니다.
+// 닉네임 규칙은 가입할 때(SignupRequest)와 같습니다. 이메일은 여기서 바꿀 수 없습니다.
 public record ProfileUpdateRequest(
-    @NotNull(message = "이름을 입력해 주세요") @Size(min = 2, max = 20, message = "이름은 2자 이상 20자 이하로 적어 주세요")
-        String name,
+    // 호환용 자리입니다. 값은 읽지 않으며 항상 null입니다. (#71)
+    @JsonIgnore @Schema(hidden = true) String name,
     @NotNull(message = "닉네임을 입력해 주세요")
         @Size(min = 2, max = 10, message = "닉네임은 2자 이상 10자 이하로 적어 주세요")
         String nickname,
@@ -19,7 +21,8 @@ public record ProfileUpdateRequest(
 
   // 값이 들어오는 순간에 앞뒤 공백을 지웁니다. 그래서 위의 검사는 공백을 지운 값으로 돌아갑니다.
   public ProfileUpdateRequest {
-    name = name == null ? null : name.trim();
+    // 예전 FE가 name을 보내도 실명은 로직에 전달하거나 저장하지 않습니다.
+    name = null;
     nickname = nickname == null ? null : nickname.trim();
   }
 }

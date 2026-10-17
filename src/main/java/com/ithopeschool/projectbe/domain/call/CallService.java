@@ -14,6 +14,7 @@ import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.safety.LowMoodStreak;
 import com.ithopeschool.projectbe.domain.safety.SafetyBrake;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.domain.thinkingtest.StudyStyle;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingGap;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
@@ -76,6 +77,7 @@ public class CallService {
   // 학생 카드를 서버 DB 의 기록으로 만듭니다. (이슈 #28)
   private final CallCardLoader callCardLoader;
   private final Clock clock;
+  private final SafetyService safetyService;
 
   public CallService(
       CurrentUserProvider currentUserProvider,
@@ -87,7 +89,8 @@ public class CallService {
       CheckInRepository checkInRepository,
       ExamRepository examRepository,
       CallCardLoader callCardLoader,
-      Clock clock) {
+      Clock clock,
+      SafetyService safetyService) {
     this.currentUserProvider = currentUserProvider;
     this.callKeyClient = callKeyClient;
     this.gptUsageGuard = gptUsageGuard;
@@ -98,6 +101,7 @@ public class CallService {
     this.examRepository = examRepository;
     this.callCardLoader = callCardLoader;
     this.clock = clock;
+    this.safetyService = safetyService;
   }
 
   public CallSessionResponse startSession(CallSessionRequest request) {
@@ -249,7 +253,8 @@ public class CallService {
   // 체크인 · 시험이 아직 서버에 없는 학생은 1) 만 걸립니다. (기록이 없는 날은 기분 저하로 세지 않습니다)
   private boolean isSafetyBrakeOn(
       Long userId, List<CallRecord> recentCalls, Instant now, LocalDate today) {
-    if (hasRecentCrisis(recentCalls, today)) {
+    // 저장된 보호 조치와 서버 기록 기반 판정을 모두 유지합니다.
+    if (safetyService.isActive(userId) || hasRecentCrisis(recentCalls, today)) {
       return true;
     }
     List<String> texts = new ArrayList<>();

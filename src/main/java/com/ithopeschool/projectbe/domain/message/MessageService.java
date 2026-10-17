@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.message;
 
 import com.ithopeschool.projectbe.domain.message.dto.MessageResponse;
+import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -32,6 +33,7 @@ public class MessageService {
   private final MessageRepository messageRepository;
   // "지금 몇 시인지" 는 시계에게 묻습니다. 테스트에서 시각을 고정할 수 있습니다. (global/config/ClockConfig)
   private final Clock clock;
+  private final SafetyService safetyService;
 
   // 내 메시지 목록 (번호가 큰 순서 = 최신순, 최대 20개)
   //
@@ -86,6 +88,9 @@ public class MessageService {
     }
     if (text.length() > MAX_TEXT_LENGTH) {
       throw new IllegalArgumentException("메시지 내용은 " + MAX_TEXT_LENGTH + "자 이하여야 해요");
+    }
+    if (kind == MessageKind.STICK && safetyService.isActive(userId)) {
+      throw new IllegalStateException("안전 브레이크 중에는 채찍 메시지를 보낼 수 없어요");
     }
     return messageRepository.save(new Message(userId, kind, text, Instant.now(clock)));
   }
