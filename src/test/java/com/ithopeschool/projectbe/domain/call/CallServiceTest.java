@@ -24,6 +24,11 @@ import com.ithopeschool.projectbe.domain.exam.Exam;
 import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamType;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.plan.PlanKind;
+import com.ithopeschool.projectbe.domain.plan.StudyPlan;
+import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
+import com.ithopeschool.projectbe.domain.session.StudySession;
+import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
@@ -60,6 +65,9 @@ class CallServiceTest {
   // 체크인 · 시험은 기본으로 없습니다. (가짜 Repository 는 아무것도 정하지 않으면 빈 목록을 돌려줍니다)
   private final CheckInRepository checkInRepository = mock(CheckInRepository.class);
   private final ExamRepository examRepository = mock(ExamRepository.class);
+  // 계획 · 공부 기록도 기본으로 없습니다. 그러면 학생 카드는 FE 가 보낸 것을 씁니다. (CallCardLoader)
+  private final StudyPlanRepository studyPlanRepository = mock(StudyPlanRepository.class);
+  private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
   // 지금은 2026-10-11 오후 3시(한국 시간)입니다. 오늘 날짜는 2026-10-11 입니다.
   private static final Instant NOW = Instant.parse("2026-10-11T06:00:00Z");
   private static final LocalDate TODAY = LocalDate.of(2026, 10, 11);
@@ -74,6 +82,7 @@ class CallServiceTest {
           thinkingTestRepository,
           checkInRepository,
           examRepository,
+          new CallCardLoader(studyPlanRepository, studySessionRepository, checkInRepository),
           Clock.fixed(NOW, ZoneOffset.UTC));
 
   private static final CallSessionRequest REQUEST =
@@ -461,6 +470,57 @@ class CallServiceTest {
     callService.startSession(REQUEST);
 
     assertThat(sentInstructions()).contains("위로하고 응원하는 말만");
+  }
+
+  @Test
+  @DisplayName("서버에 공부 기록이 있으면 학생 카드의 숫자를 DB 로 계산한다 (FE 가 보낸 숫자는 쓰지 않음, 나간 횟수만 FE 값)")
+  void studentCardComesFromTheDb() {
+    // 어제(10/10) 2시간 계획, 오후 3시부터 1시간 40분 공부 (한국 시간)
+    StudyPlan plan = new StudyPlan(USER_ID, 1L, TODAY.minusDays(1), "수학", 120);
+    ReflectionTestUtils.setField(plan, "id", 5L);
+    given(
+            studyPlanRepository.findByUserIdAndPlanDateBetweenOrderByPlanDateAscIdAsc(
+                any(), any(), any()))
+        .willReturn(List.of(plan));
+    Instant startedAt = Instant.parse("2026-10-10T06:00:00Z");
+    given(studySessionRepository.findStartedBetween(any(), any(), any()))
+        .willReturn(
+            List.of(
+                new StudySession(
+                    USER_ID,
+                    1L,
+                    startedAt,
+                    startedAt.plusSeconds(100 * 60),
+                    0,
+                    0,
+                    5L,
+                    120,
+                    null,
+                    PlanKind.STUDY)));
+
+    // FE 카드는 어제 100분 / 계획 240분 · 나간 횟수 6번이라고 보냈지만, 숫자는 서버 기록(100분 / 120분)을 씁니다.
+    callService.startSession(
+        new CallSessionRequest(
+            2,
+            3,
+            new Card(
+                100, 240, "phone", 3, 180, "19:00", 64, 55, 10, List.of(3, 3), 4, 6, null, null),
+            null,
+            null));
+
+    assertThat(sentInstructions())
+        .contains("어제 순공시간: 1시간 40분 (계획 2시간 의 83%)")
+        .doesNotContain("계획 4시간")
+        // 나간 횟수는 서버에 없어서 FE 카드의 값(6번)을 씁니다.
+        .contains("나갔다 온 횟수: 6번");
+  }
+
+  @Test
+  @DisplayName("서버에 계획도 공부 기록도 없으면 FE 가 보낸 학생 카드를 쓴다")
+  void usesTheFeCardWhenTheDbHasNoStudyRecords() {
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions()).contains("계획 4시간");
   }
 
   // ---- 가입 테스트 ----
