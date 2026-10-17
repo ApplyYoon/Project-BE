@@ -149,6 +149,12 @@ class LoginRequiredFlowTest {
               "/api/v1/daily-signals",
               "/api/v1/daily-signals",
               "{\"date\":\"2026-10-12\"}"),
+          // 회고 (시험 후 · 주간)
+          new Api(
+              "POST",
+              "/api/v1/reviews",
+              "/api/v1/reviews",
+              "{\"type\":\"weekly\",\"weekStart\":\"2026-10-12\",\"answers\":[\"a\",\"\",\"\"]}"),
           // 체크인 (기분·약속은 개인적인 내용입니다)
           new Api(
               "PUT",
