@@ -42,6 +42,11 @@ app:
     # ⚠️ 어림값이라 실제 요금은 OpenAI 사용량 화면에서 확인해 주세요.
     cost-won-per-call-minute: ${AI_COST_WON_PER_CALL_MINUTE:80}
     cost-won-per-text-call: ${AI_COST_WON_PER_TEXT_CALL:1}
+  neis:
+    # 교육부 NEIS(교육정보 개방 포털) 인증키입니다. 학교 학사일정을 받을 때 씁니다. (domain/school/NeisClient, 이슈 #282)
+    # 비어 있어도 동작하지만 NEIS 가 한 번에 5건만 줘서 한 주씩 나눠 받고, 오늘부터 120일만 받습니다.
+    # 키는 https://open.neis.go.kr 에서 무료로 발급받아 Render 환경변수 NEIS_API_KEY 에 넣습니다. (값을 이 파일에 적지 않습니다)
+    api-key: ${NEIS_API_KEY:}
   push:
     # 웹 푸시(앱을 닫아도 오는 알림) 설정입니다. (domain/push/WebPushSender)
     # ⚠️ VAPID 키의 자리는 여기(공통)에 없고 application-prod.yml 에만 있습니다. 그래서 내 컴퓨터에서는 푸시가 꺼져 있습니다.

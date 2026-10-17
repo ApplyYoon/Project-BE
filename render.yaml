@@ -41,6 +41,10 @@ services:
         sync: false
       - key: VAPID_PRIVATE_KEY
         sync: false
+      # 교육부 NEIS 인증키. 학교 학사일정(시험·방학)을 한 번에 받습니다. 비워 두면 한 주씩 나눠 120일만 받습니다. (이슈 #282)
+      # https://open.neis.go.kr 에서 무료 발급
+      - key: NEIS_API_KEY
+        sync: false
 
       # ── 비밀이 아닌 값은 여기에 적어도 됩니다. ──
       # 자바가 메모리를 쓰는 방식입니다. 무료 서버는 메모리가 512MB 뿐이라 자바에게 알려 줘야 합니다.
