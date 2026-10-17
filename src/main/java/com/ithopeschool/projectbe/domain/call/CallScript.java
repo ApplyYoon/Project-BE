@@ -5,6 +5,7 @@ import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.care.ToneGuide;
+import com.ithopeschool.projectbe.domain.checkin.CheckInQuestions;
 import com.ithopeschool.projectbe.domain.plan.AchievementRate;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -457,7 +458,8 @@ public final class CallScript {
     if (rate == null) {
       return "어제는 계획이 없었거나 기록이 없어. 그 점을 꾸짖지 말고, 요즘 공부가 어떤지 한 가지만 물어봐.";
     }
-    if (rate >= 100) {
+    // "못 채운 날" 의 기준은 체크인 질문과 같은 함수로 정합니다. (CheckInQuestions.MISS_THRESHOLD_PERCENT)
+    if (!CheckInQuestions.isMissedDay(rate)) {
       return "어제 계획을 다 채웠어. 무엇이 도움이 됐는지 물어보고, 그 방법을 오늘도 써 보자고 해.";
     }
     if (card.yesterdayMissReason() == null) {
