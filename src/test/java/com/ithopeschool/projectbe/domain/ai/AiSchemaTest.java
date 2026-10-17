@@ -40,4 +40,11 @@ class AiSchemaTest {
     assertThat(AiSchema.stringList())
         .isEqualTo(Map.of("type", "array", "items", Map.of("type", "string")));
   }
+
+  @Test
+  @DisplayName("같은 모양 여러 개의 모양")
+  void list() {
+    assertThat(AiSchema.list(AiSchema.string()))
+        .isEqualTo(Map.of("type", "array", "items", Map.of("type", "string")));
+  }
 }

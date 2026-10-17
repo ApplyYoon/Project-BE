@@ -8,6 +8,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.FailCauseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.TextLabelRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.TextLabelResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,6 +35,7 @@ public class AiController {
   private final FailCauseService failCauseService;
   private final ExamNextStepService examNextStepService;
   private final TextLabelService textLabelService;
+  private final RoutineCardService routineCardService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -71,5 +74,13 @@ public class AiController {
   @PostMapping("/classify-text")
   public TextLabelResponse textLabel(@Valid @RequestBody TextLabelRequest request) {
     return textLabelService.label(request);
+  }
+
+  @Operation(
+      summary =
+          "루틴 카드 제안: 목표 + 방해물 + 대처 → 루틴 카드 2~3장 (요일·시각·길이는 코드가 정함 · 저장 안 함 · 못 만들면 cards: null · 토큰 필요)")
+  @PostMapping("/routine-cards")
+  public RoutineCardResponse routineCards(@Valid @RequestBody RoutineCardRequest request) {
+    return routineCardService.suggest(request);
   }
 }
