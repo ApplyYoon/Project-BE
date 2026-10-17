@@ -238,7 +238,7 @@ Spring 은 이 모양을 그대로 못 읽습니다. 아래처럼 **세 개로 �
 
 ### 4. 내 컴퓨터에서 Neon(`dev`)으로 켜기
 
-지금은 **환경변수**로 넣습니다. 이슈 #76(시크릿 매니저)이 정해지면 그 방법으로 바뀝니다.
+지금은 **환경변수**로 넣습니다. 시크릿 매니저를 통한 개발용 값 주입은 [docs/SECRETS.md](./docs/SECRETS.md)를 참고하세요.
 환경변수는 **그 터미널 창에서만** 살아 있고, 창을 닫으면 사라집니다. 파일로 저장하지 않습니다.
 
 ```powershell
@@ -299,9 +299,20 @@ export DATABASE_PASSWORD='<비밀번호>'
 - BE 는 `.env` 파일을 쓰지 않습니다. 설정은 `src/main/resources/application-*.yml` 에 있고, git 으로 모두가 같은 것을 씁니다.
 - 내 컴퓨터에서만 통하는 값(로컬 DB 주소 등)은 `application-local.yml` 에 적혀 있습니다. 올려도 괜찮은 값입니다.
 - **진짜 서비스의 값**(운영 DB 비밀번호, GPT 키, SNS 로그인 비밀값)은 어떤 파일에도 적지 않습니다.
-  설정 파일에는 `${DATABASE_URL}` 처럼 **값이 들어갈 자리만** 있습니다. 받는 방법은 이슈 #76 에서 정합니다.
+  설정 파일에는 `${DATABASE_URL}` 처럼 **값이 들어갈 자리만** 있습니다. 개발용 값은 [시크릿 매니저 안내](./docs/SECRETS.md)의 선택안과 실행 순서를 따릅니다. 실제 가입·학생 실행 확인은 #76에 남아 있습니다.
 - 키나 비밀번호처럼 보이는 글자가 든 커밋은 git 훅이 막습니다.
 - 실수로 올렸다면 **바로 팀장에게 알리고 키를 새로 발급**하세요. 지우는 것만으로는 기록에서 사라지지 않습니다.
+
+개발용 값이 필요한 담당자만 Infisical 개인 계정으로 실행합니다. 관리자가 개발 전용 프로젝트를 준비한 뒤:
+
+1. [공식 설치 안내](https://infisical.com/docs/cli/install)로 CLI 설치 (Windows: `winget install infisical`).
+2. `infisical login`으로 본인이 로그인합니다. 비밀값·토큰을 채팅에 붙이지 않습니다.
+3. Windows는 `infisical run --env=dev --projectId=PROJECT_ID -- .\gradlew.bat --no-daemon bootRun`으로 실행합니다.
+   macOS/Linux는 `.\gradlew.bat` 대신 `./gradlew`를 씁니다. `PROJECT_ID`는 개발 프로젝트 ID입니다.
+
+CLI가 없어도 기존 `gradlew bootRun`으로 H2가 켜집니다. 운영 값은 Render에만 둡니다.
+계정·토큰이 노출되면 접근을 회수하고, 접근 가능했던 실제 키도 폐기·재발급한 뒤 개발 서버를 다시 켭니다.
+자세한 범위·무료 인원·실행 확인·복구 순서는 [docs/SECRETS.md](./docs/SECRETS.md)에 있습니다.
 
 ---
 
