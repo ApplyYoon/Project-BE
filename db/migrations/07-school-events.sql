@@ -1,8 +1,10 @@
 -- 이미 테이블이 있는 Neon DB 에 "학교 학사일정"(이슈 #282) 표 두 개를 더하는 SQL 입니다.
 --
 -- 누가 · 언제 실행하나요?
---   02 까지 실행한 Neon 브랜치에 실행합니다. Neon 콘솔 → 브랜치 고르기 → SQL Editor 에 이 파일 전체를 붙여 넣고 Run.
---   dev 브랜치 먼저, main 브랜치는 그다음. (이 표가 없으면 /api/v1/school/events 와 예약 작업 school-events 가 500 입니다)
+--   이 표 두 개는 다른 표를 가리키지 않아서, 01 ~ 06 을 어디까지 실행했든 그대로 실행해도 됩니다. (이슈 #288)
+--   Neon 콘솔 → 브랜치 고르기 → SQL Editor 에 이 파일 전체를 붙여 넣고 Run.
+--   dev 브랜치는 지금 바로, main 브랜치는 #284 가 들어간 develop → main 배포 **전에** 실행합니다.
+--   (이 표가 없으면 /api/v1/school/events 와 예약 작업 school-events 가 500 입니다)
 --
 -- 여러 번 실행해도 되나요?
 --   네. "없으면 만들기(if not exists)" 뿐입니다. (MigrationSqlTest 가 검사)
