@@ -16,6 +16,9 @@ import com.ithopeschool.projectbe.domain.auth.dto.WithdrawRequest;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.CallRecord;
+import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
+import com.ithopeschool.projectbe.domain.checkin.EmotionTag;
 import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
 import com.ithopeschool.projectbe.domain.consent.ConsentService;
 import com.ithopeschool.projectbe.domain.onboarding.FailureCause;
@@ -543,7 +546,9 @@ class AccountServiceTest {
           "ONBOARDING_ANSWER_FAILURE_CAUSES",
               new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
           "ONBOARDING_ANSWER_SUBJECT_LEVELS",
-              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"});
+              new String[] {"ONBOARDING_ANSWERS", "ONBOARDING_ANSWER_ID"},
+          // 체크인(checkins)에 매달린 하루 첫 태그의 감정들 (이슈 #220)
+          "CHECKIN_EMOTIONS", new String[] {"CHECKINS", "CHECKIN_ID"});
 
   @Test
   @DisplayName("탈퇴하면 실제 DB 의 모든 테이블에서 그 사람의 줄이 0 개다 (user_id 가 없는 새 테이블이 생기면 실패해서 알려 준다)")
@@ -564,6 +569,22 @@ class AccountServiceTest {
       answer.pastFailureCauses = EnumSet.of(FailureCause.WEEKEND);
       answer.subjectLevels = List.of(new SubjectLevel(1L, 2, null, 4));
       entityManager.persist(new OnboardingAnswer(userId, NOW, answer));
+      // 감정 태그가 붙은 체크인 (딸린 테이블 checkin_emotions 에 줄이 생깁니다)
+      CheckIn checkIn =
+          new CheckIn(
+              userId,
+              LocalDate.of(2026, 10, 15),
+              CheckInSource.QUICK,
+              3,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null);
+      checkIn.replaceEmotions(EnumSet.of(EmotionTag.STUCK, EmotionTag.TIRED));
+      entityManager.persist(checkIn);
     }
     entityManager.flush();
     callWith(tokenOfA);
@@ -571,6 +592,9 @@ class AccountServiceTest {
     accountService.withdraw(new WithdrawRequest(PASSWORD, null));
     entityManager.flush();
     entityManager.clear();
+
+    // 비이의 감정 2줄만 남고, 에이의 감정은 체크인과 함께 지워집니다.
+    assertThat(countCollectionRows("checkin_emotions")).isEqualTo(2);
 
     // information_schema 는 DB 가 자기 테이블 정보를 적어 두는 곳입니다. 엔티티 목록이 아니라 "실제로 만들어진 테이블" 을 봅니다.
     List<String> tables =
