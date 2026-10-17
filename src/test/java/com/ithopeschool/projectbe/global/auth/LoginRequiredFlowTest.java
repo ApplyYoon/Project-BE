@@ -365,7 +365,10 @@ class LoginRequiredFlowTest {
               null),
           // 개선안 3개 제안 (내 실패 원인을 봅니다. 이슈 #51)
           new Api(
-              "GET", "/api/v1/improvements/suggestions", "/api/v1/improvements/suggestions", null));
+              "GET", "/api/v1/improvements/suggestions", "/api/v1/improvements/suggestions", null),
+          // 심리검사 (학생의 성향 답이라 학생의 정보입니다. 이슈 #219)
+          new Api("POST", "/api/v1/psych-tests", "/api/v1/psych-tests", "{\"answers\":{\"S1\":4}}"),
+          new Api("GET", "/api/v1/psych-tests/latest", "/api/v1/psych-tests/latest", null));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

@@ -2306,6 +2306,51 @@ AI 문단이 없을 때도 **200** 이고, `paragraph` 만 `null` 입니다(`evi
 
 > **AI 통화와 이어집니다.** 통화를 걸 때 서버에 저장된 테스트가 있으면 그것을 씁니다(없으면 FE 가 보낸 `selfReportedBiases`). 통화가 3번 넘게 쌓였고 생각과 실제가 다르면, 그 문장을 지침에 넣어 AI 가 하나 골라 학생이 스스로 알아차리게 묻게 합니다.
 
+### 심리검사
+
+온보딩 심리검사의 결과를 서버에 쌓습니다. **두 주소 모두 로그인이 필요합니다.** (이슈 #219, FE `src/lib/psychTest.ts`)
+문장 35개(척도 7개 × 5개)에 리커트 7점(1 전혀 아니다 ~ 7 매우 그렇다)으로 답합니다. 처음에는 14문항(척도마다 앞의 두 문장)이었고, 그 옛 결과도 받습니다.
+
+`POST /api/v1/psych-tests` — 결과 저장. 다시 하면 덮어쓰지 않고 **새로 쌓입니다.**
+
+```json
+{ "answers": { "S1": 6, "S2": 5, "S3": 6, "S4": 5, "S5": 5, "A1": 3, "…": 4, "C5": 3 } }
+```
+
+| 값 | 규칙 |
+| --- | --- |
+| `answers` | 필수. 문장 코드 → 답(1 ~ 7 정수). **35개 모두**(S1 ~ S5 · A1 ~ A5 · P1 ~ P5 · R1 ~ R5 · F1 ~ F5 · E1 ~ E5 · C1 ~ C5), 또는 **옛 14문항 모두**(S1 · S2 · A1 · A2 · … · C1 · C2) |
+
+- 코드의 첫 글자가 척도입니다: S 시작 저항(`startResistance`) · A 주의 분산(`distraction`) · P 계획 낙관(`planOptimism`) · R 기록 부담(`recordBurden`) · F 실패 민감도(`failSensitivity`) · E 외부 귀인(`externalAttribution`) · C 관리 선호(`carePreference`). 역문항은 없습니다.
+- **척도 점수는 서버가 계산합니다**: 그 척도에 답한 문장들의 평균(1 ~ 7). **5 이상 `high` · 3 이하 `low` · 그 사이 `mid`.** (FE `scorePsychTest` · `getScaleLevel` 과 같은 규칙)
+- 서버에는 **문장마다의 답을 그대로** 저장합니다. 채점 규칙을 바꿔도 지난 검사를 다시 채점할 수 있고, AI 가 볼 데이터를 최대한 남기려는 것입니다.
+
+**응답 201** (`GET /latest` 도 같은 모양)
+
+```json
+{
+  "id": "3",
+  "takenAt": "2026-10-17T09:00:00Z",
+  "answers": { "S1": 6, "S2": 5, "…": 4 },
+  "scores": { "startResistance": 5.4, "distraction": 4.0, "planOptimism": 4.0, "recordBurden": 4.0,
+              "failSensitivity": 4.0, "externalAttribution": 4.0, "carePreference": 4.0 },
+  "levels": { "startResistance": "high", "distraction": "mid", "…": "mid" }
+}
+```
+
+- `answers` 에는 답한 문장만 있습니다. (지금 검사 35개 · 옛 검사 14개)
+
+`GET /api/v1/psych-tests/latest` — 내 가장 최근 결과. 아직 안 했으면 **404** `"아직 심리검사를 하지 않았어요"`
+
+| 상태 | `code` | 언제 | `message` |
+| --- | --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `answers` 가 없음 | `"심리검사 답을 보내 주세요"` |
+| 400 | `VALIDATION_ERROR` | 모르는 코드 | `"모르는 문항이 있어요: Z9"` |
+| 400 | `VALIDATION_ERROR` | 답이 1 ~ 7 밖이거나 없음 | `"답은 1 ~ 7 사이로 보내 주세요"` |
+| 400 | `VALIDATION_ERROR` | 일부만 답함 (35개도 옛 14개도 아님) | `"문장 35개(옛 검사는 14개)에 모두 답해 주세요"` |
+| 401 | `UNAUTHORIZED` | 로그인하지 않음 | `"로그인이 필요해요"` |
+| 404 | `NOT_FOUND` | (`/latest`) 아직 안 함 | `"아직 심리검사를 하지 않았어요"` |
+
 ### 온보딩
 
 첫 실행 설문(FE `/onboarding`)의 답과 "처음 계획"(FE `/onboarding/plan`)을 저장·조회합니다. 여섯 주소 모두 **로그인이 필요합니다.** (이슈 #21)
