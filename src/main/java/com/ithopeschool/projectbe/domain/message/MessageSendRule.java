@@ -15,6 +15,8 @@ import com.ithopeschool.projectbe.domain.safety.SafetyBrake;
 //   3) 안전 브레이크가 켜졌으면 채찍 메시지(3~4단계)는 보내지 않습니다.
 //        채찍(3) 메시지, 한도 4, 위기 표현 감지(stopWhip)       →  false
 //        채찍(3) 메시지, 한도 4, 회복 모드(recoveryMode)        →  false
+//      시험 기간(examPeriod)도 관리 강도 상한이 2 라서 채찍 메시지는 보내지 않습니다. (이슈 #232)
+//        채찍(3) 메시지, 한도 4, 시험 기간(examPeriod)          →  false
 //   4) 그 외에는 보냅니다. 브레이크가 켜져도 회복·당근·넛지(0~2단계)는 그대로 보냅니다.
 //        당근(1) 메시지, 한도 4, 위기 표현 감지(stopWhip)       →  true
 //
@@ -42,9 +44,9 @@ public final class MessageSendRule {
     if (careLevel > maxCareLevel) {
       return false;
     }
-    // 3) 안전 브레이크가 켜졌으면 채찍은 보내지 않습니다.
-    boolean isSafetyBrakeOn = brake.stopWhip() || brake.recoveryMode();
-    if (isSafetyBrakeOn && careLevel >= WHIP_CARE_LEVEL) {
+    // 3) 안전 브레이크가 켜졌거나 시험 기간이면 채찍은 보내지 않습니다.
+    boolean isWhipBlocked = brake.stopWhip() || brake.recoveryMode() || brake.examPeriod();
+    if (isWhipBlocked && careLevel >= WHIP_CARE_LEVEL) {
       return false;
     }
     return true;

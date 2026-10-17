@@ -2,6 +2,7 @@ package com.ithopeschool.projectbe.domain.care;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.ithopeschool.projectbe.domain.safety.ExamPeriod;
 import com.ithopeschool.projectbe.domain.safety.LowMoodStreak.MoodRecord;
 import com.ithopeschool.projectbe.domain.safety.SafetyBrake;
 import com.ithopeschool.projectbe.domain.suggestion.ExperimentEffect;
@@ -158,7 +159,7 @@ class CareFlowTest {
     assertThat(CareLevel.of(2, decision.action(), 2, false)).isEqualTo(2);
   }
 
-  // ─── 이슈 #58: 시험 기간에는 0, 끝나면 원래 한도까지 다시 오른다 ───
+  // ─── 이슈 #58 · #232: 시험 기간에는 2 까지, 끝나면 원래 한도까지 다시 오른다 ───
 
   // 날마다 "채찍" 대응이 나오는 학생의 단계를 fromDay 부터 toDay 까지 하루씩 이어서 계산합니다.
   // 오늘의 단계가 다음 날의 "어제 단계" 가 됩니다.
@@ -168,21 +169,23 @@ class CareFlowTest {
     int level = startLevel;
     for (int day = fromDay; day <= toDay; day++) {
       SafetyBrake brake = SafetyBrake.check(morningOf(day), List.of(), List.of(), exams);
-      level = CareLevel.of(level, CareAction.WHIP, maxLevel, isOn(brake));
+      level =
+          ExamPeriod.capCareLevel(
+              CareLevel.of(level, CareAction.WHIP, maxLevel, isOn(brake)), brake.examPeriod());
       levels.add(level);
     }
     return levels;
   }
 
   @Test
-  void examPeriodHoldsTheLevelAtZeroAndThenItClimbsBackToTheLimit() {
+  void examPeriodCapsTheLevelAtTwoAndThenItClimbsBackToTheLimit() {
     // 시험은 10/17. 시험 기간은 10/14(3일 전) ~ 10/19(2일 후) 입니다. 어제 단계 3, 한도 4.
     //   10/13         시험 기간 전     →  3 에서 한 칸 올라 4
-    //   10/14 ~ 10/19 시험 기간        →  채찍 대응이어도 0
-    //   10/20 ~ 10/23 시험 기간이 끝남  →  하루에 한 칸씩 1, 2, 3, 4 (원래 한도 4 까지 다시 오릅니다)
+    //   10/14 ~ 10/19 시험 기간        →  채찍 대응이어도 2 까지 (0 이 아니라 넛지, 이슈 #232)
+    //   10/20 ~ 10/23 시험 기간이 끝남  →  하루에 한 칸씩 3, 4 (원래 한도 4 까지 다시 오릅니다)
     List<Integer> levels = whipLevelsByDay(3, 4, 13, 23, List.of(october(17)));
 
-    assertThat(levels).containsExactly(4, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4);
+    assertThat(levels).containsExactly(4, 2, 2, 2, 2, 2, 2, 3, 4, 4, 4);
   }
 
   @Test

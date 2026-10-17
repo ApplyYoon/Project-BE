@@ -39,6 +39,7 @@ cron-job.org (알람 시계)                         Render 의 BE 서버
 | `domain/job/PracticeJob.java` | 연습 작업. 로그 한 줄을 남김 |
 | `domain/push/HabitNudgeJob.java` | `habit-nudge` 작업. 하루 한 번 "오늘의 작전" 알림 (아래 6-4) |
 | `domain/push/CallRingJob.java` | `call-ring` 작업. 정해 둔 AI 전화 시간에 전화 알림 (아래 6-5) |
+| `domain/risk/RiskConfirmJob.java` | `risk-confirm` 작업. 그날이 지난 위험 예측에 실제 달성률과 맞았는지를 채움 (아래 6-6) |
 | `domain/job/JobResultStore.java` | 결과를 "작업 이름 + 날짜" 한 칸에 **덮어써서** 저장 (연습용 메모리 저장소) |
 | `global/time/DayRule.java` | **하루의 기준(새벽 4시, 한국 시간)** 계산기. 날짜별로 세는 곳은 모두 이걸 씀 |
 | `global/config/ClockConfig.java` | 시계. 테스트에서 시간을 고정하려고 따로 둠 |
@@ -237,6 +238,31 @@ FE 토론(FE#29)의 결론 "전화 스타일 알림 → 앱 안 음성 대화" �
 curl -i -X POST http://localhost:8080/api/v1/jobs/call-ring -H "X-Job-Key: local-job-key"
 ```
 
+### 6-6. 위험 예측 확인 (`risk-confirm`)
+
+그날이 지난 **위험 예측**에 실제 달성률과 "맞았는지" 를 채웁니다. (이슈 #49, `domain/risk/RiskConfirmJob.java`, 예측의 규칙은 [RISK-FORECAST.md](./RISK-FORECAST.md))
+예측이 맞았는지 확인해 남겨야 "이 규칙이 믿을 만한가" 를 나중에 알 수 있습니다.
+
+| 칸 | 값 |
+| -- | -- |
+| URL | `https://<받은 주소>/api/v1/jobs/risk-confirm` |
+| 실행 주기 | **하루 한 번, 새벽 5시** (하루가 바뀌는 새벽 4시 뒤. 어제의 달성률이 다 정해진 뒤여야 합니다) |
+| 요청 방법 | **POST** |
+| 헤더 | 이름 `X-Job-Key`, 값 = Render 에 넣은 **같은 키** |
+
+- **모든 학생**의 예측 중, **어제까지 최근 14일** 안에서 실제 달성률이 아직 비어 있는 것을 채웁니다.
+- 그날 **계획이 없어서** 달성률을 구할 수 없는 예측은 채우지 않고 비워 둡니다. (`null` 그대로)
+- **이미 채운 예측은 건드리지 않습니다.** 그래서 같은 작업이 두 번 돌아도 결과가 같습니다. (두 번째는 채울 것이 없어서 0개)
+- 이 작업이 쉬어도 학생이 **새로 예측할 때** 그 학생의 지난 예측은 함께 채워집니다. 다만 앱을 안 여는 학생의 예측은 이 작업이 있어야 채워집니다.
+- 로그에는 `[위험 예측 확인] 맞았는지 채움 n개` 처럼 **숫자만** 남깁니다. 예측의 내용이나 학생의 기록은 남기지 않습니다.
+- 한 번에 모든 학생을 처리합니다. 학생이 아주 많아지면 cron-job.org 의 30초 제한에 걸릴 수 있어서, 그때 나눠서 돌리도록 고칩니다.
+
+**내 컴퓨터에서 시험**
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/jobs/risk-confirm -H "X-Job-Key: local-job-key"
+```
+
 ## 7. 알아 둘 점
 
 - **서버가 잠들지 않게 됩니다.** 10분마다 부르면 15분 유휴 규칙에 걸리지 않아 서버가 계속 깨어 있습니다. Render 무료 인스턴스는 월 750시간이고 한 달(31일)이 744시간이라 **서비스 하나는 한 달 내내 켜 둬도 한도 안**이지만, 거의 다 쓰게 됩니다.
@@ -251,7 +277,7 @@ curl -i -X POST http://localhost:8080/api/v1/jobs/call-ring -H "X-Job-Key: local
 | ---- | ---------------- |
 | `401` | 헤더 이름이 정확히 `X-Job-Key` 인지, 값이 Render 의 `JOB_SECRET_KEY` 와 **글자 하나까지 같은지**(앞뒤 공백·줄바꿈 주의), Render 에 키를 넣고 서버가 다시 시작됐는지 |
 | 서버 로그에 "JOB_SECRET_KEY 가 비어 있어서 … 전부 거절" | Render 환경변수에 `JOB_SECRET_KEY` 가 없습니다. 6-1 을 하세요 |
-| `404` | 주소 끝의 작업 이름이 맞는지. 지금 있는 작업은 `practice`, `habit-nudge` 두 개입니다 |
+| `404` | 주소 끝의 작업 이름이 맞는지. 지금 있는 작업은 `practice`, `habit-nudge`, `call-ring`, `risk-confirm` 입니다 |
 | `405` | `POST` 로 불러야 합니다 (브라우저 주소창으로 열면 `GET` 이라 안 됩니다) |
 | `500` | 작업이 실패했습니다. 서버 로그에서 `[작업] … 실행에 실패했습니다` 를 찾으세요 (예외의 **종류**만 나옵니다) |
 | 로그에 줄이 안 쌓임 | cron-job.org 실행 기록에서 응답 코드를 확인. 서버가 자고 있었다면 첫 요청이 시간 초과일 수 있습니다 |

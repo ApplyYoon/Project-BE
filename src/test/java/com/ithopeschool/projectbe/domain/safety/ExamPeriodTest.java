@@ -97,6 +97,21 @@ class ExamPeriodTest {
     assertThat(ExamPeriod.isNearExam(atFour, List.of(EXAM))).isTrue();
   }
 
+  // ---- 시험 기간의 관리 강도 상한 2 (이슈 #232) ----
+
+  @Test
+  void capCareLevelKeepsTheLevelAtTwoOrBelow() {
+    // 시험 기간에는 3·4 가 2 로 내려가고, 0·1·2 는 그대로입니다. 0(회복)으로 내리지는 않습니다.
+    assertThat(ExamPeriod.capCareLevel(4, true)).isEqualTo(2);
+    assertThat(ExamPeriod.capCareLevel(3, true)).isEqualTo(2);
+    assertThat(ExamPeriod.capCareLevel(2, true)).isEqualTo(2);
+    assertThat(ExamPeriod.capCareLevel(1, true)).isEqualTo(1);
+    assertThat(ExamPeriod.capCareLevel(0, true)).isZero();
+    // 시험 기간이 아니면 그대로입니다.
+    assertThat(ExamPeriod.capCareLevel(3, false)).isEqualTo(3);
+    assertThat(ExamPeriod.capCareLevel(4, false)).isEqualTo(4);
+  }
+
   // ---- 낮춘 이유 문장 (이슈 #58) ----
 
   @Test

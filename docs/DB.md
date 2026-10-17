@@ -77,6 +77,8 @@ erDiagram
     users ||--o{ checkins : "user_id"
     checkins ||--o{ checkin_emotions : "checkin_id"
     users ||--o{ reflection_prescriptions : "user_id"
+    users ||--o{ risk_forecasts : "user_id"
+    risk_forecasts ||--o{ risk_forecast_reasons : "risk_forecast_id"
 
     users {
         bigint id PK "사용자를 구분하는 고유 번호"
@@ -342,6 +344,18 @@ erDiagram
         bigint insight_id FK "어느 인사이트의 근거인지"
         date evidence_date "근거가 된 날짜 (한 인사이트 안에서 중복 불가)"
     }
+    risk_forecasts {
+        bigint id PK "예측 한 줄을 구분하는 고유 번호"
+        bigint user_id FK "이 예측의 주인"
+        date forecast_date "어느 날을 예측했는지 (같은 사람 안에서 날짜 중복 불가)"
+        varchar risk_level "위험 수준 (NONE, WATCH, HIGH 중 하나)"
+        int actual_achievement_rate "그날이 지난 뒤 채우는 실제 달성률 (0 ~ 100, 아직이거나 계획이 없었으면 비어 있음)"
+        boolean was_correct "예측이 맞았는지 (실제 달성률을 채울 때 같이 채움, 모르면 비어 있음)"
+    }
+    risk_forecast_reasons {
+        bigint risk_forecast_id FK "어느 예측의 이유인지"
+        varchar reason "위험하다고 본 이유 (WEAK_WEEKDAY, LATE_SLEEP 중 하나)"
+    }
 ```
 
 <!-- DB-DIAGRAM:END -->
@@ -408,6 +422,8 @@ erDiagram
 | `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
 | `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
 | `insight_evidence_dates` | 인사이트 하나의 근거 날짜가 한 줄씩 (`@ElementCollection`). 날짜로 찾기 쉽게 날짜로 저장 | #43 · #41 |
+| `risk_forecasts` | 한 사람의 하루치 위험 예측이 한 줄 (예측한 날, 위험 수준, 그날이 지난 뒤 채우는 실제 달성률과 맞았는지). **위험 없음인 날도 한 줄**. 같은 날을 다시 예측하면 그 줄을 최신으로 고침 | #49 |
+| `risk_forecast_reasons` | 예측 하나에서 위험하다고 본 이유가 한 줄씩 (`@ElementCollection`). 위험 없음이면 줄이 없음 | #49 |
 
 > `accounts` 와 `login_tokens` 는 2026-10-11 에 SNS 로그인을 빼고 일반 로그인으로 정하면서 **선생님 요청으로 AI 가 먼저 만든 테이블**입니다.
 > 학생이 설계한 `users` 는 그대로 두려고 로그인 정보를 따로 뺐습니다. 고칠 점이 보이면 이슈로 남겨 주세요.
@@ -486,6 +502,17 @@ erDiagram
 > - **질문 글을 그대로 저장합니다.** 질문 세트(`ReflectionQuestions`)를 나중에 고쳐도 이미 내린 처방의 질문이 바뀌지 않게 하려는 것입니다. 질문은 늘 3개라서 `reviews` 처럼 칸 3개에 담았습니다.
 > - **답(일기 원문)은 저장하지 않습니다.** 지금은 FE 기기에만 있습니다. 서버에 둘지는 일기 저장(#60)·암호화(#68)에서 정합니다.
 > - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
+
+> `risk_forecasts` 와 `risk_forecast_reasons` 는 2026-10-17 에 이슈 #49 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 돕고, 아래 "칸 이름" 만 정했습니다)
+> - **한 줄 = 하루 예측 하나.** `(user_id, forecast_date)` 가 겹치지 않게 막아 두었습니다. 같은 날을 다시 예측하면 새 줄을 만들지 않고 그 줄의 위험 수준과 이유를 **최신 결과로 고칩니다.**
+> - **위험 없음(`NONE`)인 날도 한 줄을 남깁니다.** 위험하다고 한 날만 남기면 "위험 없다고 했는데 무너진 날" 을 셀 수 없어서 정확도를 알 수 없기 때문입니다.
+> - **이유는 딸린 테이블**입니다. 한 예측에 이유가 0 ~ 2개(약한 요일 · 늦게 잠)라서 `thinking_tests` 처럼 `@ElementCollection` 으로 담았습니다. 규칙이 늘어도 칸을 늘릴 필요가 없습니다.
+> - **실제 달성률과 맞았는지는 둘 다 비어도 됩니다.** 예측할 때는 결과를 아직 모르기 때문입니다. 그날이 지난 뒤 채웁니다. (학생은 처음에 "실제 달성률은 꼭 있어야 한다" 고 했다가, 그러면 예측할 때 줄을 만들 수 없어서 바꿨습니다)
+> - ⚠️ 비어 있는 이유가 둘입니다: **아직 그날이 안 지남**, 또는 **그날 계획이 없어서 달성률을 구할 수 없었음**. 둘 다 "맞았는지 알 수 없음" 이라 한 칸으로 두었습니다. 구별이 필요해지면 칸을 더해 주세요.
+> - 다시 예측해도 **실제 달성률이 이미 채워진 줄은 고치지 않고**, 고칠 때도 위험 수준과 이유만 바꿉니다. (결과를 본 뒤에 예측을 바꾸는 일을 막으려고)
+> - `user_id` 가 있어서 탈퇴하면 예측이 같이 지워집니다. 딸린 테이블은 `AccountServiceTest` 의 `CHILD_TABLES` 에 더했습니다.
+> - **칸 이름은 AI 가 정했습니다.** `forecast_date`(예측한 날), `risk_level`(위험 수준), `actual_achievement_rate`(실제 달성률), `was_correct`(맞았는지), `reason`(이유). `level` 은 DB 예약어와 겹칠 수 있어 `risk_level` 로 했습니다. 그림에서 생각한 이름과 같은지 봐 주세요.
+> - 규칙과 근거는 [docs/RISK-FORECAST.md](./RISK-FORECAST.md) 에 있습니다.
 
 > `study_plans` 의 `start_time` · `kind` · `routine_id` 는 2026-10-12 에 이슈 #12 에서 더했습니다. (칸 이름과 뜻은 Project#12 의 표, 시작 시각을 `time` 으로 저장하는 것은 학생이 정함)
 > - 공부 계획(`STUDY`)은 `subject_id` 가 꼭 있어야 하고, 노는 계획(`PLAY`)만 비어도 됩니다. DB 에도 검사 규칙(`ck_study_plans_study_has_subject`)으로 걸어 두었습니다.

@@ -12,6 +12,9 @@ import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
 import com.ithopeschool.projectbe.domain.exam.Exam;
 import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.risk.RiskLevel;
+import com.ithopeschool.projectbe.domain.risk.RiskService;
+import com.ithopeschool.projectbe.domain.safety.ExamPeriod;
 import com.ithopeschool.projectbe.domain.safety.LowMoodStreak;
 import com.ithopeschool.projectbe.domain.safety.SafetyBrake;
 import com.ithopeschool.projectbe.domain.safety.SafetyService;
@@ -46,11 +49,13 @@ import org.springframework.stereotype.Service;
 //   6. 학생 카드와 지난 통화로 대본(지침)을 만든다 (CallScript: 기록에 따라 질문과 말투가 달라집니다)
 //      학생 카드의 숫자는 서버 DB 의 그 사람 기록으로 계산합니다. (CallCardLoader, 이슈 #28)
 //      서버에 계획·공부 기록이 아직 없으면(FE 가 기기에만 저장하던 학생) FE 가 보낸 카드를 씁니다.
+//      오늘이 무너지기 쉬운 날이면 대본에 "표시" 를 넣습니다. (RiskService.levelOn: 위험 예측 이슈 #49. 저장하지 않고 지금 기록으로 계산)
 //   7. OpenAI 에서 그 대본이 묶인 임시 키를 받는다 (못 받으면 503)
 //   8. 통화 기록을 한 줄 만들고, GPT 호출 기록에도 "통화 시작" 을 남긴 뒤, 임시 키와 기록 번호를 돌려준다
 //
-// 안전 브레이크가 켜졌으면, FE 가 보낸 관리 강도와 상관없이 위로하는 통화(0)로 합니다. (isSafetyBrakeOn)
-//   최근 7일 통화의 위기 표현 · 최근 7일 체크인 글의 위기 표현 · 기분 저하 6일 연속 · 시험 3일 전 ~ 2일 뒤
+// 안전 브레이크가 켜졌으면, FE 가 보낸 관리 강도와 상관없이 위로하는 통화(0)로 합니다. (careLevelFor)
+//   최근 7일 통화의 위기 표현 · 최근 7일 체크인 글의 위기 표현 · 기분 저하 6일 연속
+// 시험 3일 전 ~ 2일 뒤는 0 이 아니라 FE 가 보낸 관리 강도를 2(넛지)까지로 낮춥니다. (이슈 #232)
 // 안전 브레이크는 어떤 설정보다 먼저입니다. (CLAUDE.md 4장)
 //
 // ⚠️ 학생 카드와 대본, 임시 키, 지난 통화의 요약은 로그에 찍지 않습니다.
@@ -78,6 +83,8 @@ public class CallService {
   private final CallCardLoader callCardLoader;
   private final Clock clock;
   private final SafetyService safetyService;
+  // 오늘이 무너지기 쉬운 날인지 알려 줍니다. (이슈 #49)
+  private final RiskService riskService;
 
   public CallService(
       CurrentUserProvider currentUserProvider,
@@ -90,7 +97,8 @@ public class CallService {
       ExamRepository examRepository,
       CallCardLoader callCardLoader,
       Clock clock,
-      SafetyService safetyService) {
+      SafetyService safetyService,
+      RiskService riskService) {
     this.currentUserProvider = currentUserProvider;
     this.callKeyClient = callKeyClient;
     this.gptUsageGuard = gptUsageGuard;
@@ -102,6 +110,7 @@ public class CallService {
     this.callCardLoader = callCardLoader;
     this.clock = clock;
     this.safetyService = safetyService;
+    this.riskService = riskService;
   }
 
   public CallSessionResponse startSession(CallSessionRequest request) {
@@ -154,7 +163,8 @@ public class CallService {
             userId, today.minusDays(RECENT_DAYS - 1));
 
     // 안전 브레이크가 켜졌으면 위로하는 통화로 합니다. (관리 강도 0 이면 말투·순서가 모두 위로하는 쪽으로 바뀝니다)
-    int careLevel = isSafetyBrakeOn(userId, recentCalls, now, today) ? 0 : request.careLevel();
+    // 시험 기간이면 채찍 말투(3~4)를 빼고 넛지(2)까지만 씁니다.
+    int careLevel = careLevelFor(userId, recentCalls, now, today, request.careLevel());
     // 학생 카드: 서버 DB 의 기록이 먼저입니다. 나간 기록 · 집중 모드처럼 서버에 없는 값만 FE 카드에서 가져옵니다.
     CallSessionRequest.Card serverCard = callCardLoader.load(userId, today, now);
     CallSessionRequest.Card card =
@@ -173,6 +183,8 @@ public class CallService {
             foundBiasesOf(recentCalls),
             askedQuestionKeysOf(recentCalls),
             selfReport.biases());
+    // 오늘이 무너지기 쉬운 날이면 대본에 "표시" 로 넘깁니다. 이유(수면 등)는 넘기지 않고 위험 정도만 넘깁니다.
+    RiskLevel riskLevel = riskService.levelOn(userId, today);
     String instructions =
         channel == CallChannel.CHAT
             ? CallScript.chatInstructions(
@@ -181,14 +193,16 @@ public class CallService {
                 card,
                 biasQuestion,
                 pastCallsOf(recentCalls),
-                selfReport)
+                selfReport,
+                riskLevel)
             : CallScript.instructions(
                 careLevel,
                 request.maxHarshness(),
                 card,
                 biasQuestion,
                 pastCallsOf(recentCalls),
-                selfReport);
+                selfReport,
+                riskLevel);
     return new Script(instructions, biasQuestion);
   }
 
@@ -245,17 +259,26 @@ public class CallService {
     return weaknesses;
   }
 
-  // 안전 브레이크가 켜졌는지 서버의 기록으로 봅니다. (이슈 #28 "안전 브레이크가 걸린 날은 채찍 말투가 빠진다")
-  //   1) 오늘을 넣어 최근 7일 안에 위기 표현이 감지된 통화가 있다 (hasRecentCrisis)
-  //   2) SafetyBrake 의 위기 표현 · 시험 기간 · 기분 저하 중 하나라도 걸린다 (이슈 #56 · #58 · #59)
-  //      글은 최근 7일 체크인의 기타 이유 · 약속, 기분은 같은 체크인의 기분, 시험은 서버에 저장한 시험 날짜를 봅니다.
-  // FE 도 같은 규칙으로 관리 강도를 0 으로 보내지만, 기기에만 있는 기록으로 판정해서 서버가 한 번 더 봅니다.
+  // 이번 통화의 관리 강도를 서버의 기록으로 한 번 더 정합니다. (이슈 #28 "안전 브레이크가 걸린 날은 채찍 말투가 빠진다")
+  // 안전 브레이크가 켜졌으면 0 입니다.
+  //   1) 보호 조치 중이다 (SafetyService.isActive) · 오늘을 넣어 최근 7일 안에 위기 표현이 감지된 통화가 있다 (hasRecentCrisis)
+  //   2) SafetyBrake 의 위기 표현 · 기분 저하 중 하나라도 걸린다 (이슈 #56 · #59)
+  //      글은 최근 7일 체크인의 기타 이유 · 약속, 기분은 같은 체크인의 기분을 봅니다.
+  // 시험 기간(서버에 저장한 시험 날짜로 3일 전 ~ 2일 뒤)이면 requested 를 2 까지로 낮춥니다. (이슈 #58 · #232)
+  // 그 밖에는 FE 가 보낸 requested 그대로입니다.
+  //
+  //   FE 3, 최근 통화에 위기 표현  →  0
+  //   FE 3, 시험 이틀 전          →  2
+  //   FE 1, 시험 이틀 전          →  1
+  //   FE 3, 아무 일 없음          →  3
+  //
+  // FE 도 같은 규칙으로 관리 강도를 정해 보내지만, 기기에만 있는 기록으로 판정해서 서버가 한 번 더 봅니다.
   // 체크인 · 시험이 아직 서버에 없는 학생은 1) 만 걸립니다. (기록이 없는 날은 기분 저하로 세지 않습니다)
-  private boolean isSafetyBrakeOn(
-      Long userId, List<CallRecord> recentCalls, Instant now, LocalDate today) {
+  private int careLevelFor(
+      Long userId, List<CallRecord> recentCalls, Instant now, LocalDate today, int requested) {
     // 저장된 보호 조치와 서버 기록 기반 판정을 모두 유지합니다.
     if (safetyService.isActive(userId) || hasRecentCrisis(recentCalls, today)) {
-      return true;
+      return 0;
     }
     List<String> texts = new ArrayList<>();
     List<LowMoodStreak.MoodRecord> moods = new ArrayList<>();
@@ -275,7 +298,10 @@ public class CallService {
     }
     // 관리 강도 계산(CareLevel.of)에 넘기는 것과 같은 기준입니다. (SafetyBrake 맨 위 설명)
     SafetyBrake brake = SafetyBrake.check(now, texts, moods, examDates);
-    return brake.stopWhip() || brake.recoveryMode();
+    if (brake.stopWhip() || brake.recoveryMode()) {
+      return 0;
+    }
+    return ExamPeriod.capCareLevel(requested, brake.examPeriod());
   }
 
   // 오늘을 넣어 최근 7일 안에 위기 표현이 감지된 통화가 있으면 true 입니다.

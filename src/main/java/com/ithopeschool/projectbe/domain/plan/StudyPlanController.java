@@ -4,6 +4,8 @@ import com.ithopeschool.projectbe.domain.plan.dto.StudyPlanBatchCreateRequest;
 import com.ithopeschool.projectbe.domain.plan.dto.StudyPlanCreateRequest;
 import com.ithopeschool.projectbe.domain.plan.dto.StudyPlanResponse;
 import com.ithopeschool.projectbe.domain.plan.dto.StudyPlanUpdateRequest;
+import com.ithopeschool.projectbe.global.exception.ApiException;
+import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -34,17 +36,33 @@ public class StudyPlanController {
 
   private final StudyPlanService studyPlanService;
 
-  // date 는 꼭 보내야 합니다. 안 보내거나 모양이 틀리면(2026/10/05) Spring 이 막고,
-  // GlobalExceptionHandler 가 400 VALIDATION_ERROR 로 바꿔 답합니다.
+  // 두 가지로 부릅니다. date 하나(그날 하루) 또는 from · to 둘(기간, 이슈 #250). 섞어 보내거나 하나만 보내면 400 입니다.
+  // 날짜 모양이 틀리면(2026/10/05) Spring 이 막고, GlobalExceptionHandler 가 400 VALIDATION_ERROR 로 바꿔 답합니다.
   // @DateTimeFormat(ISO.DATE): "2026-10-05" 모양만 날짜로 받겠다는 표시입니다.
-  @Operation(summary = "그날의 내 공부 계획 목록 (시작 시각 순 → 시간 미정은 만든 순 · 토큰 필요)")
+  @Operation(
+      summary =
+          "내 공부 계획 목록: date 로 그날 하루, 또는 from · to 로 기간 (기간은 62일까지 · 날짜순 → 시작 시각 순 → 시간 미정은 만든 순 · 토큰 필요)")
   @GetMapping
   public List<StudyPlanResponse> getPlans(
-      @Parameter(description = "계획한 날짜. 예: 2026-10-05", required = true)
-          @RequestParam
+      @Parameter(description = "계획한 날짜 (그날 하루). 예: 2026-10-05")
+          @RequestParam(required = false)
           @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-          LocalDate date) {
-    return studyPlanService.getPlans(date);
+          LocalDate date,
+      @Parameter(description = "기간의 첫날 (포함). to 와 함께 보냅니다. 예: 2026-09-01")
+          @RequestParam(required = false)
+          @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+          LocalDate from,
+      @Parameter(description = "기간의 끝날 (포함). from 과 함께 보냅니다. 예: 2026-10-17")
+          @RequestParam(required = false)
+          @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+          LocalDate to) {
+    if (date != null && from == null && to == null) {
+      return studyPlanService.getPlans(date);
+    }
+    if (date == null && from != null && to != null) {
+      return studyPlanService.getPlansBetween(from, to);
+    }
+    throw new ApiException(ErrorCode.VALIDATION_ERROR, "date 하나, 또는 from 과 to 를 함께 보내 주세요");
   }
 
   @Operation(summary = "계획 추가 (목표 1~600분 · 공부 계획은 내 과목 필수 · 노는 계획은 과목 없음)")

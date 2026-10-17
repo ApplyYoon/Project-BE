@@ -9,11 +9,12 @@ import org.junit.jupiter.api.Test;
 // feExample 로 시작하는 6개는 FE 함수(canSendAiMessageNotification) 주석의 예시를 그대로 옮긴 것입니다.
 class MessageSendRuleTest {
 
-  // 자주 쓰는 안전 브레이크 상태들. 순서는 (stopWhip, recoveryMode, showHelp, quiet) 입니다.
-  private static final SafetyBrake ALL_OFF = new SafetyBrake(false, false, false, false);
-  private static final SafetyBrake QUIET = new SafetyBrake(false, false, false, true);
-  private static final SafetyBrake STOP_WHIP = new SafetyBrake(true, false, false, false);
-  private static final SafetyBrake RECOVERY = new SafetyBrake(false, true, false, false);
+  // 자주 쓰는 안전 브레이크 상태들. 순서는 (stopWhip, recoveryMode, examPeriod, showHelp, quiet) 입니다.
+  private static final SafetyBrake ALL_OFF = new SafetyBrake(false, false, false, false, false);
+  private static final SafetyBrake QUIET = new SafetyBrake(false, false, false, false, true);
+  private static final SafetyBrake STOP_WHIP = new SafetyBrake(true, false, false, false, false);
+  private static final SafetyBrake RECOVERY = new SafetyBrake(false, true, false, false, false);
+  private static final SafetyBrake EXAM_PERIOD = new SafetyBrake(false, false, true, false, false);
 
   // ─── FE 예시 ───
 
@@ -62,7 +63,7 @@ class MessageSendRuleTest {
       for (int maxCareLevel = 0; maxCareLevel <= 4; maxCareLevel++) {
         for (boolean stopWhip : new boolean[] {false, true}) {
           for (boolean recoveryMode : new boolean[] {false, true}) {
-            SafetyBrake brake = new SafetyBrake(stopWhip, recoveryMode, false, true);
+            SafetyBrake brake = new SafetyBrake(stopWhip, recoveryMode, false, false, true);
 
             assertThat(MessageSendRule.canSend(careLevel, brake, maxCareLevel)).isFalse();
           }
@@ -85,8 +86,9 @@ class MessageSendRuleTest {
 
   @Test
   void safetyBrakeBlocksWhipLevelsOnly() {
-    // 규칙 3, 4) 안전 브레이크가 켜지면 3·4단계는 막고, 0·1·2단계는 그대로 보냅니다. (한도는 4 로 넉넉하게)
-    for (SafetyBrake brake : new SafetyBrake[] {STOP_WHIP, RECOVERY}) {
+    // 규칙 3, 4) 안전 브레이크가 켜지거나 시험 기간이면 3·4단계는 막고, 0·1·2단계는 그대로 보냅니다. (한도는 4 로 넉넉하게)
+    // 시험 기간은 관리 강도 상한이 2 라서 채찍만 막습니다. (이슈 #232, FE 예5-2)
+    for (SafetyBrake brake : new SafetyBrake[] {STOP_WHIP, RECOVERY, EXAM_PERIOD}) {
       assertThat(MessageSendRule.canSend(0, brake, 4)).isTrue();
       assertThat(MessageSendRule.canSend(1, brake, 4)).isTrue();
       assertThat(MessageSendRule.canSend(2, brake, 4)).isTrue();
@@ -109,8 +111,8 @@ class MessageSendRuleTest {
 
   @Test
   void showHelpAloneDoesNotBlockMessages() {
-    // 도움 안내(showHelp)는 보낼지 말지에 쓰지 않습니다. stopWhip · recoveryMode · quiet 세 값만 봅니다.
-    SafetyBrake onlyShowHelp = new SafetyBrake(false, false, true, false);
+    // 도움 안내(showHelp)는 보낼지 말지에 쓰지 않습니다. stopWhip · recoveryMode · examPeriod · quiet 네 값만 봅니다.
+    SafetyBrake onlyShowHelp = new SafetyBrake(false, false, false, true, false);
 
     assertThat(MessageSendRule.canSend(3, onlyShowHelp, 4)).isTrue();
   }
