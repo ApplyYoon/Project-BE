@@ -11,7 +11,8 @@ import jakarta.validation.constraints.Size;
 // - startTime 을 빈 글자("")로 보내면 시작 시각을 지웁니다. ("시간 미정". FE 의 changeStartTime 과 같은 약속)
 // - kind 를 "play" 로 바꾸면 과목은 비워집니다. "study" 로 바꾸면 과목이 꼭 있어야 합니다.
 public record StudyPlanUpdateRequest(
-    @Pattern(regexp = "\\d*", message = "과목 번호가 올바르지 않아요") String subjectId,
+    // 18자리까지만 받습니다. 그보다 길면 서버의 숫자(Long)에 안 들어가서 500 이 나기 때문입니다.
+    @Pattern(regexp = "\\d{0,18}", message = "과목 번호가 올바르지 않아요") String subjectId,
     @Size(min = 1, max = 200, message = "할 일은 1자 이상 200자 이하로 적어 주세요") String content,
     @Min(value = 1, message = "목표 시간은 1분 이상이어야 해요")
         @Max(value = 600, message = "목표 시간은 600분(10시간) 이하여야 해요")
