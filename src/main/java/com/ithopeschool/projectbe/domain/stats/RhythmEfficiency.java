@@ -143,7 +143,8 @@ public record RhythmEfficiency(
   }
 
   // 날짜 묶음 하나의 평균을 냅니다. days 는 날짜 순서로 들어옵니다.
-  private static DayGroup dayGroupOf(List<Day> days) {
+  // 이벤트 다음 날 효과(AfterEventEffect)도 같은 규칙으로 평균을 내려고 이 함수를 씁니다. (그래서 private 이 아님)
+  static DayGroup dayGroupOf(List<Day> days) {
     long studySum = 0;
     long rateSum = 0;
     int rateCount = 0;
