@@ -439,7 +439,13 @@ class LoginRequiredFlowTest {
               "/api/v1/goals",
               "{\"kind\":\"score\",\"title\":\"수학\",\"dDay\":\"2099-01-01\",\"currentScore\":\"5등급\",\"benefit\":\"a\",\"cost\":\"b\",\"obstacle\":\"c\",\"plan\":\"d\"}"),
           new Api("PATCH", "/api/v1/goals/{id}", "/api/v1/goals/1", "{\"plan\":\"d\"}"),
-          new Api("GET", "/api/v1/goals/{id}/history", "/api/v1/goals/1/history", null));
+          new Api("GET", "/api/v1/goals/{id}/history", "/api/v1/goals/1/history", null),
+          // 말로 카드 만들기 (내 목표 · 카드 · 기록을 봅니다. 이슈 #237)
+          new Api(
+              "POST",
+              "/api/v1/ai/cards/parse",
+              "/api/v1/ai/cards/parse",
+              "{\"date\":\"2026-10-17\",\"text\":\"수학\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.
