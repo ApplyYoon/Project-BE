@@ -106,17 +106,47 @@ public class AiClient {
   //   kind   : 무슨 기능인지 (gpt_usages 에 이 종류로 남습니다)
   public <T> Optional<T> ask(
       Long userId, GptUsageKind kind, AiQuestion question, Class<T> answerType) {
-    return send(restClient, userId, kind, question, answerType);
+    return send(restClient, userId, kind, question, question.input(), answerType);
   }
 
   // ask 와 같고, 답을 25초까지 기다립니다. 답이 긴 기능(자기 분석 SelfAnalysisService)에서만 씁니다.
   public <T> Optional<T> askLong(
       Long userId, GptUsageKind kind, AiQuestion question, Class<T> answerType) {
-    return send(longRestClient, userId, kind, question, answerType);
+    return send(longRestClient, userId, kind, question, question.input(), answerType);
   }
 
+  // ask 와 같고, 질문 글과 함께 사진 한 장을 보냅니다. 사진을 읽느라 오래 걸려서 답을 25초까지 기다립니다.
+  //   imageDataUrl : "data:image/jpeg;base64,..." 모양의 사진 (OpenAI 문서 Images and vision 의
+  // input_image)
+  // ⚠️ 사진은 여기서 OpenAI 로 보내고 끝입니다. 저장하거나 로그에 찍지 않습니다. (store=false 로 OpenAI 에도 남기지 않음)
+  public <T> Optional<T> askWithImage(
+      Long userId,
+      GptUsageKind kind,
+      AiQuestion question,
+      String imageDataUrl,
+      Class<T> answerType) {
+    // 보내는 모양: [ { "role": "user", "content": [ { "type": "input_text", "text": "..." },
+    //                 { "type": "input_image", "image_url": "data:...", "detail": "auto" } ] } ]
+    List<Map<String, Object>> input =
+        List.of(
+            Map.of(
+                "role",
+                "user",
+                "content",
+                List.of(
+                    Map.of("type", "input_text", "text", question.input()),
+                    Map.of("type", "input_image", "image_url", imageDataUrl, "detail", "auto"))));
+    return send(longRestClient, userId, kind, question, input, answerType);
+  }
+
+  // input 은 글(String)이거나, 사진이 섞인 메시지 목록(askWithImage)입니다.
   private <T> Optional<T> send(
-      RestClient client, Long userId, GptUsageKind kind, AiQuestion question, Class<T> answerType) {
+      RestClient client,
+      Long userId,
+      GptUsageKind kind,
+      AiQuestion question,
+      Object input,
+      Class<T> answerType) {
     // 1) 꺼져 있음. 부르지 않았으니 한도도 쓰지 않습니다.
     if (!isEnabled()) {
       return Optional.empty();
@@ -132,7 +162,7 @@ public class AiClient {
           new OpenAiRequest(
               model,
               question.instructions(),
-              question.input(),
+              input,
               false,
               new TextOption(new Format("json_schema", question.name(), true, question.schema())));
       OpenAiResponse response =
@@ -194,8 +224,9 @@ public class AiClient {
   //   { "model": "...", "instructions": "...", "input": "...", "store": false,
   //     "text": { "format": { "type": "json_schema", "name": "checklist", "strict": true,
   //               "schema": {…} } } }
+  // input 은 글 하나이거나, 사진을 보낼 때는 메시지 목록입니다. (askWithImage)
   record OpenAiRequest(
-      String model, String instructions, String input, boolean store, TextOption text) {}
+      String model, String instructions, Object input, boolean store, TextOption text) {}
 
   record TextOption(Format format) {}
 

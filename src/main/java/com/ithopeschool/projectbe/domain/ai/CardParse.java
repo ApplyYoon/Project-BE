@@ -174,13 +174,25 @@ public final class CardParse {
   //   7. 초안은 10장까지만. 남은 카드는 버립니다.
   public static List<Draft> from(
       Answer answer, LocalDate baseDate, Set<String> myGoalIds, int defaultMinutes) {
+    return from(answer, baseDate, myGoalIds, defaultMinutes, MAX_DAY_OFFSET, MAX_DRAFTS);
+  }
+
+  // from 과 같고, 규칙 2 의 "며칠 뒤까지" 와 규칙 7 의 "몇 장까지" 를 정해서 씁니다.
+  // 시험 범위 사진(CardPhoto)은 시험 날까지 나눠야 해서 2주보다 길게 받습니다.
+  public static List<Draft> from(
+      Answer answer,
+      LocalDate baseDate,
+      Set<String> myGoalIds,
+      int defaultMinutes,
+      int maxDayOffset,
+      int maxDrafts) {
     List<Draft> drafts = new ArrayList<>();
     if (answer == null || answer.cards() == null) {
       return drafts;
     }
     for (Answer.Item item : answer.cards()) {
       // 규칙 7
-      if (drafts.size() >= MAX_DRAFTS) {
+      if (drafts.size() >= maxDrafts) {
         break;
       }
       if (item == null || item.title() == null) {
@@ -197,7 +209,7 @@ public final class CardParse {
 
       // 규칙 2
       int offset = item.dayOffset() == null ? 0 : item.dayOffset();
-      if (offset < 0 || offset > MAX_DAY_OFFSET) {
+      if (offset < 0 || offset > maxDayOffset) {
         continue;
       }
 

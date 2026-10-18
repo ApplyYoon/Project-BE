@@ -16,6 +16,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.CardParseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardParseResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
@@ -57,6 +59,7 @@ class AiControllerTest {
   @MockitoBean private SettingsFromTextService settingsFromTextService;
   @MockitoBean private ProfileLinesService profileLinesService;
   @MockitoBean private CardParseService cardParseService;
+  @MockitoBean private CardPhotoService cardPhotoService;
   @MockitoBean private CardDefaultsService cardDefaultsService;
   @MockitoBean private SelfAnalysisService selfAnalysisService;
   @MockitoBean private DayPlanService dayPlanService;
@@ -491,6 +494,66 @@ class AiControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("문장은 200자 이하로 보내 주세요"));
     verifyNoInteractions(cardParseService);
+  }
+
+  // ---- 사진으로 카드 만들기 ----
+
+  private ResultActions cardsFromPhoto(String body) throws Exception {
+    return mockMvc.perform(
+        post("/api/v1/ai/cards/from-photo").contentType(MediaType.APPLICATION_JSON).content(body));
+  }
+
+  @Test
+  @DisplayName("사진으로 카드 만들기: 200 과 초안들 · 읽은 범위 한 줄, 메모의 앞뒤 공백은 지워서 넘긴다")
+  void cardsFromPhotoReturnsDrafts() throws Exception {
+    given(cardPhotoService.make(any()))
+        .willReturn(
+            new CardPhotoResponse(
+                false,
+                List.of(
+                    new CardParseResponse.Draft(
+                        LocalDate.of(2026, 10, 18),
+                        null,
+                        25,
+                        true,
+                        "수학 3단원 개념",
+                        List.of("교과서 52~60쪽 읽기"),
+                        "4")),
+                "기록 이유",
+                "수학 3~4단원"));
+    cardsFromPhoto(
+            "{\"image\":\"data:image/jpeg;base64,AQID\",\"date\":\"2026-10-18\",\"examDate\":\"2026-11-02\",\"note\":\" 수학만 \"}")
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .json(
+                    "{\"showHelp\":false,\"drafts\":[{\"date\":\"2026-10-18\",\"startTime\":null,\"durationMinutes\":25,\"durationFromRecord\":true,\"title\":\"수학 3단원 개념\",\"checklist\":[\"교과서 52~60쪽 읽기\"],\"goalId\":\"4\"}],\"durationEvidence\":\"기록 이유\",\"scopeText\":\"수학 3~4단원\"}",
+                    true));
+    verify(cardPhotoService)
+        .make(
+            new CardPhotoRequest(
+                "data:image/jpeg;base64,AQID",
+                LocalDate.of(2026, 10, 18),
+                LocalDate.of(2026, 11, 2),
+                "수학만"));
+  }
+
+  @Test
+  @DisplayName("사진으로 카드 만들기: 사진 · 날짜가 없거나 메모가 100자를 넘으면 400 이고 서비스를 부르지 않는다")
+  void cardsFromPhotoRejectsBadRequests() throws Exception {
+    cardsFromPhoto("{\"date\":\"2026-10-18\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("사진을 보내 주세요"));
+    cardsFromPhoto("{\"image\":\"data:image/jpeg;base64,AQID\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("기준 날짜를 보내 주세요"));
+    cardsFromPhoto(
+            "{\"image\":\"data:image/jpeg;base64,AQID\",\"date\":\"2026-10-18\",\"note\":\""
+                + "가".repeat(101)
+                + "\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("메모는 100자 이하로 보내 주세요"));
+    verifyNoInteractions(cardPhotoService);
   }
 
   // ---- 카드 폼 기본값 ----

@@ -6,6 +6,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.CardParseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardParseResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
@@ -53,6 +55,7 @@ public class AiController {
   private final SettingsFromTextService settingsFromTextService;
   private final ProfileLinesService profileLinesService;
   private final CardParseService cardParseService;
+  private final CardPhotoService cardPhotoService;
   private final CardDefaultsService cardDefaultsService;
   private final SelfAnalysisService selfAnalysisService;
   private final DayPlanService dayPlanService;
@@ -118,6 +121,14 @@ public class AiController {
   @PostMapping("/cards/parse")
   public CardParseResponse parseCards(@Valid @RequestBody CardParseRequest request) {
     return cardParseService.parse(request);
+  }
+
+  @Operation(
+      summary =
+          "사진으로 카드 만들기: 시험 범위표 · 학습지 사진 → 시험 전날까지 나눈 카드 초안 (image 는 data URL · 4MB 이하 · 사진도 카드도 저장 안 함 · 못 만들면 drafts: null · 토큰 필요)")
+  @PostMapping("/cards/from-photo")
+  public CardPhotoResponse cardsFromPhoto(@Valid @RequestBody CardPhotoRequest request) {
+    return cardPhotoService.make(request);
   }
 
   @Operation(

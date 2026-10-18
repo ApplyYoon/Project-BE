@@ -4030,6 +4030,48 @@ AI 가 보낸 메시지(당근·넛지·채찍·이벤트 알림·회복)를 보
 | 400 | `VALIDATION_ERROR` | `text` 가 200자를 넘음 | `"문장은 200자 이하로 보내 주세요"` |
 | 401 | `UNAUTHORIZED` | 로그인하지 않음 | `"로그인이 필요해요"` |
 
+#### 사진으로 카드 만들기
+
+`POST /api/v1/ai/cards/from-photo` — 학생이 찍은 **시험 범위표 · 학습지 사진 한 장**을 AI 가 읽고, **시험 전날까지 나눈 카드 초안 여러 장**을 만듭니다. (2026-10-18, Project-App 요청) **사진도 카드도 저장하지 않습니다.** 로그인이 필요합니다.
+
+```json
+{ "image": "data:image/jpeg;base64,/9j/4AAQ...", "date": "2026-10-18", "examDate": "2026-11-02", "note": "수학만" }
+```
+
+| 필드 | 무엇 |
+| --- | --- |
+| `image` | 사진 한 장의 data URL. `image/jpeg` · `image/png` · `image/webp` 만, 풀었을 때 **4MB 이하**. FE 가 긴 변 1600px 로 줄여서 보냅니다 |
+| `date` | 기준 날짜 (보통 오늘). 카드는 이 날부터 둡니다 |
+| `examDate` | (선택) 시험 날짜. 있으면 **시험 전날까지**(최대 30일) 나누고, 없으면 13일 뒤까지 |
+| `note` | (선택) 한 줄 메모 (예: `"수학만"`), 100자까지 |
+
+**응답 200** — "말로 카드 만들기" 와 같은 칸에 `scopeText` 를 더했습니다.
+
+```json
+{ "showHelp": false,
+  "drafts": [ { "date": "2026-10-18", "startTime": null, "durationMinutes": 25, "durationFromRecord": true,
+                "title": "수학 3단원 개념", "checklist": ["교과서 52~60쪽 읽기"], "goalId": "4" } ],
+  "durationEvidence": "최근 14일 공부 기록 8번의 한 번 길이 가운데값이 24분이라 25분으로 잡았어요",
+  "scopeText": "수학 3~4단원, 교과서 52~88쪽" }
+```
+
+- `scopeText` 는 AI 가 사진에서 읽은 범위 한 줄(60자까지)입니다. 못 읽었으면 `null`.
+- 사진에는 시각 · 길이가 없어서 `startTime` 은 늘 `null`, 길이는 내 기록의 한 칸 길이입니다. 초안은 14장까지.
+- `drafts: null` 은 만들지 못한 것(AI 꺼짐 · 하루 한도 · 실패 · **시험 범위가 아닌 사진**)이고 에러가 아닙니다. 내 컴퓨터에서는 AI 가 꺼져 있어 늘 `null` 입니다.
+- 메모나 사진 속 글에 위기 표현이 있으면 `showHelp: true` · `drafts: null` 입니다. 하루 한도는 `ASSIST` 로 셉니다.
+- ⚠️ 사진은 메모리에서 OpenAI 로 보내고 끝입니다(`store: false`). DB · 파일 · 로그 어디에도 남기지 않습니다. AI 에게는 사진 속 이름 · 학번 같은 개인정보를 옮기지 말라고 지침에 적습니다.
+
+| 상태 | `code` | 언제 | `message` |
+| --- | --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `image` 가 없음 | `"사진을 보내 주세요"` |
+| 400 | `VALIDATION_ERROR` | jpeg · png · webp 의 data URL 이 아님 | `"사진은 jpeg · png · webp 의 data URL 로 보내 주세요"` |
+| 400 | `VALIDATION_ERROR` | base64 가 깨졌거나 비었음 | `"사진을 읽을 수 없어요. 다시 찍어 주세요"` |
+| 400 | `VALIDATION_ERROR` | 사진이 4MB 를 넘음 | `"사진이 너무 커요. 4MB 이하로 보내 주세요"` |
+| 400 | `VALIDATION_ERROR` | `date` 가 없음 | `"기준 날짜를 보내 주세요"` |
+| 400 | `VALIDATION_ERROR` | `examDate` 가 `date` 보다 빠름 | `"시험 날짜는 기준 날짜보다 빠를 수 없어요"` |
+| 400 | `VALIDATION_ERROR` | `note` 가 100자를 넘음 | `"메모는 100자 이하로 보내 주세요"` |
+| 401 | `UNAUTHORIZED` | 로그인하지 않음 | `"로그인이 필요해요"` |
+
 #### 카드 폼 기본값
 
 `POST /api/v1/ai/card-defaults` — 카드 폼에 쓴 **제목**을 보고 **목표 연결 · 유형(자습 / 인강) · 길이**를 미리 채웁니다. (이슈 #237, FE #419) **저장하지 않습니다.**

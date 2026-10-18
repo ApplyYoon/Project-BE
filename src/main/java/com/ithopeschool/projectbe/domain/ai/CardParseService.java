@@ -55,24 +55,15 @@ public class CardParseService {
     }
 
     // 2) 맥락
-    List<CardParse.GoalHint> goals = new ArrayList<>();
-    Set<String> myGoalIds = new HashSet<>();
-    for (Goal goal : goalRepository.findByUserIdOrderById(userId)) {
-      if (goal.isActive()) {
-        String id = String.valueOf(goal.getId());
-        goals.add(new CardParse.GoalHint(id, goal.getTitle(), goal.getDDay()));
-        myGoalIds.add(id);
-      }
-    }
-    List<String> recentTitles = recentTitlesOf(userId);
-    BlockLength.Choice block = blockLengthService.choose(userId);
+    Context context = contextOf(userId);
 
     // 3) AI
     Optional<CardParse.Answer> answer =
         aiClient.ask(
             userId,
             GptUsageKind.ASSIST,
-            CardParse.question(request.date(), request.text(), goals, recentTitles),
+            CardParse.question(
+                request.date(), request.text(), context.goals(), context.recentTitles()),
             CardParse.Answer.class);
     if (answer.isEmpty()) {
       return CardParseResponse.notMade();
@@ -85,8 +76,30 @@ public class CardParseService {
 
     // 5) 카드마다 검사
     List<CardParse.Draft> drafts =
-        CardParse.from(answer.get(), request.date(), myGoalIds, block.minutes());
-    return CardParseResponse.of(drafts, block.evidence());
+        CardParse.from(
+            answer.get(), request.date(), context.myGoalIds(), context.block().minutes());
+    return CardParseResponse.of(drafts, context.block().evidence());
+  }
+
+  // AI 에게 줄 내 맥락입니다. "사진으로 카드 만들기"(CardPhotoService)도 같은 맥락을 씁니다.
+  //   goals: 내 진행 중 목표 / myGoalIds: 그 번호들 / recentTitles: 최근 카드 제목 / block: 내 한 칸 길이
+  record Context(
+      List<CardParse.GoalHint> goals,
+      Set<String> myGoalIds,
+      List<String> recentTitles,
+      BlockLength.Choice block) {}
+
+  Context contextOf(Long userId) {
+    List<CardParse.GoalHint> goals = new ArrayList<>();
+    Set<String> myGoalIds = new HashSet<>();
+    for (Goal goal : goalRepository.findByUserIdOrderById(userId)) {
+      if (goal.isActive()) {
+        String id = String.valueOf(goal.getId());
+        goals.add(new CardParse.GoalHint(id, goal.getTitle(), goal.getDDay()));
+        myGoalIds.add(id);
+      }
+    }
+    return new Context(goals, myGoalIds, recentTitlesOf(userId), blockLengthService.choose(userId));
   }
 
   // 최근에 만든 카드의 제목들. 최근 것부터, 같은 제목은 한 번만, 10개까지입니다.

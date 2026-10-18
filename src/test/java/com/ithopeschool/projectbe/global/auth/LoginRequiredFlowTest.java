@@ -468,6 +468,12 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/cards/parse",
               "/api/v1/ai/cards/parse",
               "{\"date\":\"2026-10-17\",\"text\":\"수학\"}"),
+          // 사진으로 카드 만들기 (내 목표 · 카드 · 기록을 봅니다. 2026-10-18)
+          new Api(
+              "POST",
+              "/api/v1/ai/cards/from-photo",
+              "/api/v1/ai/cards/from-photo",
+              "{\"image\":\"data:image/jpeg;base64,AAAA\",\"date\":\"2026-10-18\"}"),
           // 카드 폼 기본값 (내 카드 · 목표 · 기록을 봅니다. 이슈 #237)
           new Api(
               "POST", "/api/v1/ai/card-defaults", "/api/v1/ai/card-defaults", "{\"title\":\"수학\"}"),
