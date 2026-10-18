@@ -200,6 +200,13 @@ class LoginRequiredFlowTest {
               "/api/v1/care-stages",
               "/api/v1/care-stages?from=2026-10-01&to=2026-10-18",
               null),
+          // 자기 실험 (내 카드에 실험 규칙을 붙입니다. 이슈 #52 · #54)
+          new Api(
+              "POST",
+              "/api/v1/experiments",
+              "/api/v1/experiments",
+              "{\"hypothesis\":\"폰\",\"strategyId\":\"phone-bag\",\"cardIds\":[\"1\"]}"),
+          new Api("GET", "/api/v1/experiments", "/api/v1/experiments", null),
           // 잠금 해제 기록
           new Api(
               "POST",

@@ -4505,6 +4505,63 @@ AI 가 보낸 메시지(당근·넛지·채찍·이벤트 알림·회복)를 보
 | --- | --- | --- | --- |
 | 401 | `UNAUTHORIZED` | 로그인하지 않음 | `"로그인이 필요해요"` |
 
+### 자기 실험
+
+가설 → 전략 하나 → 관련 카드에 **'실험 규칙'** 으로 붙임(새 카드가 아님) → **14일** → 판정. (이슈 #52 · #53 · #54, 최종 기획서 「4.6 분석」 자기 실험) **두 주소 모두 로그인이 필요합니다.**
+규칙은 FE `src/lib/experiments.ts` · 전략 10개는 `src/lib/strategyCatalog.ts` 와 같습니다. (서버: `ExperimentRule` · `ExperimentStrategy`)
+
+| 주소 | 하는 일 |
+| --- | --- |
+| `POST /api/v1/experiments` | 실험 시작 → 201 |
+| `GET /api/v1/experiments` | 내 실험 목록 (늦게 시작한 것부터). **14일이 끝난 실험은 이때 판정해 남깁니다** |
+
+**요청 (POST)**
+
+```json
+{ "hypothesis": "폰·SNS 때문에 놓치는 날이 많다", "cause": "phone", "strategyId": "phone-bag",
+  "cardIds": ["12", "15"], "startDate": "2026-10-18", "minGainPp": 10 }
+```
+
+| 필드 | 규칙 |
+| --- | --- |
+| `hypothesis` | 필수, 100자까지 |
+| `cause` | 선택. 카드 미실행 원인 값 (`tired` · `event` · `phone` · `tooMuch` · `unwilling` · `sick` · `procrastinated` · `etc`) |
+| `strategyId` | 필수. 전략 10개의 id (`phone-flip` · `phone-bag` · `phone-room` · `start-first-line` · `start-countdown` · `start-desk` · `plan-one-less` · `plan-shorter` · `plan-split` · `proof-one-line`) |
+| `cardIds` | 필수, 1 ~ 5장, **내 카드**만 |
+| `startDate` | 선택, 안 보내면 오늘. **13일 전 ~ 오늘** 만 (기기에서 먼저 시작한 실험을 올릴 수 있게) |
+| `minGainPp` | 선택, 안 보내면 10. **그만둘 기준**(%p, 1 ~ 50): 기준선보다 실행률이 이만큼 넘게 올라야 효과 있음. 시작한 뒤에는 바꿀 수 없습니다 |
+
+**응답 201 / 200** (목록은 이 모양의 배열)
+
+```json
+{ "id": "3", "hypothesis": "폰·SNS 때문에 놓치는 날이 많다", "cause": "phone", "strategyId": "phone-bag",
+  "rule": "시작할 때 폰을 가방에 넣기", "cardIds": ["12"], "startDate": "2026-10-01", "endDate": "2026-10-14",
+  "day": 15, "minGainPp": 10, "status": "effective", "baselineRate": 0.5, "experimentRate": 0.7,
+  "fulfillment": { "rate": 86, "grade": "good" } }
+```
+
+| 필드 | 무엇 |
+| --- | --- |
+| `rule` | 카드에 붙는 '실험 규칙' 한 줄 (전략의 글) |
+| `day` | 며칠째인지 (시작한 날 1, 끝났으면 15) |
+| `status` | `running` 진행 중 · `effective` 효과 있음 · `noEffect` 효과 없음 · `unclear` 기록이 모자라 알 수 없음 |
+| `baselineRate` · `experimentRate` | **판정의 근거 숫자.** 붙인 카드의 평균 실행률(0 ~ 1): 시작 전 14일 · 실험 14일. 진행 중이거나 카드가 모자라면 `null` |
+| `fulfillment` | **이행률** (#53): 실험 기간에 판정이 끝난 붙인 카드 중 실행한 비율(%)과 `good`(70% 이상) · `partial`(40% 이상) · `poor`. "지켰어?" 를 묻지 않고 카드 기록으로 셉니다. 셀 카드가 없으면 `null` |
+
+- **효과 판정** (#54): 두 기간 모두 카드 하루치가 **5개 이상**이어야 판정합니다(아니면 `unclear`). (실험 − 기준선) 이 `minGainPp` 보다 **크면** `effective`, 아니면 `noEffect`. 휴식한 날은 뺍니다.
+- 한 번 판정하면 바꾸지 않습니다. 판정일에는 시작 전에 정한 기준만 봅니다(매몰 비용 대응).
+- 진행 중인 실험은 **2개까지**, 한 카드에는 진행 중 실험 **하나만** 붙습니다.
+
+| 상태 | `code` | 언제 |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | 필수 칸이 비었음, 카드가 6장 이상 · 숫자가 아님, 없는 전략 · 원인, 시작 날짜가 13일 전보다 앞 · 내일 이후, `minGainPp` 가 1 ~ 50 밖 |
+| 401 | `UNAUTHORIZED` | 로그인하지 않음 |
+| 403 | `CONSENT_REQUIRED` | (POST) 최신 동의 문구에 동의하지 않음 |
+| 404 | `NOT_FOUND` | 없는 카드 · 남의 카드 |
+| 409 | `CONFLICT` | 진행 중 실험이 이미 2개 / 그 카드에 진행 중 실험이 이미 붙어 있음 |
+
+> 옛 기획(v2)의 개선안 · 순공시간 비교 판정(`suggestion/ExperimentJudge` 등)은 그대로 둡니다. 이 주소는 v3 규칙(붙인 카드의 실행률)만 씁니다.
+
 ### 학교 학사일정
 
 가입 때 고른 고등학교의 **학사일정**(정기시험 · 학력평가 · 모의평가 · 방학 · 행사)을 교육부 NEIS 에서 받아 돌려줍니다. (이슈 #282)
