@@ -14,6 +14,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.DailyMissionsRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.DailyMissionsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.DayPlanReviseRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.DayPlanReviseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseRequest;
@@ -62,6 +64,7 @@ public class AiController {
   private final SelfAnalysisService selfAnalysisService;
   private final DayPlanService dayPlanService;
   private final DailyMissionsService dailyMissionsService;
+  private final DayPlanReviseService dayPlanReviseService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -179,5 +182,13 @@ public class AiController {
   @PostMapping("/daily-missions")
   public DailyMissionsResponse dailyMissions(@Valid @RequestBody DailyMissionsRequest request) {
     return dailyMissionsService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "계획 핑퐁: 지금 계획(카드 초안)과 학생의 요청 한 줄로 AI 가 계획을 고침 (시각 · 길이 · 겹침은 서버가 검사 · 저장 안 함 · 못 고치면 drafts: null · 토큰 필요)")
+  @PostMapping("/day-plan/revise")
+  public DayPlanReviseResponse reviseDayPlan(@Valid @RequestBody DayPlanReviseRequest request) {
+    return dayPlanReviseService.revise(request);
   }
 }

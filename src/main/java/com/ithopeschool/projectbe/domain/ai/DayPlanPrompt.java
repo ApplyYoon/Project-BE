@@ -37,13 +37,21 @@ public final class DayPlanPrompt {
   // AI 에게 보낼 질문 하나
   //   recentTitles: 최근 카드 제목 (최근 것부터, 겹치지 않게)
   public static AiQuestion question(LocalDate date, List<Block> blocks, List<String> recentTitles) {
+    return question(date, blocks, recentTitles, List.of());
+  }
+
+  // 학생이 알려 준 것(준비하는 것 · 오늘 과목)을 입력 끝에 더한 질문 (2026-10-18 계획 핑퐁)
+  //   extraLines 예: ["준비하는 것: 수능", "오늘 배운 과목: 미적분Ⅰ, 문학"]
+  public static AiQuestion question(
+      LocalDate date, List<Block> blocks, List<String> recentTitles, List<String> extraLines) {
     Map<String, Object> card = new LinkedHashMap<>();
     card.put("title", AiSchema.string());
     card.put("checklist", AiSchema.stringList());
     return new AiQuestion(
         "day_plan",
         instructions(),
-        input(date, blocks, recentTitles),
+        input(date, blocks, recentTitles)
+            + (extraLines.isEmpty() ? "" : "\n" + String.join("\n", extraLines)),
         AiSchema.object(Map.of("cards", AiSchema.list(AiSchema.object(card)))));
   }
 
@@ -64,6 +72,7 @@ public final class DayPlanPrompt {
             + MAX_ITEMS
             + "개. 하루 분량이 있으면 그 분량을 넣어. D-day 가 가까우면 기출 · 오답 같은 시험 준비를 넣어.");
     lines.add("5. 같은 목표가 여러 칸이면 칸마다 다른 할 일로 써. 목표가 없는 칸은 최근 카드의 흐름을 이어 가.");
+    lines.add("   '준비하는 것' 이 있으면 그것에 맞춰(수능이면 기출 · 개념, 대회면 그 대회 준비), '오늘 배운 과목' 이 있으면 그 복습을 넣어도 돼.");
     lines.add(
         "6. 항목 하나는 "
             + ChecklistDraft.MAX_ITEM_LENGTH
