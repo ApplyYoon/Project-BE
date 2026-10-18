@@ -22,16 +22,20 @@ import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
 import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
 import com.ithopeschool.projectbe.domain.exam.Exam;
 import com.ithopeschool.projectbe.domain.exam.ExamRepository;
+import com.ithopeschool.projectbe.domain.exam.ExamScoreRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamType;
+import com.ithopeschool.projectbe.domain.goal.GoalRepository;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
 import com.ithopeschool.projectbe.domain.risk.RiskLevel;
 import com.ithopeschool.projectbe.domain.risk.RiskService;
 import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
+import com.ithopeschool.projectbe.domain.subject.SubjectRepository;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTest;
 import com.ithopeschool.projectbe.domain.thinkingtest.ThinkingTestRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
@@ -43,6 +47,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -74,6 +79,14 @@ class CallServiceTest {
   private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
   // 오늘이 위험한 날인지는 가짜로 둡니다. 진짜 계산은 RiskRuleTest · RiskServiceTest 가 확인합니다. (기본은 위험 없음)
   private final RiskService riskService = mock(RiskService.class);
+  // 대본 끝 "[기록에서 꺼낸 것]" 의 재료(시험 점수 · 과목 · 목표 · 심리검사)도 기본으로 없습니다. (CallContextLoader)
+  private final CallContextLoader callContextLoader =
+      new CallContextLoader(
+          examRepository,
+          mock(ExamScoreRepository.class),
+          mock(SubjectRepository.class),
+          mock(GoalRepository.class),
+          mock(PsychTestRepository.class));
   // 지금은 2026-10-11 오후 3시(한국 시간)입니다. 오늘 날짜는 2026-10-11 입니다.
   private static final Instant NOW = Instant.parse("2026-10-11T06:00:00Z");
   private static final LocalDate TODAY = LocalDate.of(2026, 10, 11);
@@ -91,7 +104,8 @@ class CallServiceTest {
           new CallCardLoader(studyPlanRepository, studySessionRepository, checkInRepository),
           Clock.fixed(NOW, ZoneOffset.UTC),
           safetyService,
-          riskService);
+          riskService,
+          callContextLoader);
 
   private static final CallSessionRequest REQUEST =
       new CallSessionRequest(
@@ -494,6 +508,34 @@ class CallServiceTest {
         .contains("담백하게 사실만")
         .doesNotContain("돌려 말하지 말고")
         .doesNotContain("위로하고 응원하는 말만");
+  }
+
+  @Test
+  @DisplayName("서버에 저장한 다음 시험이 있으면 대본 끝에 [기록에서 꺼낸 것] 칸으로 남은 날을 적는다")
+  void appendsRecordSection() {
+    given(examRepository.findByUserIdOrderByExamDateDescIdDesc(USER_ID))
+        .willReturn(List.of(new Exam(USER_ID, "11월 학평", ExamType.MOCK, TODAY.plusDays(40))));
+
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions())
+        .startsWith(CallScript.instructions(2, 3, REQUEST.card()))
+        .endsWith(
+            CallContext.section(
+                new CallContext.Facts(
+                    new CallContext.NextExam("11월 학평", 40), null, List.of(), Map.of())));
+  }
+
+  @Test
+  @DisplayName("위로하는 통화에는 시험이 있어도 [기록에서 꺼낸 것] 칸을 붙이지 않는다")
+  void supportiveCallHasNoRecordSection() {
+    given(safetyService.isActive(USER_ID)).willReturn(true);
+    given(examRepository.findByUserIdOrderByExamDateDescIdDesc(USER_ID))
+        .willReturn(List.of(new Exam(USER_ID, "11월 학평", ExamType.MOCK, TODAY.plusDays(40))));
+
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[기록에서 꺼낸 것]");
   }
 
   @Test

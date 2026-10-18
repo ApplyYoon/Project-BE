@@ -50,6 +50,7 @@ import org.springframework.stereotype.Service;
 //      학생 카드의 숫자는 서버 DB 의 그 사람 기록으로 계산합니다. (CallCardLoader, 이슈 #28)
 //      서버에 계획·공부 기록이 아직 없으면(FE 가 기기에만 저장하던 학생) FE 가 보낸 카드를 씁니다.
 //      오늘이 무너지기 쉬운 날이면 대본에 "표시" 를 넣습니다. (RiskService.levelOn: 위험 예측 이슈 #49. 저장하지 않고 지금 기록으로 계산)
+//      대본 끝에 시험 · 목표 · 가입 심리검사를 "[기록에서 꺼낸 것]" 으로 붙입니다. 위로하는 통화에서는 붙이지 않습니다. (CallContext)
 //   7. OpenAI 에서 그 대본이 묶인 임시 키를 받는다 (못 받으면 503)
 //   8. 통화 기록을 한 줄 만들고, GPT 호출 기록에도 "통화 시작" 을 남긴 뒤, 임시 키와 기록 번호를 돌려준다
 //
@@ -85,6 +86,8 @@ public class CallService {
   private final SafetyService safetyService;
   // 오늘이 무너지기 쉬운 날인지 알려 줍니다. (이슈 #49)
   private final RiskService riskService;
+  // 시험 · 목표 · 가입 심리검사를 서버 DB 에서 꺼냅니다. (CallContext)
+  private final CallContextLoader callContextLoader;
 
   public CallService(
       CurrentUserProvider currentUserProvider,
@@ -98,7 +101,8 @@ public class CallService {
       CallCardLoader callCardLoader,
       Clock clock,
       SafetyService safetyService,
-      RiskService riskService) {
+      RiskService riskService,
+      CallContextLoader callContextLoader) {
     this.currentUserProvider = currentUserProvider;
     this.callKeyClient = callKeyClient;
     this.gptUsageGuard = gptUsageGuard;
@@ -111,6 +115,7 @@ public class CallService {
     this.clock = clock;
     this.safetyService = safetyService;
     this.riskService = riskService;
+    this.callContextLoader = callContextLoader;
   }
 
   public CallSessionResponse startSession(CallSessionRequest request) {
@@ -203,6 +208,10 @@ public class CallService {
                 pastCallsOf(recentCalls),
                 selfReport,
                 riskLevel);
+    // 위로하는 통화에서는 시험 · 점수 이야기가 부담이 될 수 있어서 기록 칸을 붙이지 않습니다.
+    if (!CallScript.isSupportive(careLevel, card)) {
+      instructions += CallContext.section(callContextLoader.load(userId, today));
+    }
     return new Script(instructions, biasQuestion);
   }
 
