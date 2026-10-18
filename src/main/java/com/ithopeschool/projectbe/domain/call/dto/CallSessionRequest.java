@@ -15,6 +15,7 @@ import java.util.List;
 //
 // ⚠️ 카드에는 숫자와 정해진 분류값만 담습니다. 계획 내용·일기·이름 같은 글 원문은 받지 않습니다.
 //    그래서 모든 값의 범위와 모양을 좁게 정해 두었습니다. (이 값들이 AI 의 지침에 들어가기 때문입니다)
+//    예외: 공부 신호(StudySignals)의 "틀린 확인 문제 주제" 는 30자 · 3개짜리 글입니다. 이유는 StudySignals 주석.
 public record CallSessionRequest(
     // 오늘의 관리 강도. 0 회복 · 1 당근 · 2 넛지 · 3 심리적 채찍 · 4 강제적 채찍(말투는 3 과 같게 씁니다)
     @NotNull(message = "오늘의 관리 강도(careLevel)를 보내 주세요")
@@ -52,7 +53,10 @@ public record CallSessionRequest(
     @Valid ChatAbout about,
     // 상담 채팅의 방: COACH(코치, 기본) · GOAL_MATE(목표 메이트) · TUTOR(과목 쌤). 없으면 코치입니다. (2026-10-18, ChatRoom)
     // 음성 통화는 이 칸을 쓰지 않습니다.
-    @Pattern(regexp = ROOMS, message = "방(room)은 COACH · GOAL_MATE · TUTOR 중 하나예요") String room) {
+    @Pattern(regexp = ROOMS, message = "방(room)은 COACH · GOAL_MATE · TUTOR 중 하나예요") String room,
+    // 공부 신호: 기기에만 있는 최근 7일 집중도 · 폰 든 횟수 · 확인 문제 결과 (2026-10-18, StudySignals)
+    // 통화와 채팅 둘 다 씁니다. 없으면 null 이고, 그러면 대본에 [공부 신호] 칸이 없습니다.
+    @Valid StudySignals studySignals) {
 
   // 받을 수 있는 방 이름들입니다. ChatRoom 에 방을 더하면 여기에도 더해야 합니다. (ChatRoomTest 가 확인)
   public static final String ROOMS = "COACH|GOAL_MATE|TUTOR";
@@ -64,7 +68,35 @@ public record CallSessionRequest(
       Card card,
       List<String> selfReportedBiases,
       List<String> selfReportedWeaknesses) {
-    this(careLevel, maxHarshness, card, selfReportedBiases, selfReportedWeaknesses, null, null);
+    this(
+        careLevel,
+        maxHarshness,
+        card,
+        selfReportedBiases,
+        selfReportedWeaknesses,
+        null,
+        null,
+        null);
+  }
+
+  // 공부 신호 없이 주제 · 방만 주는 모양 (채팅 · 테스트에서 씀)
+  public CallSessionRequest(
+      Integer careLevel,
+      Integer maxHarshness,
+      Card card,
+      List<String> selfReportedBiases,
+      List<String> selfReportedWeaknesses,
+      ChatAbout about,
+      String room) {
+    this(
+        careLevel,
+        maxHarshness,
+        card,
+        selfReportedBiases,
+        selfReportedWeaknesses,
+        about,
+        room,
+        null);
   }
 
   // 받을 수 있는 생각 습관 이름들입니다. CognitiveBias 에 습관을 더하면 여기에도 더해야 합니다. (CallControllerTest 가 확인)

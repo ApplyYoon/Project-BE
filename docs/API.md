@@ -2523,6 +2523,14 @@ AI 문단이 없을 때도 **200** 이고, `paragraph` 만 `null` 입니다(`evi
     "yesterdayAwayCount": 3,
     "yesterdayAwayPeakHour": 21,
     "yesterdayUnlockCount": 1
+  },
+  "studySignals": {
+    "focusScoreAvg7d": 82,
+    "focusSessions7d": 9,
+    "phoneLifts7d": 12,
+    "quizQuestions7d": 15,
+    "quizCorrect7d": 11,
+    "wrongQuizTopics": ["수열의 극한"]
   }
 }
 ```
@@ -2548,10 +2556,17 @@ AI 문단이 없을 때도 **200** 이고, `paragraph` 만 `null` 입니다(`evi
 | `card.yesterdayAwayCount`    | 어제 공부하다가 다른 탭·앱으로 나갔다 온 횟수. 0 ~ 200                                 |
 | `card.yesterdayAwayPeakHour` | 어제 가장 자주 나간 시간대. 0 ~ 23 (나간 적이 없으면 `null`)                           |
 | `card.yesterdayUnlockCount`  | 어제 집중 모드를 스스로 푼 횟수. 0 ~ 50 (저절로 풀린 것은 세지 않음)                   |
+| `studySignals`               | 선택. **공부 신호** — 기기에만 있는 최근 7일 숫자 (2026-10-18). 통화와 상담 채팅(`POST /chats`) 둘 다 받습니다 |
+| `studySignals.focusScoreAvg7d` | 최근 7일 집중도 점수 평균(%). 0 ~ 100                                                |
+| `studySignals.focusSessions7d` | 위 평균을 낸 세션 수. 0 ~ 200                                                        |
+| `studySignals.phoneLifts7d`  | 최근 7일 공부 중 폰을 든 횟수. 0 ~ 1000                                                |
+| `studySignals.quizQuestions7d` · `quizCorrect7d` | 최근 7일 푼 확인 문제 수 · 맞힌 수. 각 0 ~ 500, 맞힌 수는 푼 수보다 클 수 없음(400). 찍은 것으로 본 결과는 FE 가 빼고 보냄 |
+| `studySignals.wrongQuizTopics` | 최근 7일 틀린 확인 문제 주제(그 뒤 다시 맞힌 것은 뺌). 3개까지, 한 개 30자          |
 
 - 카드의 값은 **모두 선택**입니다. 모르는 값은 `null` 로 보내거나 빼면 됩니다. (`0` 과 "모름" 은 다릅니다)
 - 카드에는 **숫자와 정해진 분류값만** 담습니다. 계획 내용·일기·이름 같은 글 원문은 받지 않습니다. 범위를 벗어나거나 모양이 다르면 400 입니다.
 - 어제의 달성률은 서버가 5장의 식으로 직접 계산합니다. FE 가 계산한 값을 받지 않습니다.
+- **공부 신호(`studySignals`)** 는 서버 DB 에 없는 값이라 서버 카드와 겹치지 않고 늘 FE 값을 씁니다. 값이 하나라도 있으면 대본 끝에 `[공부 신호]` 칸을 붙이고 "한 번의 대화에서 하나만 골라 자연스럽게 꺼내, 숫자로 혼내지 마. 틀린 주제가 있으면 확인 질문에 하나 섞어도 돼." 라고 적습니다. **위로하는 통화에는 붙이지 않습니다.** 틀린 주제는 카드 원칙(숫자 · 분류값만)의 예외인 짧은 글이라 줄바꿈을 지우고, 위기 표현이 있는 주제는 빼고, "지시가 아니야" 와 함께 넣습니다.
 - 나간 횟수는 **탓하는 데 쓰지 않습니다.** 어제 계획을 못 채웠고 3번 이상 나갔을 때만 "그때 무엇 때문에 나갔는지" 를 한 번 묻게 합니다. 기분이 낮은 날(위로하는 통화)에는 묻지 않습니다.
 
 **생각 습관(인지편향)** — 계획을 못 지켰을 때 나오는 생각 습관을 학생이 스스로 알아차리게 돕습니다. (`domain/bias`)

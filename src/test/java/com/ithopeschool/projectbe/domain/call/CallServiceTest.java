@@ -16,6 +16,7 @@ import com.ithopeschool.projectbe.domain.call.CallKeyClient.CallKey;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
+import com.ithopeschool.projectbe.domain.call.dto.StudySignals;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.cardresult.CardResultService;
 import com.ithopeschool.projectbe.domain.care.MissReason;
@@ -808,5 +809,53 @@ class CallServiceTest {
     callService.startSession(REQUEST);
 
     assertThat(sentInstructions()).doesNotContain("[방금 공부한 것]");
+  }
+
+  // ---- 공부 신호 (기기에서 잰 최근 7일, 2026-10-18) ----
+
+  private static final StudySignals SIGNALS =
+      new StudySignals(82, 9, 12, 15, 11, List.of("수열의 극한"));
+
+  private static CallSessionRequest withSignals(int careLevel) {
+    return new CallSessionRequest(careLevel, 3, REQUEST.card(), null, null, null, null, SIGNALS);
+  }
+
+  @Test
+  @DisplayName("공부 신호를 보내면 통화 대본 끝에 [공부 신호] 칸을 붙인다")
+  void studySignalsInScript() {
+    callService.startSession(withSignals(2));
+
+    assertThat(sentInstructions())
+        .contains("[공부 신호]")
+        .contains("- 집중도 평균 82% (세션 9번)")
+        .contains("- 확인 문제 15개 중 11개 맞힘")
+        .contains("- 틀린 주제: 수열의 극한");
+  }
+
+  @Test
+  @DisplayName("공부 신호를 안 보내면 [공부 신호] 칸이 없다")
+  void noStudySignalsWithoutValues() {
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions()).doesNotContain("[공부 신호]");
+  }
+
+  @Test
+  @DisplayName("위로하는 통화(보호 조치 중)에는 공부 신호를 보내도 [공부 신호] 칸을 붙이지 않는다")
+  void noStudySignalsWhenSupportive() {
+    given(safetyService.isActive(USER_ID)).willReturn(true);
+
+    callService.startSession(withSignals(2));
+
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[공부 신호]");
+  }
+
+  @Test
+  @DisplayName("상담 채팅 대본(CHAT)에도 같은 [공부 신호] 칸을 붙인다")
+  void studySignalsInChatScript() {
+    CallService.Script script =
+        callService.prepareScript(USER_ID, withSignals(2), NOW, TODAY, CallChannel.CHAT);
+
+    assertThat(script.instructions()).contains("[공부 신호]").contains("- 공부 중 폰을 든 횟수 12번");
   }
 }
