@@ -75,6 +75,7 @@ class DayPlanReviseServiceTest {
     assertThat(revised.drafts())
         .containsExactly(
             new DayPlanRevise.Card(
-                LocalDate.of(2026, 10, 19), "19:00", 20, "미적분 문제집", List.of("5문제")));
+                // AI 가 20분으로 줄였어도 30분 밑의 공부 카드는 만들지 않아서 30분 (StudyBlock)
+                LocalDate.of(2026, 10, 19), "19:00", 30, "미적분 문제집", List.of("5문제")));
   }
 }

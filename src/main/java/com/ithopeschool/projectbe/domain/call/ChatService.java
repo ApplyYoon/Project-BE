@@ -2,6 +2,7 @@ package com.ithopeschool.projectbe.domain.call;
 
 import com.ithopeschool.projectbe.domain.ai.CardPhotoService;
 import com.ithopeschool.projectbe.domain.ai.LongPlan;
+import com.ithopeschool.projectbe.domain.ai.StudyBlock;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
@@ -435,8 +436,9 @@ public class ChatService {
 
   // 행동 버튼 검사. 맞지 않으면 null(버튼 없음)입니다.
   //   start_timer  : 숫자 · 제목 없이
-  //   shrink_today : 5 ~ 60 분
-  //   create_card  : 제목 1 ~ 20자(깎아내리는 말 없음), 분은 5 ~ 120 (없거나 벗어나면 25분)
+  //   shrink_today : 30 ~ 60 분 (FE 는 분을 쓰지 않고 오늘 계획을 가볍게 다시 짜서 같이 고칩니다)
+  //   create_card  : 제목 1 ~ 20자(깎아내리는 말 없음), 분은 30 ~ 120 (없으면 50분, 30분보다 짧으면 30분, 120분보다 길면 120분)
+  //                  30분 밑은 공부 블록으로 보지 않습니다 (StudyBlock, 2026-10-18 멘토 결정 "누가 10분씩 해 공부를")
   //   make_plan    : 목표 1 ~ 30자(깎아내리는 말 없음). 마감 날은 내일 ~ 30일 뒤만 (긴 계획 /ai/long-plan 의 범위).
   //                  모양이 틀리거나 범위 밖이면 버튼은 두고 date 만 null (FE 가 날짜를 다시 물음)
   //   start_quiz   : 주제 1 ~ 30자(깎아내리는 말 없음)
@@ -454,7 +456,7 @@ public class ChatService {
         return new ChatReplyResponse.Action("start_timer", null, null);
       case "shrink_today":
         Integer minutes = action.minutes();
-        return minutes != null && minutes >= 5 && minutes <= 60
+        return minutes != null && minutes >= StudyBlock.MIN_MINUTES && minutes <= 60
             ? new ChatReplyResponse.Action("shrink_today", minutes, null)
             : null;
       case "create_card":
@@ -464,7 +466,9 @@ public class ChatService {
         }
         Integer cardMinutes = action.minutes();
         int safeMinutes =
-            cardMinutes != null && cardMinutes >= 5 && cardMinutes <= 120 ? cardMinutes : 25;
+            cardMinutes == null || cardMinutes <= 0
+                ? StudyBlock.DEFAULT_MINUTES
+                : Math.max(StudyBlock.MIN_MINUTES, Math.min(StudyBlock.MAX_MINUTES, cardMinutes));
         return new ChatReplyResponse.Action("create_card", safeMinutes, title);
       case "make_plan":
         String goal = topicOf(action.title());

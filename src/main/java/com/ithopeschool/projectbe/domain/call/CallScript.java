@@ -320,6 +320,7 @@ public final class CallScript {
 
   // 상담 채팅 대본 끝에 붙이는 "오늘 학교" 칸입니다. 줄이 없으면 빈 글자입니다. (2026-10-18 "AI 코치 채팅 중심")
   // 줄은 SchoolTodayService.scriptLines 가 만듭니다. 학교 이름 같은 개인정보는 들어 있지 않습니다.
+  // 학교 홈페이지의 최근 가정통신문 제목 줄(SchoolNoticeService.scriptLines)도 여기에 들어옵니다. (2026-10-18)
   public static String schoolSection(List<String> schoolLines) {
     if (schoolLines.isEmpty()) {
       return "";

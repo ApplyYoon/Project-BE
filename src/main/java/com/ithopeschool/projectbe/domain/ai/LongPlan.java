@@ -29,10 +29,10 @@ public final class LongPlan {
   public static final int MIN_TOPICS = 3;
   public static final int MAX_TOPICS = 20;
   // 할 일 하나의 시간 (분)
-  public static final int MIN_TOPIC_MINUTES = 20;
+  public static final int MIN_TOPIC_MINUTES = StudyBlock.MIN_MINUTES;
   public static final int MAX_TOPIC_MINUTES = 240;
   // 하루 공부 시간 (분)
-  public static final int MIN_DAILY_MINUTES = 20;
+  public static final int MIN_DAILY_MINUTES = StudyBlock.MIN_MINUTES;
   public static final int MAX_DAILY_MINUTES = 300;
   // 할 일 하나의 체크리스트 항목 수
   public static final int MAX_CHECKLIST = 3;
@@ -251,7 +251,7 @@ public final class LongPlan {
 
   // AI 가 바꾼 칸을 검사해서 뼈대에 넣습니다. 틀린 칸은 무시하고 그대로 둡니다.
   //   - 시작 날: 지난 계획이면 오늘부터 (어제까지는 이미 지났으니)
-  //   - dailyMinutes: 20 ~ 300 / startTime: HH:MM / endDate: 시작 날 다음 날 ~ 오늘 + 30일
+  //   - dailyMinutes: 30 ~ 300 / startTime: HH:MM / endDate: 시작 날 다음 날 ~ 오늘 + 30일
   //   - restDays: 모두 MON ~ SUN 이고 6개 이하 (빈 목록 = 쉬는 날 없음)
   //   - topics: topicsOf 로 검사해서 하나라도 남으면 통째로 바꿈
   //   - 쉬는 요일 · 시험 날을 바꿨더니 공부 날이 하나도 없으면 그 둘은 그대로 둡니다.
@@ -307,7 +307,7 @@ public final class LongPlan {
 
   // AI 가 쓴 할 일을 검사합니다.
   //   제목이 비었거나 30자를 넘거나 깎아내리는 말이 있으면 그 할 일은 버립니다. 시간이 없어도 버립니다.
-  //   시간은 20 ~ 240분으로 자릅니다. 체크리스트는 빈 것 · 50자 넘는 것 · 깎아내리는 말 · 같은 것을 버리고 3개까지.
+  //   시간은 30 ~ 240분으로 자릅니다. 체크리스트는 빈 것 · 50자 넘는 것 · 깎아내리는 말 · 같은 것을 버리고 3개까지.
   //   20개까지. 하나도 안 남으면 빈 목록입니다.
   public static List<LongPlanOutline.Topic> topicsOf(List<TopicItem> items) {
     List<LongPlanOutline.Topic> topics = new ArrayList<>();

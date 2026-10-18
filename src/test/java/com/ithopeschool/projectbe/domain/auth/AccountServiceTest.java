@@ -23,6 +23,8 @@ import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
 import com.ithopeschool.projectbe.domain.checkin.EmotionTag;
 import com.ithopeschool.projectbe.domain.consent.ConsentRecordRepository;
 import com.ithopeschool.projectbe.domain.consent.ConsentService;
+import com.ithopeschool.projectbe.domain.experiment.Experiment;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentStrategy;
 import com.ithopeschool.projectbe.domain.goal.Goal;
 import com.ithopeschool.projectbe.domain.goal.GoalKind;
 import com.ithopeschool.projectbe.domain.insight.Insight;
@@ -608,7 +610,9 @@ class AccountServiceTest {
           // 위험 예측(risk_forecasts)에 매달린 "위험하다고 본 이유" (이슈 #49)
           Map.entry("RISK_FORECAST_REASONS", new String[] {"RISK_FORECASTS", "RISK_FORECAST_ID"}),
           // 심리검사(psych_tests)에 매달린 문장 14개의 답 (이슈 #219)
-          Map.entry("PSYCH_TEST_ANSWERS", new String[] {"PSYCH_TESTS", "PSYCH_TEST_ID"}));
+          Map.entry("PSYCH_TEST_ANSWERS", new String[] {"PSYCH_TESTS", "PSYCH_TEST_ID"}),
+          // 자기 실험(experiments)에 매달린 "실험 규칙을 붙인 카드" (이슈 #52)
+          Map.entry("EXPERIMENT_CARDS", new String[] {"EXPERIMENTS", "EXPERIMENT_ID"}));
 
   // 사람이 아니라 학교마다 한 벌인 공개 자료(NEIS 학사일정, 이슈 #282)입니다. 개인 정보가 없고
   // 같은 학교 학생들이 같이 쓰므로 탈퇴해도 지우지 않습니다.
@@ -699,6 +703,17 @@ class AccountServiceTest {
               null);
       checkIn.replaceEmotions(EnumSet.of(EmotionTag.STUCK, EmotionTag.TIRED));
       entityManager.persist(checkIn);
+      // 카드에 붙인 자기 실험 (딸린 테이블 experiment_cards 에 줄이 생깁니다)
+      entityManager.persist(
+          new Experiment(
+              userId,
+              "폰 때문에 놓친다",
+              null,
+              ExperimentStrategy.PHONE_BAG,
+              Set.of(card.getId()),
+              LocalDate.of(2026, 10, 15),
+              10,
+              NOW));
       // 인사이트의 근거 날짜(딸린 테이블)에도 줄이 있어야 합니다.
       entityManager.persist(
           new Insight(

@@ -60,6 +60,7 @@ class LongPlanSchedulerTest {
   @DisplayName("할 일을 순서대로 고르게 나누고, 나뉜 할 일은 (1/3) 을 붙이고, 마지막 2일은 총복습")
   void schedulesEvenly() {
     // 공부 날 7일(10-19 ~ 10-25) → 할 일 5일 · 복습 2일. 할 일 합 240분 ÷ 5일 → 하루 50분으로 고르게
+    // 30분보다 짧은 꼬리는 따로 카드로 만들지 않고 앞 조각에 붙인다 (20분 · 10분짜리 카드 없음)
     LongPlanScheduler.Result result =
         LongPlanScheduler.schedule(
             plan(
@@ -73,13 +74,10 @@ class LongPlanSchedulerTest {
     assertThat(result.overflow()).isFalse();
     assertThat(result.cards())
         .containsExactly(
-            card(MON, "19:00", 50, "미적분 1단원 (1/3)", List.of("미적분 1단원 하기")),
-            card(MON.plusDays(1), "19:00", 50, "미적분 1단원 (2/3)", List.of("미적분 1단원 하기")),
-            card(MON.plusDays(2), "19:00", 20, "미적분 1단원 (3/3)", List.of("미적분 1단원 하기")),
-            card(MON.plusDays(2), "19:30", 30, "미적분 2단원 (1/2)", List.of("미적분 2단원 하기")),
-            card(MON.plusDays(3), "19:00", 30, "미적분 2단원 (2/2)", List.of("미적분 2단원 하기")),
-            card(MON.plusDays(3), "19:40", 20, "미적분 3단원 (1/2)", List.of("미적분 3단원 하기")),
-            card(MON.plusDays(4), "19:00", 40, "미적분 3단원 (2/2)", List.of("미적분 3단원 하기")),
+            card(MON, "19:00", 50, "미적분 1단원 (1/2)", List.of("미적분 1단원 하기")),
+            card(MON.plusDays(1), "19:00", 70, "미적분 1단원 (2/2)", List.of("미적분 1단원 하기")),
+            card(MON.plusDays(2), "19:00", 60, "미적분 2단원", List.of("미적분 2단원 하기")),
+            card(MON.plusDays(3), "19:00", 60, "미적분 3단원", List.of("미적분 3단원 하기")),
             card(MON.plusDays(5), "19:00", 60, "총복습 (1/2)", LongPlanScheduler.REVIEW_CHECKLIST),
             card(MON.plusDays(6), "19:00", 60, "총복습 (2/2)", LongPlanScheduler.REVIEW_CHECKLIST));
   }
@@ -126,36 +124,37 @@ class LongPlanSchedulerTest {
         .containsExactly(
             card(MON, "19:00", 60, "국어", List.of("국어 하기")),
             card(MON.plusDays(1), "19:00", 60, "수학", List.of("수학 하기")));
-    assertThat(LongPlanScheduler.shrunk(List.of(120, 60, 10), 90)).containsExactly(55, 25, 20);
+    // 줄여도 할 일 하나에 30분은 남긴다
+    assertThat(LongPlanScheduler.shrunk(List.of(120, 60, 10), 90)).containsExactly(55, 30, 30);
   }
 
   @Test
-  @DisplayName("한 장은 120분까지, 15분보다 짧은 꼬리는 만들지 않는다")
+  @DisplayName("한 장은 120분까지, 30분보다 짧은 꼬리는 만들지 않는다")
   void splitsLongTopic() {
-    // 하루 300분, 130분짜리 할 일 → 115 + 15 (꼬리 10분을 남기지 않음)
+    // 하루 300분, 130분짜리 할 일 → 100 + 30 (꼬리 10분짜리 카드를 만들지 않음)
     LongPlanScheduler.Result result =
         LongPlanScheduler.schedule(
             plan(MON, MON.plusDays(1), 300, "09:00", List.of(), List.of(topic("한국사", 130))));
 
     assertThat(result.cards())
         .extracting(DayPlanRevise.Card::durationMinutes)
-        .containsExactly(115, 15);
+        .containsExactly(100, 30);
     assertThat(result.cards())
         .extracting(DayPlanRevise.Card::startTime)
-        .containsExactly("09:00", "11:05");
+        .containsExactly("09:00", "10:50");
   }
 
   @Test
-  @DisplayName("하루 시간보다 조금 긴 할 일은 15분 안쪽으로 넘겨서 한 장으로")
+  @DisplayName("하루 시간보다 조금 긴 할 일은 30분 안쪽으로 넘겨서 한 장으로")
   void absorbsShortTail() {
-    // 하루 20분에 25분짜리 → 꼬리 5분을 붙여 25분 한 장 (다음 날로 끝없이 밀리지 않음)
+    // 하루 30분으로 고르게 펴도 55분짜리는 꼬리 25분을 붙여 55분 한 장 (25분짜리 카드를 만들지 않음)
     LongPlanScheduler.Result result =
         LongPlanScheduler.schedule(
-            plan(MON, MON.plusDays(2), 20, "19:00", List.of(), List.of(topic("화학 1단원", 25))));
+            plan(MON, MON.plusDays(2), 40, "19:00", List.of(), List.of(topic("화학 1단원", 55))));
 
     assertThat(result.overflow()).isFalse();
     assertThat(result.cards())
-        .containsExactly(card(MON, "19:00", 25, "화학 1단원", List.of("화학 1단원 하기")));
+        .containsExactly(card(MON, "19:00", 55, "화학 1단원", List.of("화학 1단원 하기")));
   }
 
   @Test

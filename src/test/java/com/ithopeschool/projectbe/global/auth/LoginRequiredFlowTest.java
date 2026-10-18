@@ -193,6 +193,20 @@ class LoginRequiredFlowTest {
               null),
           // 달력 (내 카드 결과 · 체크인을 봅니다. 이슈 #235)
           new Api("GET", "/api/v1/calendar", "/api/v1/calendar?month=2026-10", null),
+          // 관리 단계 (내 카드 결과 · 체크인으로 판정해 저장합니다. 이슈 #62)
+          new Api("POST", "/api/v1/care-stages/today", "/api/v1/care-stages/today", null),
+          new Api(
+              "GET",
+              "/api/v1/care-stages",
+              "/api/v1/care-stages?from=2026-10-01&to=2026-10-18",
+              null),
+          // 자기 실험 (내 카드에 실험 규칙을 붙입니다. 이슈 #52 · #54)
+          new Api(
+              "POST",
+              "/api/v1/experiments",
+              "/api/v1/experiments",
+              "{\"hypothesis\":\"폰\",\"strategyId\":\"phone-bag\",\"cardIds\":[\"1\"]}"),
+          new Api("GET", "/api/v1/experiments", "/api/v1/experiments", null),
           // 잠금 해제 기록
           new Api(
               "POST",
@@ -397,6 +411,8 @@ class LoginRequiredFlowTest {
           new Api("GET", "/api/v1/school/events", "/api/v1/school/events", null),
           new Api("POST", "/api/v1/school/events/refresh", "/api/v1/school/events/refresh", null),
           new Api("GET", "/api/v1/school/today", "/api/v1/school/today", null),
+          // 내 학교 홈페이지 가정통신문 · 공지사항 (가입 정보의 학교 번호로 찾습니다. 2026-10-18)
+          new Api("GET", "/api/v1/school/notices", "/api/v1/school/notices", null),
           // 카드 체크리스트 추천 (내 지난 기록을 보고 AI 를 부릅니다. 이슈 #236)
           new Api("POST", "/api/v1/ai/checklist", "/api/v1/ai/checklist", "{\"title\":\"수학 문제집\"}"),
           // 첫 준비 행동 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #236)
@@ -538,7 +554,9 @@ class LoginRequiredFlowTest {
           "POST /api/v1/auth/signup",
           "POST /api/v1/auth/login",
           "POST /api/v1/auth/google",
-          "POST /api/v1/auth/google/signup");
+          "POST /api/v1/auth/google/signup",
+          // 시연 코드 로그인(2026-10-18). 코드가 맞아야 토큰을 주고, 서버에 코드가 없으면 404 입니다.
+          "POST /api/v1/auth/demo-login");
 
   // 로그인 토큰이 아니라 "작업 키"(X-Job-Key)로 지키는 API 입니다. 사람이 아니라 예약 작업이 부릅니다.
   // 키가 없으면 401 인 것은 JobFlowTest 가 확인합니다.

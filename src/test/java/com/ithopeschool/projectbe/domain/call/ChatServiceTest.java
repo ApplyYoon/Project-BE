@@ -386,13 +386,13 @@ class ChatServiceTest {
                         "오늘은 쉴래",
                         "그래도 다 할래",
                         "네 번째"),
-                    new ChatReplyResponse.Action("shrink_today", 10, null))));
+                    new ChatReplyResponse.Action("shrink_today", 30, null))));
 
     ChatReplyResponse response = service.send(CHAT_ID, request);
 
     assertThat(response.reply()).isEqualTo("그럼 10분만 해 볼까?");
     assertThat(response.quickReplies()).containsExactly("좋아, 10분", "오늘은 쉴래", "그래도 다 할래");
-    assertThat(response.action()).isEqualTo(new ChatReplyResponse.Action("shrink_today", 10, null));
+    assertThat(response.action()).isEqualTo(new ChatReplyResponse.Action("shrink_today", 30, null));
   }
 
   @Test
@@ -405,7 +405,19 @@ class ChatServiceTest {
         .isNull();
     assertThat(
             ChatService.cleanAction(new ChatReplyResponse.Action("create_card", 0, "영어 단어"), TODAY))
-        .isEqualTo(new ChatReplyResponse.Action("create_card", 25, "영어 단어"));
+        .isEqualTo(new ChatReplyResponse.Action("create_card", 50, "영어 단어"));
+    // 30분보다 짧은 공부 카드는 만들지 않는다 (StudyBlock) · 120분이 끝
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("create_card", 10, "영어 단어"), TODAY))
+        .isEqualTo(new ChatReplyResponse.Action("create_card", 30, "영어 단어"));
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("create_card", 200, "영어 단어"), TODAY))
+        .isEqualTo(new ChatReplyResponse.Action("create_card", 120, "영어 단어"));
+    assertThat(
+            ChatService.cleanAction(new ChatReplyResponse.Action("shrink_today", 10, null), TODAY))
+        .isNull();
     assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("create_card", 30, " "), TODAY))
         .isNull();
     assertThat(

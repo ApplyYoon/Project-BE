@@ -17,7 +17,7 @@ import java.util.List;
 // - goal         : 필수. 학생이 채팅에 쓴 목표 한 줄 (100자)
 // - endDate      : 필수. 시험 · 마감 날. 내일 ~ 30일 뒤 (Service 가 확인). 이 날은 공부 날에서 빠집니다.
 // - startDate    : 선택. 계획을 시작할 날. 없으면 오늘. 오늘 ~ endDate 전날
-// - dailyMinutes : 선택. 하루 공부 시간 20 ~ 300분. 없으면 60분
+// - dailyMinutes : 선택. 하루 공부 시간 30 ~ 300분. 없으면 60분 (카드 한 장이 30분 이상이라 하루도 30분부터, StudyBlock)
 // - startTime    : 선택. 하루 공부를 시작할 시각 HH:MM. 없으면 19:00
 // - restDays     : 선택. 쉬는 요일 (MON ~ SUN). 모든 요일은 안 됩니다.
 // - image        : 선택. 교과서 · 목차 · 시험 범위 사진 한 장 (data URL). "사진으로 카드 만들기" 와 같은 규칙입니다.
@@ -28,8 +28,8 @@ public record LongPlanRequest(
         String goal,
     @NotNull(message = "시험 · 마감 날짜를 보내 주세요") LocalDate endDate,
     LocalDate startDate,
-    @Min(value = 20, message = "하루 공부 시간은 20 ~ 300분이에요")
-        @Max(value = 300, message = "하루 공부 시간은 20 ~ 300분이에요")
+    @Min(value = 30, message = "하루 공부 시간은 30 ~ 300분이에요")
+        @Max(value = 300, message = "하루 공부 시간은 30 ~ 300분이에요")
         Integer dailyMinutes,
     @Pattern(regexp = LongPlanOutline.TIME_PATTERN, message = "시작 시각은 HH:MM 으로 보내 주세요")
         String startTime,
