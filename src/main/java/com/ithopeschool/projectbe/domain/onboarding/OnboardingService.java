@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.onboarding;
 
+import com.ithopeschool.projectbe.domain.card.ScheduleCheck;
 import com.ithopeschool.projectbe.domain.onboarding.dto.OnboardingResponse;
 import com.ithopeschool.projectbe.domain.onboarding.dto.OnboardingSaveRequest;
 import com.ithopeschool.projectbe.domain.onboarding.dto.OnboardingUpdateRequest;
@@ -49,7 +50,9 @@ public class OnboardingService {
     Long userId = currentUserProvider.getCurrentUserId();
     // 빈 상자에서 시작해서, 보낸 답만 채웁니다.
     OnboardingAnswer.Values values = new OnboardingAnswer.Values();
-    fill(userId, values, request.toUpdateRequest());
+    OnboardingUpdateRequest answers = request.toUpdateRequest();
+    fill(userId, values, answers);
+    checkSleepLength(values, answers);
     return saveNewAnswer(userId, values);
   }
 
@@ -63,7 +66,22 @@ public class OnboardingService {
     }
     OnboardingAnswer.Values values = findLatest(userId).copyValues();
     fill(userId, values, request);
+    checkSleepLength(values, request);
     return saveNewAnswer(userId, values);
+  }
+
+  // 취침 · 기상 시각을 보냈을 때, 둘 사이(수면 보호 시간)가 6시간보다 짧으면 400 입니다. (이슈 #223, FE onboardingCare 와 같음)
+  // 보내지 않았으면 보지 않습니다. 예전에 짧게 적어 둔 사람이 다른 답만 고칠 때 막히지 않게 하려는 것입니다.
+  private static void checkSleepLength(
+      OnboardingAnswer.Values values, OnboardingUpdateRequest request) {
+    boolean sent = request.sleepTime() != null || request.wakeUpTime() != null;
+    if (!sent || values.sleepTime == null || values.wakeUpTime == null) {
+      return;
+    }
+    if (ScheduleCheck.sleepMinutes(values.sleepTime, values.wakeUpTime)
+        < ScheduleCheck.SLEEP_PROTECT_MIN_MINUTES) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "수면 보호 시간은 6시간 이상이어야 해요");
+    }
   }
 
   // 지금 내 설문과 처음 답한 자기 인식. 설문을 아직 안 했으면 404 입니다.
