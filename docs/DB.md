@@ -61,6 +61,7 @@ erDiagram
     users ||--o{ goals : "user_id"
     goals ||--o{ goal_target_snapshots : "goal_id"
     goals ||--o{ cards : "goal_id"
+    users ||--o{ weekly_goals : "user_id"
     goals |o--o{ exams : "goal_id"
     psych_tests ||--o{ psych_test_answers : "psych_test_id"
     onboarding_answers ||--o{ onboarding_answer_failure_causes : "onboarding_answer_id"
@@ -254,6 +255,18 @@ erDiagram
         varchar result "D-day 뒤에 적은 결과"
         varchar given_up_reason "포기한 이유"
         timestamptz created_at "목표를 만든 시각"
+    }
+    weekly_goals {
+        bigint id PK "이번 주 목표 한 줄을 구분하는 고유 번호"
+        bigint user_id FK "목표의 주인 (한 사람의 한 주에 한 줄)"
+        date week_start "어느 주인지 (그 주의 월요일)"
+        varchar kind "종류 (COMPLETION 완주율, START_DELAY 시작 지연, PLAN_RATE 계획 채우기, KEEP 지난주만큼)"
+        int target "목표 숫자 (시작 지연이면 분, 나머지는 %)"
+        int baseline "제안할 때 본 지난주 숫자"
+        varchar status "판정 결과 (ACHIEVED 달성, MISSED 미달, UNKNOWN 알 수 없음). 판정 전이면 비어 있음"
+        int result_value "판정할 때 본 그 주의 숫자"
+        timestamptz judged_at "판정한 시각"
+        timestamptz created_at "목표를 정한(덮어쓴) 시각"
     }
     goal_target_snapshots {
         bigint goal_id FK "어느 목표의 이력인지"
