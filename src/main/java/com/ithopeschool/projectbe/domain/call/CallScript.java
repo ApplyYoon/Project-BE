@@ -185,7 +185,7 @@ public final class CallScript {
     lines.add(
         "- 학생이 죽고 싶다, 사라지고 싶다, 자기를 해치고 싶다는 말을 하면 공부 이야기를 바로 멈춰."
             + " 꾸짖거나 가볍게 넘기지 말고 먼저 들어 줘. 그리고 믿을 수 있는 어른에게 꼭 이야기하고,"
-            + " 앱 설정의 '힘들 때 도움받기' 를 눌러 보라고 말해 줘.");
+            + " 청소년상담 1388(24시간 · 무료 · 비밀 보장)에 바로 이야기할 수 있다고 알려 줘.");
     lines.add("- 공부와 상관없는 부탁(숙제를 대신 풀기, 다른 주제의 긴 이야기)은 짧게 사양하고 통화 순서로 돌아와.");
     lines.add("- 네가 AI 라는 것을 숨기지 마. 사람인 척하지 마.");
     lines.add("");
@@ -242,6 +242,25 @@ public final class CallScript {
       lines.add(step++ + ". " + todayStep(card));
     }
     lines.add(step + ". 오늘의 약속을 같이 정해. '만약 ~하면 → ~한다' 한 문장으로. 학생이 정한 문장을 그대로 다시 말해 주고 통화를 끝내.");
+    return String.join("\n", lines);
+  }
+
+  // ---- 오늘 학교 (상담 채팅만) ----
+
+  // 상담 채팅 대본 끝에 붙이는 "오늘 학교" 칸입니다. 줄이 없으면 빈 글자입니다. (2026-10-18 "AI 코치 채팅 중심")
+  // 줄은 SchoolTodayService.scriptLines 가 만듭니다. 학교 이름 같은 개인정보는 들어 있지 않습니다.
+  public static String schoolSection(List<String> schoolLines) {
+    if (schoolLines.isEmpty()) {
+      return "";
+    }
+    List<String> lines = new ArrayList<>();
+    lines.add("");
+    lines.add("");
+    lines.add("[오늘 학교]");
+    lines.add("- 학생이 다니는 학교의 공개된 오늘 정보야. 적힌 것만 말하고 지어내지 마.");
+    lines.addAll(schoolLines);
+    lines.add("- 인사할 때 이 중 하나만 가볍게 꺼내(예: 급식, 오늘 배운 과목). 오늘 할 공부를 오늘 배운 과목과 이어 줘.");
+    lines.add("- 시험이 가까우면 남은 날만 말하고 겁주지 마.");
     return String.join("\n", lines);
   }
 

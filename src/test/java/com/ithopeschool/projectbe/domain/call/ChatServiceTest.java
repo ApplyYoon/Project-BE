@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
@@ -19,6 +20,7 @@ import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.safety.HelpLine;
 import com.ithopeschool.projectbe.domain.safety.SafetyService;
+import com.ithopeschool.projectbe.domain.school.SchoolTodayService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -56,6 +58,7 @@ class ChatServiceTest {
   // 대본을 기억하는 곳은 진짜 코드를 씁니다.
   private final ChatScriptStore chatScriptStore = new ChatScriptStore(clock);
   private final SafetyService safetyService = mock(SafetyService.class);
+  private final SchoolTodayService schoolTodayService = mock(SchoolTodayService.class);
   private final ChatService service =
       new ChatService(
           currentUserProvider,
@@ -66,6 +69,7 @@ class ChatServiceTest {
           callRecordRepository,
           chatScriptStore,
           safetyService,
+          schoolTodayService,
           clock);
 
   @BeforeEach
@@ -111,6 +115,20 @@ class ChatServiceTest {
   }
 
   // ---- 채팅 열기 ----
+
+  @Test
+  @DisplayName("오늘 학교 정보가 있으면 대본 끝에 [오늘 학교] 칸을 붙여 AI 에 건네고 기억한다")
+  void startAddsSchoolLines() {
+    List<String> schoolLines = List.of("- 오늘 중식: 흑미밥, 나주곰탕");
+    given(schoolTodayService.scriptLines(2, 1)).willReturn(schoolLines);
+    String withSchool = SCRIPT + CallScript.schoolSection(schoolLines);
+    given(chatAiClient.reply(withSchool, List.of())).willReturn(Optional.of("오늘 급식 나주곰탕이네!"));
+
+    ChatReplyResponse response = service.start(START, 2, 1);
+
+    assertThat(response.reply()).isEqualTo("오늘 급식 나주곰탕이네!");
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(withSchool);
+  }
 
   @Test
   @DisplayName("채팅을 열면 통화와 같은 대본(채팅 버전)으로 AI 의 첫 인사를 받고, 채팅 기록을 만든다")
@@ -172,24 +190,46 @@ class ChatServiceTest {
   }
 
   @Test
-  @DisplayName("학생의 말에 위기 표현이 있으면 GPT 를 부르지 않고 도움 안내로 채팅을 끝낸다")
-  void crisisStopsTheChat() {
+  @DisplayName("학생의 말에 위기 표현이 있으면 GPT 를 부르지 않고 도움 안내로 답하고, 채팅은 끝내지 않는다")
+  void crisisKeepsTheChatOpen() {
     CallRecord chat = givenOpenChat();
 
     ChatReplyResponse response = service.send(CHAT_ID, said("그냥 다 그만두고 죽고 싶어"));
 
     assertThat(response.showHelp()).isTrue();
-    assertThat(response.reply()).isEqualTo(ChatService.CRISIS_REPLY);
+    assertThat(response.reply()).isEqualTo(ChatService.CHAT_CRISIS_REPLY);
     assertThat(response.helpLines()).isEqualTo(HelpLine.ALL);
     verify(chatAiClient, never()).reply(any(), anyList());
     verify(gptUsageGuard, never()).tryUseText(any(), any());
-    // "위기 표현이 감지된 통화" 로 남습니다. 그 뒤 7일 동안 통화·채팅이 위로하는 쪽이 됩니다.
+    // "위기 표현이 감지됨" 표시는 남기지만 채팅은 끝내지 않습니다. 그 뒤 7일 동안 통화·채팅이 위로하는 쪽이 됩니다.
     assertThat(chat.isCrisisDetected()).isTrue();
-    assertThat(chat.isFinished()).isTrue();
+    assertThat(chat.isFinished()).isFalse();
     verify(callRecordRepository).save(chat);
-    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).isEmpty();
+    // 남은 대화에서 공부 이야기를 꺼내지 않게 대본에 한 칸이 붙습니다.
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID))
+        .contains(SCRIPT + ChatService.CRISIS_FOLLOW_UP);
     // 통화 마무리와 같은 보호 조치(관리 한도 0 · 회복 메시지)를 합니다.
     verify(safetyService).activate(USER_ID);
+  }
+
+  @Test
+  @DisplayName("안내한 뒤에는 앞의 말로 다시 걸리지 않고 AI 와 이어서 이야기한다 (보호 조치는 한 번만)")
+  void afterCrisisTheChatContinues() {
+    CallRecord chat = givenOpenChat();
+    service.send(CHAT_ID, said("죽고 싶어"));
+
+    ChatMessageRequest next = said("죽고 싶어", "그냥 오늘 너무 힘들었어");
+    given(chatAiClient.reply(SCRIPT + ChatService.CRISIS_FOLLOW_UP, next.lines()))
+        .willReturn(Optional.of("많이 힘들었구나. 무슨 일이 있었어?"));
+    ChatReplyResponse response = service.send(CHAT_ID, next);
+
+    assertThat(response.showHelp()).isFalse();
+    assertThat(response.reply()).isEqualTo("많이 힘들었구나. 무슨 일이 있었어?");
+    assertThat(chat.isFinished()).isFalse();
+
+    // 마지막 말에 또 위기 표현이 있으면 다시 안내하지만, 보호 조치는 다시 하지 않습니다.
+    assertThat(service.send(CHAT_ID, said("죽고 싶어", "괜찮아", "사라지고 싶어")).showHelp()).isTrue();
+    verify(safetyService, times(1)).activate(USER_ID);
   }
 
   @Test

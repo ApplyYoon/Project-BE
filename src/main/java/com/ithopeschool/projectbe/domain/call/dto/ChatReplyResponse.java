@@ -7,7 +7,8 @@ import java.util.List;
 //   { "chatId": "12", "reply": "어제 순공 1시간 40분이었어. 어땠어?", "showHelp": false, "helpLines": [] }
 //
 // showHelp 가 true 면 학생의 말에서 위기 표현이 감지된 것입니다. reply 는 정해 둔 안내 문장이고,
-// helpLines 에 도움받을 곳(청소년상담 1388 · 자살예방상담 109)이 들어 있습니다. 이 채팅은 거기서 끝납니다.
+// helpLines 에 도움받을 곳(청소년상담 1388 · 자살예방상담 109)이 들어 있습니다.
+// 상담 채팅은 거기서 끝나지 않고 이어서 이야기할 수 있습니다. (2026-10-18) '목표 만들기' 대화는 거기서 끝납니다.
 public record ChatReplyResponse(
     String chatId, String reply, boolean showHelp, List<HelpLine> helpLines) {
 

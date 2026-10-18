@@ -3,6 +3,7 @@ package com.ithopeschool.projectbe.domain.call;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -34,7 +35,8 @@ class ChatControllerTest {
   @Test
   @DisplayName("채팅을 열면 200 과 채팅 번호 · AI 의 첫 말을 돌려준다 (요청 모양은 통화 시작과 같음)")
   void starts() throws Exception {
-    given(chatService.start(any())).willReturn(ChatReplyResponse.of(12L, "안녕! 어제는 어땠어?"));
+    given(chatService.start(any(), any(), any()))
+        .willReturn(ChatReplyResponse.of(12L, "안녕! 어제는 어땠어?"));
 
     postJson("/api/v1/chats", "{\"careLevel\":2,\"maxHarshness\":3}")
         .andExpect(status().isOk())
@@ -42,6 +44,22 @@ class ChatControllerTest {
         .andExpect(jsonPath("$.reply").value("안녕! 어제는 어땠어?"))
         .andExpect(jsonPath("$.showHelp").value(false))
         .andExpect(jsonPath("$.helpLines").isEmpty());
+  }
+
+  @Test
+  @DisplayName("학년 · 반을 주소에 실으면 그대로 넘긴다 (오늘 시간표를 대본에 넣으려고)")
+  void startsWithClass() throws Exception {
+    given(chatService.start(any(), eq(2), eq(1))).willReturn(ChatReplyResponse.of(12L, "안녕!"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/chats")
+                .param("grade", "2")
+                .param("classNo", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"careLevel\":2,\"maxHarshness\":3}"))
+        .andExpect(status().isOk());
+    verify(chatService).start(any(), eq(2), eq(1));
   }
 
   @Test
