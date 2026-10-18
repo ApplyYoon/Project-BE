@@ -10,6 +10,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.DailyMissionsRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.DailyMissionsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepRequest;
@@ -59,6 +61,7 @@ public class AiController {
   private final CardDefaultsService cardDefaultsService;
   private final SelfAnalysisService selfAnalysisService;
   private final DayPlanService dayPlanService;
+  private final DailyMissionsService dailyMissionsService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -168,5 +171,13 @@ public class AiController {
   @PostMapping("/day-plan")
   public DayPlanResponse dayPlan(@Valid @RequestBody DayPlanRequest request) {
     return dayPlanService.suggest(request);
+  }
+
+  @Operation(
+      summary =
+          "AI 오늘의 미션: 오늘 과목 · 가까운 시험 · 준비하는 것(내신·수능·대회·기타) · 컨디션으로 공부 미션 1~3개 (저장 안 함 · 못 만들면 missions: null · 토큰 필요)")
+  @PostMapping("/daily-missions")
+  public DailyMissionsResponse dailyMissions(@Valid @RequestBody DailyMissionsRequest request) {
+    return dailyMissionsService.suggest(request);
   }
 }
