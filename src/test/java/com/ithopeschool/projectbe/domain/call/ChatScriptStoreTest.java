@@ -61,4 +61,35 @@ class ChatScriptStoreTest {
     store.remove(13L);
     assertThat(store.find(13L, 7L)).isEmpty();
   }
+
+  @Test
+  @DisplayName("주제와 함께 기억하고, 대본만 바꿔도 주제는 그대로다 (남의 번호로는 비어 있음)")
+  void remembersTopic() {
+    store.save(12L, 7L, "대본", ChatTopic.CARD_FAIL);
+    store.save(12L, 7L, "대본 + 위기 칸");
+
+    assertThat(store.find(12L, 7L)).contains("대본 + 위기 칸");
+    assertThat(store.findTopic(12L, 7L)).contains(ChatTopic.CARD_FAIL);
+    assertThat(store.findTopic(12L, 8L)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("주제 없이 연 채팅은 주제가 비어 있다")
+  void noTopic() {
+    store.save(12L, 7L, "대본");
+
+    assertThat(store.findTopic(12L, 7L)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("방을 기억하고, 대본만 바꿔도 방은 그대로다. 방을 안 주면 코치다")
+  void remembersRoom() {
+    store.save(12L, 7L, "대본", null, ChatRoom.TUTOR);
+    store.save(12L, 7L, "대본 + 위기 칸");
+    store.save(13L, 7L, "코치 대본", null);
+
+    assertThat(store.findRoom(12L, 7L)).contains(ChatRoom.TUTOR);
+    assertThat(store.findRoom(13L, 7L)).contains(ChatRoom.COACH);
+    assertThat(store.findRoom(14L, 7L)).isEmpty();
+  }
 }

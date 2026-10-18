@@ -79,7 +79,7 @@ class LongPlanTest {
   }
 
   @Test
-  @DisplayName("할 일 검사: 빈 제목 · 긴 제목 · 깎아내리는 말 · 시간 없음은 버리고, 시간은 20 ~ 240 으로 자른다")
+  @DisplayName("할 일 검사: 빈 제목 · 긴 제목 · 깎아내리는 말 · 시간 없음은 버리고, 시간은 30 ~ 240 으로 자른다")
   void topicsOf() {
     List<LongPlanOutline.Topic> topics =
         LongPlan.topicsOf(
@@ -93,7 +93,7 @@ class LongPlanTest {
 
     assertThat(topics)
         .containsExactly(
-            new LongPlanOutline.Topic("수학 1단원", 20, List.of("개념", "예제", "문제")),
+            new LongPlanOutline.Topic("수학 1단원", 30, List.of("개념", "예제", "문제")),
             new LongPlanOutline.Topic("영어", 240, List.of()));
 
     List<LongPlan.TopicItem> many = new ArrayList<>();

@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.call.dto;
 
+import com.ithopeschool.projectbe.domain.call.ChatRoom;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -15,6 +16,7 @@ import java.util.List;
 //
 // ⚠️ 카드에는 숫자와 정해진 분류값만 담습니다. 계획 내용·일기·이름 같은 글 원문은 받지 않습니다.
 //    그래서 모든 값의 범위와 모양을 좁게 정해 두었습니다. (이 값들이 AI 의 지침에 들어가기 때문입니다)
+//    예외: 공부 신호(StudySignals)의 "틀린 확인 문제 주제" 는 30자 · 3개짜리 글입니다. 이유는 StudySignals 주석.
 public record CallSessionRequest(
     // 오늘의 관리 강도. 0 회복 · 1 당근 · 2 넛지 · 3 심리적 채찍 · 4 강제적 채찍(말투는 3 과 같게 씁니다)
     @NotNull(message = "오늘의 관리 강도(careLevel)를 보내 주세요")
@@ -46,7 +48,58 @@ public record CallSessionRequest(
                     regexp = WEAKNESS_NAMES,
                     message = "selfReportedWeaknesses 는 정해진 약점 이름이어야 해요")
                 String>
-            selfReportedWeaknesses) {
+            selfReportedWeaknesses,
+    // 상담 채팅을 "무엇에 대한 대화인지" 와 함께 열 때만 씁니다. (2026-10-18 "코치랑 이야기하기", ChatAbout)
+    // 음성 통화(POST /realtime/session)는 이 칸을 쓰지 않습니다. 없으면 null 입니다.
+    @Valid ChatAbout about,
+    // 상담 채팅의 방: COACH(상담, 기본) · PLANNER(계획) · TUTOR(과목 쌤). 없으면 상담입니다. (2026-10-18, ChatRoom)
+    // 예전 이름 GOAL_MATE(목표 메이트)도 받아서 PLANNER 로 봅니다. 음성 통화는 이 칸을 쓰지 않습니다.
+    @Pattern(regexp = ROOMS, message = "방(room)은 COACH · PLANNER · TUTOR 중 하나예요") String room,
+    // 공부 신호: 기기에만 있는 최근 7일 집중도 · 폰 든 횟수 · 확인 문제 결과 (2026-10-18, StudySignals)
+    // 통화와 채팅 둘 다 씁니다. 없으면 null 이고, 그러면 대본에 [공부 신호] 칸이 없습니다.
+    @Valid StudySignals studySignals) {
+
+  // 받을 수 있는 방 이름들입니다. ChatRoom 에 방을 더하면 여기에도 더해야 합니다. (ChatRoomTest 가 확인)
+  // 맨 끝의 GOAL_MATE 는 예전 이름이라 받기만 하고 PLANNER 로 바꿉니다. (ChatRoom.from)
+  public static final String ROOMS = "COACH|PLANNER|TUTOR|" + ChatRoom.OLD_GOAL_MATE;
+
+  // 주제 · 방 없이 여는 예전 모양 (통화 · 코치 채팅 · 테스트에서 씀)
+  public CallSessionRequest(
+      Integer careLevel,
+      Integer maxHarshness,
+      Card card,
+      List<String> selfReportedBiases,
+      List<String> selfReportedWeaknesses) {
+    this(
+        careLevel,
+        maxHarshness,
+        card,
+        selfReportedBiases,
+        selfReportedWeaknesses,
+        null,
+        null,
+        null);
+  }
+
+  // 공부 신호 없이 주제 · 방만 주는 모양 (채팅 · 테스트에서 씀)
+  public CallSessionRequest(
+      Integer careLevel,
+      Integer maxHarshness,
+      Card card,
+      List<String> selfReportedBiases,
+      List<String> selfReportedWeaknesses,
+      ChatAbout about,
+      String room) {
+    this(
+        careLevel,
+        maxHarshness,
+        card,
+        selfReportedBiases,
+        selfReportedWeaknesses,
+        about,
+        room,
+        null);
+  }
 
   // 받을 수 있는 생각 습관 이름들입니다. CognitiveBias 에 습관을 더하면 여기에도 더해야 합니다. (CallControllerTest 가 확인)
   // 받을 수 있는 약점 이름들입니다. Weakness 에 칩을 더하면 여기에도 더해야 합니다. (CallControllerTest 가 확인)

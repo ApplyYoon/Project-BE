@@ -22,6 +22,13 @@ class ErrorCodeTest {
   }
 
   @Test
+  @DisplayName("확인 통화 잠김(CALL_LOCKED)도 403 이지만 이유를 모르는 403 에는 붙이지 않는다")
+  void callLockedIs403ButNotGuessed() {
+    assertThat(ErrorCode.CALL_LOCKED.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(ErrorCode.fromStatus(403)).isNotEqualTo(ErrorCode.CALL_LOCKED);
+  }
+
+  @Test
   @DisplayName("다른 상태 번호는 전과 똑같이 찾는다")
   void otherStatusesStillMapAsBefore() {
     assertThat(ErrorCode.fromStatus(400)).isEqualTo(ErrorCode.VALIDATION_ERROR);

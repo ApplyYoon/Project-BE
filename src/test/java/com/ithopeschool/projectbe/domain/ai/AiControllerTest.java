@@ -19,6 +19,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.CardParseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.CoachNudgeRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.CoachNudgeResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DailyMissionsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanReviseResponse;
@@ -73,6 +75,7 @@ class AiControllerTest {
   @MockitoBean private DayPlanReviseService dayPlanReviseService;
   @MockitoBean private LongPlanService longPlanService;
   @MockitoBean private StudyQuizService studyQuizService;
+  @MockitoBean private CoachNudgeService coachNudgeService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -1013,6 +1016,70 @@ class AiControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{" + plan.replace("90", "500") + ",\"request\":\"줄여 줘\"}"))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.error.message").value("할 일 시간은 20 ~ 240분이에요"));
+        .andExpect(jsonPath("$.error.message").value("할 일 시간은 30 ~ 240분이에요"));
+  }
+
+  // ---- 코치 알림 문장 ----
+
+  @Test
+  @DisplayName("코치 알림 문장: 200 과 아침 · 밤 문장, 과목 · 카드 제목의 앞뒤 공백을 지우고 안 보낸 목록은 빈 목록으로 넘긴다")
+  void nudgesReturnsTexts() throws Exception {
+    given(coachNudgeService.make(any()))
+        .willReturn(
+            CoachNudgeResponse.of(
+                new CoachNudge.Result(
+                    new CoachNudge.Nudge("오늘 6교시 미적분", "쉬는 시간에 한 문제만 보자."), null)));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/nudges")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"date\":\"2026-10-19\",\"subjects\":[\" 미적분 \"],"
+                        + "\"cards\":[{\"startTime\":\"19:00\",\"title\":\" 문제집 \",\"minutes\":40}]}"))
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .json(
+                    "{\"morning\":{\"title\":\"오늘 6교시 미적분\",\"body\":\"쉬는 시간에 한 문제만 보자.\"},"
+                        + "\"evening\":null,\"comfort\":false}",
+                    true));
+    verify(coachNudgeService)
+        .make(
+            new CoachNudgeRequest(
+                LocalDate.of(2026, 10, 19),
+                List.of("미적분"),
+                List.of(new CoachNudgeRequest.Card("19:00", "문제집", 40)),
+                null,
+                List.of(),
+                null,
+                null));
+  }
+
+  @Test
+  @DisplayName("코치 알림 문장: 날짜가 없거나 · 과목이 8개를 넘거나 · 전날 숫자가 범위 밖이면 400 이고 서비스를 부르지 않는다")
+  void nudgesRejectsBadRequests() throws Exception {
+    mockMvc
+        .perform(post("/api/v1/ai/nudges").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("알림을 보낼 날짜를 보내 주세요"));
+    mockMvc
+        .perform(
+            post("/api/v1/ai/nudges")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"date\":\"2026-10-19\",\"subjects\":[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\"]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("과목은 8개까지 보낼 수 있어요"));
+    mockMvc
+        .perform(
+            post("/api/v1/ai/nudges")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"date\":\"2026-10-19\",\"yesterday\":{\"plannedCards\":3,\"doneCards\":21,"
+                        + "\"studyMinutes\":60}}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("전날 끝낸 카드 수는 0 ~ 20 이에요"));
+    verifyNoInteractions(coachNudgeService);
   }
 }

@@ -84,9 +84,9 @@ public final class DayPlanPrompt {
   // AI 에게 주는 입력입니다.
   //   날짜: 10/18
   //   칸 (이 순서대로 하나씩):
-  //   1. 16:40 · 25분 · 목표 「11월 학평 수학 3등급」 D-day 까지 32일
-  //   2. 17:15 · 25분 · 목표 「영단어장 1회독」 D-day 까지 8일 · 하루 분량 30쪽
-  //   3. 17:50 · 25분 · 목표 없음
+  //   1. 16:40 · 50분 · 목표 「11월 학평 수학 3등급」 D-day 까지 32일
+  //   2. 17:40 · 50분 · 목표 「영단어장 1회독」 D-day 까지 8일 · 하루 분량 30쪽
+  //   3. 18:40 · 40분 · 목표 없음
   //   최근 카드 제목: 수학 문제집 / 영어 단어
   static String input(LocalDate date, List<Block> blocks, List<String> recentTitles) {
     StringBuilder input = new StringBuilder();

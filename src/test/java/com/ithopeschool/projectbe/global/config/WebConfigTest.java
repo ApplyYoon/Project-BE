@@ -30,7 +30,8 @@ class WebConfigTest {
 
   @Test
   void feDevServerCanCallHealth() throws Exception {
-    given(healthService.check()).willReturn(new HealthResponse("ok", "connected"));
+    given(healthService.check())
+        .willReturn(new HealthResponse("ok", "connected", false, false, false));
 
     mockMvc
         .perform(get("/api/v1/health").header("Origin", FE_DEV_ORIGIN))

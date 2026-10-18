@@ -6,18 +6,31 @@ import com.ithopeschool.projectbe.domain.cardresult.CardResult;
 import com.ithopeschool.projectbe.domain.cardresult.CardResultService;
 import com.ithopeschool.projectbe.domain.cardresult.JudgedCardDay;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
+import com.ithopeschool.projectbe.domain.checkin.EmotionTag;
+import com.ithopeschool.projectbe.domain.dailysignal.DailySignal;
+import com.ithopeschool.projectbe.domain.dailysignal.DailySignalRepository;
 import com.ithopeschool.projectbe.domain.exam.Exam;
 import com.ithopeschool.projectbe.domain.exam.ExamDday;
 import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamScore;
 import com.ithopeschool.projectbe.domain.exam.ExamScoreRepository;
+import com.ithopeschool.projectbe.domain.experiment.Experiment;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentRepository;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentRule;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentStatus;
 import com.ithopeschool.projectbe.domain.goal.Goal;
 import com.ithopeschool.projectbe.domain.goal.GoalKind;
 import com.ithopeschool.projectbe.domain.goal.GoalRepository;
 import com.ithopeschool.projectbe.domain.goal.GoalStatus;
+import com.ithopeschool.projectbe.domain.goal.WeekGoalService;
+import com.ithopeschool.projectbe.domain.goal.WeeklyGoal;
+import com.ithopeschool.projectbe.domain.goal.dto.WeekGoalDto;
 import com.ithopeschool.projectbe.domain.onboarding.Chronotype;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
+import com.ithopeschool.projectbe.domain.safety.CrisisText;
 import com.ithopeschool.projectbe.domain.session.SessionTags.ShortfallReason;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
@@ -28,6 +41,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,18 +62,31 @@ import org.springframework.stereotype.Component;
 //   - 아침형/저녁형: 가장 최근 설문의 답과, 최근 2주(어제까지) 판정이 끝난 카드 중 아침 · 저녁 카드를 체크리스트까지 다 채운 횟수
 //     (CardResultService.getJudgedDays 의 checklistRate)
 //   - 못 채운 이유: 최근 2주 미실행 카드에서 고른 원인 + 타이머를 목표 전에 끝내며 고른 이유 ('기타' 는 뺌)
+//   - 약속: 오늘 체크인, 없으면 어제 체크인의 "만약 ~하면 → ~한다". 위기 표현이 있으면 넣지 않음
+//   - 감정 태그: 오늘 포함 최근 7일 체크인에서 고른 감정과 횟수
+//   - 카드 실행률: 최근 7일(어제까지)과 그 앞 2주의 실행률 평균 (휴식한 날은 뺌)
+//   - 수면: 오늘, 없으면 어제 날짜의 하루 신호에 적힌 잔 시간
+//   - 이번 주 목표: 이번 주(월요일) 목표와 지금 숫자 (WeekGoalService.thisWeekOf)
+//   - 자기 실험: 진행 중이고 14일이 안 끝난 실험과 붙인 카드 제목
 @Component
 @RequiredArgsConstructor
 public class CallContextLoader {
 
   // 대본에 넣는 목표의 최대 개수. 많으면 AI 가 늘어놓기 쉬워서 줄입니다.
   static final int MAX_GOALS = 2;
+  // 이번 주 목표 중 "분" 으로 세는 종류 (시작 지연). 나머지는 % 입니다.
+  static final String START_DELAY_KIND = WeekGoalDto.kindValue(WeeklyGoal.Kind.START_DELAY);
   // 아침형/저녁형 · 못 채운 이유를 볼 기간(일). 어제까지 14일입니다. (오늘 카드는 아직 끝나지 않았을 수 있음)
   static final int RECENT_DAYS = 14;
   // 아침 카드: 이 시각부터 정오 전까지 시작 / 저녁 카드: 18시부터 다음 날 이 시각 전까지 시작 (하루의 기준 새벽 4시)
   static final LocalTime DAY_START = LocalTime.of(4, 0);
   static final LocalTime NOON = LocalTime.NOON;
   static final LocalTime EVENING = LocalTime.of(18, 0);
+  // 감정 태그를 볼 기간(일, 오늘 포함)
+  static final int EMOTION_DAYS = 7;
+  // 실행률 비교: 최근 기간과 그 앞 기준 기간(일). 둘 다 어제까지입니다.
+  static final int RATE_RECENT_DAYS = 7;
+  static final int RATE_BASELINE_DAYS = 14;
 
   private final ExamRepository examRepository;
   private final ExamScoreRepository examScoreRepository;
@@ -69,19 +96,172 @@ public class CallContextLoader {
   private final CardRepository cardRepository;
   private final CardResultService cardResultService;
   private final StudySessionRepository studySessionRepository;
+  private final CheckInRepository checkInRepository;
+  private final DailySignalRepository dailySignalRepository;
+  private final WeekGoalService weekGoalService;
+  private final ExperimentRepository experimentRepository;
 
   // 그 사람의 기록. today: 오늘 (새벽 4시 기준, DayRule)
   public CallContext.Facts load(Long userId, LocalDate today) {
     List<Exam> exams = examRepository.findByUserIdOrderByExamDateDescIdDesc(userId);
     LocalDate from = today.minusDays(RECENT_DAYS);
     LocalDate to = today.minusDays(1);
-    List<JudgedCardDay> judged = cardResultService.getJudgedDays(userId, from, to);
+    // 실행률 비교가 3주(7일 + 2주)를 봐서 한 번에 3주를 읽고, 아침형/저녁형 · 못 채운 이유에는 최근 2주만 넘깁니다.
+    List<JudgedCardDay> threeWeeks =
+        cardResultService.getJudgedDays(
+            userId, today.minusDays(RATE_RECENT_DAYS + RATE_BASELINE_DAYS), to);
+    List<JudgedCardDay> judged = new ArrayList<>();
+    for (JudgedCardDay day : threeWeeks) {
+      if (!day.date().isBefore(from)) {
+        judged.add(day);
+      }
+    }
+    List<CheckIn> checkIns =
+        checkInRepository.findWithEmotionsBetween(userId, today.minusDays(EMOTION_DAYS - 1), today);
+    CallContext.Recent recent =
+        new CallContext.Recent(
+            promiseOf(checkIns, today),
+            emotionsOf(checkIns),
+            runRateOf(threeWeeks, today),
+            sleepOf(userId, today));
+    CallContext.Ongoing ongoing =
+        new CallContext.Ongoing(weekGoalOf(userId, today), experimentsOf(userId, today));
     return new CallContext.Facts(
         nextExamOf(exams, today),
         pastExamOf(userId, exams, today),
         goalsOf(userId, today),
         rhythmGapOf(userId, judged),
-        causesOf(userId, judged, from, to));
+        causesOf(userId, judged, from, to),
+        recent,
+        ongoing);
+  }
+
+  // 이번 주 목표의 제목과 지금 숫자. 안 정했으면 null. 시작 지연 목표는 분, 나머지는 % 입니다.
+  private CallContext.WeekGoalLine weekGoalOf(Long userId, LocalDate today) {
+    return weekGoalService
+        .thisWeekOf(userId, today)
+        .map(
+            item ->
+                new CallContext.WeekGoalLine(
+                    item.title(), item.current(), START_DELAY_KIND.equals(item.kind()) ? "분" : "%"))
+        .orElse(null);
+  }
+
+  // 진행 중이고 14일이 안 끝난 실험, 늦게 시작한 것부터. 붙인 카드 제목은 카드 번호 순서대로입니다.
+  // (끝났는데 아직 판정 전인 실험은 넣지 않습니다. 판정은 목록을 볼 때 합니다)
+  private List<CallContext.ExperimentLine> experimentsOf(Long userId, LocalDate today) {
+    List<Experiment> running = new ArrayList<>();
+    for (Experiment experiment :
+        experimentRepository.findByUserIdAndStatus(userId, ExperimentStatus.RUNNING)) {
+      if (!ExperimentRule.isJudgeDay(experiment.getStartDate(), today)) {
+        running.add(experiment);
+      }
+    }
+    if (running.isEmpty()) {
+      return List.of();
+    }
+    running.sort(Comparator.comparing(Experiment::getStartDate).reversed());
+    List<Long> cardIds = new ArrayList<>();
+    for (Experiment experiment : running) {
+      cardIds.addAll(experiment.getCardIds());
+    }
+    Map<Long, String> titles = new HashMap<>();
+    for (Card card : cardRepository.findByUserIdAndIdIn(userId, cardIds)) {
+      titles.put(card.getId(), card.getTitle());
+    }
+    List<CallContext.ExperimentLine> lines = new ArrayList<>();
+    for (Experiment experiment : running) {
+      List<String> cardTitles = new ArrayList<>();
+      for (Long cardId : experiment.getCardIds().stream().sorted().toList()) {
+        // 지운 카드는 제목이 없어서 건너뜁니다.
+        if (titles.containsKey(cardId)) {
+          cardTitles.add(titles.get(cardId));
+        }
+      }
+      lines.add(
+          new CallContext.ExperimentLine(
+              experiment.getStrategy().getRule(),
+              cardTitles,
+              ExperimentRule.dayOf(experiment.getStartDate(), today)));
+    }
+    return lines;
+  }
+
+  // 오늘 체크인의 약속, 없으면 어제 체크인의 약속. 둘 다 적은 것만 씁니다. 위기 표현이 있으면 넣지 않습니다. (null)
+  static CallContext.Promise promiseOf(List<CheckIn> checkIns, LocalDate today) {
+    for (int daysAgo = 0; daysAgo <= 1; daysAgo++) {
+      LocalDate date = today.minusDays(daysAgo);
+      for (CheckIn checkIn : checkIns) {
+        String ifText = blankToNull(checkIn.getPromiseIf());
+        String thenText = blankToNull(checkIn.getPromiseThen());
+        if (!checkIn.getCheckInDate().equals(date) || ifText == null || thenText == null) {
+          continue;
+        }
+        // 위기 표현이 든 글은 AI 대본에 넣지 않습니다. 그런 날은 안전 브레이크가 먼저입니다. (CLAUDE.md 4장)
+        if (CrisisText.hasCrisisText(List.of(ifText, thenText))) {
+          return null;
+        }
+        return new CallContext.Promise(ifText, thenText, daysAgo);
+      }
+    }
+    return null;
+  }
+
+  // 체크인에서 고른 감정 태그와 횟수. 많은 것부터 (같으면 감정 순서대로)
+  static List<CallContext.EmotionCount> emotionsOf(List<CheckIn> checkIns) {
+    Map<EmotionTag, Integer> counts = new EnumMap<>(EmotionTag.class);
+    for (CheckIn checkIn : checkIns) {
+      for (EmotionTag tag : checkIn.getEmotions()) {
+        counts.merge(tag, 1, Integer::sum);
+      }
+    }
+    List<CallContext.EmotionCount> emotions = new ArrayList<>();
+    counts.forEach(
+        (tag, count) -> emotions.add(new CallContext.EmotionCount(tag.getLabel(), count)));
+    emotions.sort(Comparator.comparingInt(CallContext.EmotionCount::count).reversed());
+    return emotions;
+  }
+
+  // 최근 7일(어제까지)과 그 앞 2주의 카드 수 · 실행률 평균. 휴식한 날은 뺍니다. 한쪽이라도 카드가 없으면 null
+  // 실행률은 카드 결과 판정의 runRate 입니다. (미실행 0, 증빙 없는 자기 보고 0.5, Willpower 와 같음)
+  static CallContext.RunRate runRateOf(List<JudgedCardDay> threeWeeks, LocalDate today) {
+    LocalDate recentFrom = today.minusDays(RATE_RECENT_DAYS);
+    int recentCards = 0;
+    double recentSum = 0;
+    int baselineCards = 0;
+    double baselineSum = 0;
+    for (JudgedCardDay day : threeWeeks) {
+      if (day.result() == CardResult.REST) {
+        continue;
+      }
+      if (!day.date().isBefore(recentFrom)) {
+        recentCards++;
+        recentSum += day.runRate();
+      } else {
+        baselineCards++;
+        baselineSum += day.runRate();
+      }
+    }
+    if (recentCards == 0 || baselineCards == 0) {
+      return null;
+    }
+    return new CallContext.RunRate(
+        recentCards, recentSum / recentCards, baselineCards, baselineSum / baselineCards);
+  }
+
+  // 오늘, 없으면 어제 날짜의 하루 신호에 적힌 잔 시간. 둘 다 없으면 null
+  private CallContext.Sleep sleepOf(Long userId, LocalDate today) {
+    CallContext.Sleep sleep = null;
+    // 날짜 순서(어제 → 오늘)로 오므로, 뒤에 오는 오늘 기록이 있으면 그것으로 바뀝니다.
+    for (DailySignal signal :
+        dailySignalRepository.findByUserIdAndSignalDateBetweenOrderBySignalDateAsc(
+            userId, today.minusDays(1), today)) {
+      if (signal.getSleepMinutes() != null) {
+        int daysAgo = signal.getSignalDate().equals(today) ? 0 : 1;
+        sleep = new CallContext.Sleep(signal.getSleepMinutes(), daysAgo);
+      }
+    }
+    return sleep;
   }
 
   // 가장 최근 설문의 아침형/저녁형과, 아침 · 저녁 카드를 다 채운 횟수. 답이 없으면 null

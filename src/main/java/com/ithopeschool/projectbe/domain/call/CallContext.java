@@ -18,6 +18,14 @@ import java.util.List;
 //   5. 아침형/저녁형 답과 기록은 "답과 반대 시간대가 20%p 이상 높을 때" 만 넣습니다. 두 시간대 모두 카드가 4번 이상이어야 합니다.
 //      (기획서의 "인지 왜곡 교정": 스스로 말한 것과 실제가 다를 때 학생이 알아차리게 묻습니다)
 //   6. 못 채운 이유는 2번 이상 나온 것만, 많은 것부터 2개까지 넣습니다.
+//   7. 약속은 오늘이나 어제 체크인에서 스스로 정한 것 하나만 넣습니다. 위기 표현이 있는 글은 CallContextLoader 가 뺍니다.
+//   8. 감정 태그는 최근 7일에 2번 이상 고른 것만, 많은 것부터 3개까지 넣습니다.
+//   9. 카드 실행률은 최근 7일과 그 앞 2주 모두 카드가 3번 이상이고, 15%p 이상 차이 날 때만 넣습니다.
+//  10. 수면은 6시간보다 적게 잤을 때만 넣습니다. (수면 보호 시간 6시간과 같은 기준)
+//  11. 이번 주 목표는 정했을 때만, 제목과 지금 숫자를 넣습니다. (WeekGoalService, 이슈 #88)
+//  12. 진행 중인 자기 실험은 14일이 안 끝난 것만, 실험 규칙 · 붙인 카드 제목(3장까지) · 며칠째를 넣습니다. (이슈 #52)
+// 7 ~ 10 은 "ChatGPT 는 내 어제를 모른다" 를 보여 주는 최근 기록입니다. 대본에서 시험 · 목표보다 앞에 둡니다. (2026-10-18)
+// 11 · 12 는 학생이 지금 하고 있는 약속(이번 주 목표 · 실험)이라 최근 기록 바로 뒤에 둡니다.
 public final class CallContext {
 
   // 학생이 쓴 글을 넣을 때의 최대 글자 수 (규칙 3)
@@ -29,6 +37,16 @@ public final class CallContext {
   // 못 채운 이유를 넣으려면 나와야 하는 횟수와, 넣는 최대 개수 (규칙 6)
   static final int MIN_CAUSE_COUNT = 2;
   static final int MAX_CAUSES = 2;
+  // 감정 태그를 넣으려면 고른 횟수와, 넣는 최대 개수 (규칙 8)
+  static final int MIN_EMOTION_COUNT = 2;
+  static final int MAX_EMOTIONS = 3;
+  // 실행률을 말하려면 두 기간 모두 있어야 하는 카드 수와, 나야 하는 차이(%p) (규칙 9)
+  static final int MIN_RATE_CARDS = 3;
+  static final int MIN_RATE_GAP_POINTS = 15;
+  // 이보다 적게 잤으면 말합니다. (분, 규칙 10)
+  static final int SHORT_SLEEP_MINUTES = 360;
+  // 실험 하나에 적는 카드 제목의 최대 개수 (규칙 12)
+  static final int MAX_EXPERIMENT_CARDS = 3;
 
   // 다음 시험. name: 시험 이름 / daysUntil: 남은 날 (오늘이면 0)
   public record NextExam(String name, int daysUntil) {}
@@ -54,19 +72,73 @@ public final class CallContext {
   // 못 채운 이유 하나와 최근 2주에 나온 횟수 (예: "피곤·수면", 6)
   public record CauseCount(String label, int count) {}
 
+  // 체크인에서 스스로 정한 약속 "만약 ~하면 → ~한다" (규칙 7). daysAgo: 0 이면 오늘 체크인, 1 이면 어제
+  public record Promise(String ifText, String thenText, int daysAgo) {}
+
+  // 감정 태그 하나와 최근 7일에 고른 횟수 (예: "피곤함", 4) (규칙 8)
+  public record EmotionCount(String label, int count) {}
+
+  // 카드 실행률 비교 (규칙 9). 최근 7일(어제까지)과 그 앞 2주의 카드 수와 실행률 평균(0 ~ 1)
+  public record RunRate(
+      int recentCards, double recentRate, int baselineCards, double baselineRate) {}
+
+  // 가장 최근 수면 기록 (규칙 10). minutes: 잔 시간(분) / daysAgo: 0 이면 오늘 날짜의 기록, 1 이면 어제
+  public record Sleep(int minutes, int daysAgo) {}
+
+  // 최근 며칠의 기록 (규칙 7 ~ 10). 없는 것은 null 이나 빈 목록입니다.
+  public record Recent(Promise promise, List<EmotionCount> emotions, RunRate runRate, Sleep sleep) {
+
+    public static final Recent NONE = new Recent(null, List.of(), null, null);
+  }
+
+  // 이번 주 목표 (규칙 11). title: "완주율 65% 넘기기" / current: 지금 숫자, 아직 모르면 null / unit: "%" 또는 "분"
+  public record WeekGoalLine(String title, Integer current, String unit) {}
+
+  // 진행 중인 자기 실험 하나 (규칙 12). rule: 실험 규칙 한 줄 / cardTitles: 붙인 카드 제목 / day: 며칠째 (1 ~ 14)
+  public record ExperimentLine(String rule, List<String> cardTitles, int day) {}
+
+  // 학생이 지금 하고 있는 약속 (규칙 11 · 12). 없는 것은 null 이나 빈 목록입니다.
+  public record Ongoing(WeekGoalLine weekGoal, List<ExperimentLine> experiments) {
+
+    public static final Ongoing NONE = new Ongoing(null, List.of());
+  }
+
   // 대본에 넣을 기록 전부. 없는 것은 null 이나 빈 목록입니다.
   public record Facts(
       NextExam nextExam,
       PastExam pastExam,
       List<GoalLine> goals,
       RhythmGap rhythmGap,
-      List<CauseCount> causes) {
+      List<CauseCount> causes,
+      Recent recent,
+      Ongoing ongoing) {
 
     public static final Facts NONE = new Facts(null, null, List.of());
 
     // 시험 · 목표만 있을 때
     public Facts(NextExam nextExam, PastExam pastExam, List<GoalLine> goals) {
-      this(nextExam, pastExam, goals, null, List.of());
+      this(nextExam, pastExam, goals, null, List.of(), Recent.NONE, Ongoing.NONE);
+    }
+
+    // 이번 주 목표 · 실험(규칙 11 · 12)이 없을 때
+    public Facts(
+        NextExam nextExam,
+        PastExam pastExam,
+        List<GoalLine> goals,
+        RhythmGap rhythmGap,
+        List<CauseCount> causes,
+        Recent recent) {
+      this(nextExam, pastExam, goals, rhythmGap, causes, recent, Ongoing.NONE);
+    }
+
+    // 최근 기록(규칙 7 ~ 10)이 없을 때
+    public Facts(
+        NextExam nextExam,
+        PastExam pastExam,
+        List<GoalLine> goals,
+        RhythmGap rhythmGap,
+        List<CauseCount> causes) {
+      this(nextExam, pastExam, goals, rhythmGap, causes, Recent.NONE, Ongoing.NONE);
     }
   }
 
@@ -76,6 +148,9 @@ public final class CallContext {
   // 꺼낼 것이 하나도 없으면 빈 글자입니다. (규칙 2)
   public static String section(Facts facts) {
     List<String> body = new ArrayList<>();
+    body.addAll(recentLines(facts.recent()));
+    body.addAll(weekGoalLines(facts.ongoing().weekGoal()));
+    body.addAll(experimentLines(facts.ongoing().experiments()));
     body.addAll(examLines(facts.nextExam(), facts.pastExam()));
     body.addAll(goalLines(facts.goals()));
     body.addAll(rhythmLines(facts.rhythmGap()));
@@ -193,6 +268,132 @@ public final class CallContext {
     return List.of(
         "- 최근 2주 카드를 못 채웠을 때 고른 이유: " + String.join(", ", picked),
         "  - 탓하지 말고, 이 이유가 오늘 또 나오면 할 수 있는 작은 대안 하나를 같이 정해.");
+  }
+
+  // 최근 기록 줄 (규칙 7 ~ 10). 오늘과 가까운 것부터: 약속 · 수면 · 감정 · 실행률
+  static List<String> recentLines(Recent recent) {
+    List<String> lines = new ArrayList<>();
+    lines.addAll(promiseLines(recent.promise()));
+    lines.addAll(sleepLines(recent.sleep()));
+    lines.addAll(emotionLines(recent.emotions()));
+    lines.addAll(runRateLines(recent.runRate()));
+    return lines;
+  }
+
+  // 약속 줄 (규칙 7). 오늘 약속이면 떠올리게, 어제 약속이면 해 봤는지 묻게 합니다.
+  //   어제 「폰을 보고 싶으면」 → 「물 한 잔 마신다」
+  static List<String> promiseLines(Promise promise) {
+    if (promise == null) {
+      return List.of();
+    }
+    boolean isToday = promise.daysAgo() == 0;
+    String guide =
+        isToday
+            ? "  - 그 상황이 오면 이 약속을 떠올리게 해 줘. 약속을 대신 바꾸지 마."
+            : "  - 어제 약속대로 해 봤는지 가볍게 물어봐. 못 했어도 탓하지 말고, 더 쉬운 약속으로 바꿔 보자고 해.";
+    return List.of(
+        "- "
+            + (isToday ? "오늘" : "어제")
+            + " 체크인에서 스스로 정한 약속: 「"
+            + cut(promise.ifText())
+            + "」 → 「"
+            + cut(promise.thenText())
+            + "」",
+        guide);
+  }
+
+  // 수면 줄 (규칙 10). 6시간보다 적게 잤을 때만
+  //   310분 → "5시간 10분"     300분 → "5시간"
+  static List<String> sleepLines(Sleep sleep) {
+    if (sleep == null || sleep.minutes() >= SHORT_SLEEP_MINUTES) {
+      return List.of();
+    }
+    int hours = sleep.minutes() / 60;
+    int minutes = sleep.minutes() % 60;
+    String time = hours + "시간" + (minutes == 0 ? "" : " " + minutes + "분");
+    return List.of(
+        "- " + (sleep.daysAgo() == 0 ? "오늘" : "어제") + " 날짜의 수면 기록: " + time + " (휴대폰 기록)",
+        "  - 잠을 탓하지 말고, 오늘 계획을 줄이거나 짧게 끊어서 하자고 먼저 제안해.");
+  }
+
+  // 감정 태그 줄 (규칙 8). 2번 이상 고른 것만, 많은 것부터 3개까지 (넘겨받은 목록은 많은 것부터)
+  static List<String> emotionLines(List<EmotionCount> emotions) {
+    List<String> picked = new ArrayList<>();
+    for (EmotionCount emotion : emotions) {
+      if (emotion.count() >= MIN_EMOTION_COUNT && picked.size() < MAX_EMOTIONS) {
+        picked.add(emotion.label() + " " + emotion.count() + "번");
+      }
+    }
+    if (picked.isEmpty()) {
+      return List.of();
+    }
+    return List.of(
+        "- 최근 7일 체크인에서 고른 감정: " + String.join(", ", picked),
+        "  - 감정을 평가하지 말고 먼저 알아줘. 힘든 감정이 많으면 오늘 할 일을 작게, 좋은 감정이 많으면 무엇이 도움이 됐는지 물어봐.");
+  }
+
+  // 카드 실행률 줄 (규칙 9). 두 기간 모두 카드가 3번 이상이고 15%p 이상 차이 날 때만
+  //   최근 7일 50%(카드 8번) · 그 앞 2주 80%(카드 16번) → 떨어졌을 때의 두 줄
+  static List<String> runRateLines(RunRate rate) {
+    if (rate == null
+        || rate.recentCards() < MIN_RATE_CARDS
+        || rate.baselineCards() < MIN_RATE_CARDS) {
+      return List.of();
+    }
+    int recent = (int) Math.round(rate.recentRate() * 100);
+    int baseline = (int) Math.round(rate.baselineRate() * 100);
+    if (Math.abs(recent - baseline) < MIN_RATE_GAP_POINTS) {
+      return List.of();
+    }
+    String guide =
+        recent < baseline
+            ? "  - 탓하지 말고, 요즘 무엇이 달라졌는지 하나만 물어봐. 계획이 많았으면 줄이자고 해."
+            : "  - 무엇이 도움이 됐는지 구체적으로 물어보고 칭찬해. 다른 사람과 비교하지 마.";
+    return List.of(
+        "- 카드 실행률: 최근 7일 "
+            + recent
+            + "% (카드 "
+            + rate.recentCards()
+            + "번), 그 앞 2주 "
+            + baseline
+            + "% (카드 "
+            + rate.baselineCards()
+            + "번)",
+        guide);
+  }
+
+  // 이번 주 목표 줄 (규칙 11)
+  //   「완주율 65% 넘기기」, 지금 50%  →  "- 이번 주 목표: 「완주율 65% 넘기기」 (지금 50%)"
+  static List<String> weekGoalLines(WeekGoalLine goal) {
+    if (goal == null) {
+      return List.of();
+    }
+    String now = goal.current() == null ? "아직 기록 없음" : "지금 " + goal.current() + goal.unit();
+    return List.of(
+        "- 이번 주 목표: 「" + goal.title() + "」 (" + now + ")",
+        "  - 남은 날 중 오늘 할 수 있는 한 가지로 이어 줘. 달성을 재촉하거나 겁주지 마.");
+  }
+
+  // 진행 중인 자기 실험 줄 (규칙 12). 카드 제목은 3장까지, 학생이 쓴 글이라 앞 40자만
+  //   「시작할 때 폰을 가방에 넣기」, 카드 「수학 문제집」, 5일째
+  //     →  "- 진행 중인 자기 실험 (14일 중 5일째): 「시작할 때 폰을 가방에 넣기」 · 붙인 카드 「수학 문제집」"
+  static List<String> experimentLines(List<ExperimentLine> experiments) {
+    List<String> lines = new ArrayList<>();
+    for (ExperimentLine experiment : experiments) {
+      List<String> titles = new ArrayList<>();
+      for (String title : experiment.cardTitles()) {
+        if (titles.size() < MAX_EXPERIMENT_CARDS) {
+          titles.add("「" + cut(title) + "」");
+        }
+      }
+      String cards = titles.isEmpty() ? "" : " · 붙인 카드 " + String.join(", ", titles);
+      lines.add(
+          "- 진행 중인 자기 실험 (14일 중 " + experiment.day() + "일째): 「" + experiment.rule() + "」" + cards);
+    }
+    if (!lines.isEmpty()) {
+      lines.add("  - 그 카드를 할 때 이 실험 규칙을 떠올리게 해. 지켰는지는 카드 기록으로 판정하니 캐묻지 마.");
+    }
+    return lines;
   }
 
   // 학생이 쓴 글을 대본에 넣을 모양으로 다듬습니다. 줄바꿈은 띄어쓰기로, 40자가 넘으면 자르고 "…" 를 붙입니다. (규칙 3)

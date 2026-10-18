@@ -160,6 +160,7 @@ public class DayPlanService {
     evidence.addAll(1, total.evidence());
     // 오늘 컨디션이 낮다고 했으면(1~2) 총량을 60% 로 줄여 가벼운 계획을 짭니다. (2026-10-18 계획 핑퐁)
     // 학생은 코치 대화에서 [더 늘려 줘] 로 다시 늘릴 수 있습니다. (DayPlanReviseService)
+    // 한 칸 길이는 그대로 두고 총량만 줄이므로, 칸 수가 줄어듭니다. (한 칸은 30분 이상, StudyBlock)
     if (request.condition() != null
         && request.condition() <= LOW_CONDITION
         && total.minutes() >= DayPlanRule.MIN_BLOCK) {

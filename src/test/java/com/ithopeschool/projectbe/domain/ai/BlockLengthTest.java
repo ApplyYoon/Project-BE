@@ -12,10 +12,19 @@ class BlockLengthTest {
   @Test
   @DisplayName("공부 기록이 5번 이상이면 한 번 길이의 가운데값을 5분 단위로 쓴다")
   void fromRecords() {
+    BlockLength.Choice choice = BlockLength.of(List.of(40, 45, 42, 60, 44), 60, true);
+
+    assertThat(choice.minutes()).isEqualTo(45);
+    assertThat(choice.evidence()).isEqualTo("최근 14일 공부 기록 5번의 한 번 길이 가운데값이 44분이라 45분으로 잡았어요");
+  }
+
+  @Test
+  @DisplayName("기록이 짧아도 30분보다 짧게 잡지 않는다 (30분 밑은 공부 블록으로 보지 않음)")
+  void neverBelowStudyBlock() {
     BlockLength.Choice choice = BlockLength.of(List.of(20, 25, 22, 40, 24), 60, true);
 
-    assertThat(choice.minutes()).isEqualTo(25);
-    assertThat(choice.evidence()).isEqualTo("최근 14일 공부 기록 5번의 한 번 길이 가운데값이 24분이라 25분으로 잡았어요");
+    assertThat(choice.minutes()).isEqualTo(30);
+    assertThat(choice.evidence()).isEqualTo("최근 14일 공부 기록 5번의 한 번 길이 가운데값이 24분이라 30분으로 잡았어요");
   }
 
   @Test
@@ -28,11 +37,12 @@ class BlockLengthTest {
   }
 
   @Test
-  @DisplayName("길이는 15 ~ 90분 안으로 맞추고, 가운데값은 짝수 개면 가운데 둘의 평균이다")
+  @DisplayName("길이는 30 ~ 90분 안으로 맞추고, 가운데값은 짝수 개면 가운데 둘의 평균이다")
   void clampAndMedian() {
-    assertThat(BlockLength.clamp(12)).isEqualTo(15);
-    assertThat(BlockLength.clamp(27)).isEqualTo(25);
+    assertThat(BlockLength.clamp(12)).isEqualTo(30);
+    assertThat(BlockLength.clamp(27)).isEqualTo(30);
     assertThat(BlockLength.clamp(28)).isEqualTo(30);
+    assertThat(BlockLength.clamp(43)).isEqualTo(45);
     assertThat(BlockLength.clamp(120)).isEqualTo(90);
     assertThat(BlockLength.medianOf(List.of(10, 20, 31, 41))).isEqualTo(26);
   }

@@ -63,7 +63,31 @@ class DayPlanReviseTest {
         .containsExactly(
             org.assertj.core.groups.Tuple.tuple("19:00", "미적분 문제집"),
             org.assertj.core.groups.Tuple.tuple("19:40", "겹치는 카드"),
-            org.assertj.core.groups.Tuple.tuple("20:00", "문학 읽기"));
+            org.assertj.core.groups.Tuple.tuple("20:10", "문학 읽기"));
+    // 「겹치는 카드」 는 AI 가 20분으로 만들어서 30분으로 올렸고, 그래서 「문학 읽기」 가 20:10 으로 밀렸다
+    assertThat(result.cards().get(1).durationMinutes()).isEqualTo(30);
+  }
+
+  @Test
+  @DisplayName("AI 가 30분보다 짧게 만든 카드는 30분으로 올리고, 학생이 원래 넣어 둔 짧은 카드는 그대로 둔다")
+  void neverShorterThanStudyBlock() {
+    DayPlanRevise.Answer answer =
+        new DayPlanRevise.Answer(
+            "줄였어.",
+            List.of(
+                item("19:00", 10, "복습"), item("20:00", 20, "영어 단어"), item("21:00", 15, "문학 읽기")));
+    List<DayPlanReviseRequest.Draft> current =
+        List.of(new DayPlanReviseRequest.Draft(TODAY, "20:00", 20, "영어 단어", null));
+
+    DayPlanRevise.Result result = DayPlanRevise.from(answer, TODAY, current);
+
+    assertThat(result.cards())
+        .extracting(DayPlanRevise.Card::title, DayPlanRevise.Card::durationMinutes)
+        .containsExactly(
+            org.assertj.core.groups.Tuple.tuple("복습", 30),
+            org.assertj.core.groups.Tuple.tuple("영어 단어", 20),
+            org.assertj.core.groups.Tuple.tuple("문학 읽기", 30));
+    assertThat(DayPlanRevise.instructions()).contains("줄여 달라면 카드 수를 줄여").contains("30분보다 짧게 깎지 마");
   }
 
   @Test
@@ -73,7 +97,7 @@ class DayPlanReviseTest {
         .isEmpty();
     DayPlanRevise.Result nothing =
         DayPlanRevise.from(
-            new DayPlanRevise.Answer("가".repeat(101), List.of(item("19:00", 1, "짧음"))), TODAY);
+            new DayPlanRevise.Answer("가".repeat(101), List.of(item("19:00", 0, "길이 없음"))), TODAY);
     assertThat(nothing.cards()).isNull();
     assertThat(nothing.reply()).isEqualTo(DayPlanRevise.DEFAULT_REPLY);
     assertThat(DayPlanRevise.from(null, TODAY).cards()).isNull();

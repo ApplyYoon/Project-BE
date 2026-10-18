@@ -64,7 +64,7 @@ class DayPlanRuleTest {
   }
 
   @Test
-  @DisplayName("빈 시간은 고정 일정 · 카드 앞뒤 10분을 빼고, 15분보다 짧은 틈은 버린다")
+  @DisplayName("빈 시간은 고정 일정 · 카드 앞뒤 10분을 빼고, 30분보다 짧은 틈은 버린다")
   void freeSlots() {
     List<DayPlanRule.Span> free =
         DayPlanRule.freeSlotsOf(
@@ -79,13 +79,25 @@ class DayPlanRuleTest {
   @DisplayName("칸은 빈 시간 앞에서부터 한 칸 길이로, 칸 사이 10분을 띄워 놓는다")
   void placeEarlyFirst() {
     List<DayPlanRule.Placed> placed =
-        DayPlanRule.placeBlocks(List.of(span(16, 40, 23, 0)), 50, 120, false);
+        DayPlanRule.placeBlocks(List.of(span(16, 40, 23, 0)), 50, 140, false);
 
     assertThat(placed)
         .containsExactly(
             new DayPlanRule.Placed(at(16, 40), 50),
             new DayPlanRule.Placed(at(17, 40), 50),
-            new DayPlanRule.Placed(at(18, 40), 20));
+            new DayPlanRule.Placed(at(18, 40), 40));
+  }
+
+  @Test
+  @DisplayName("남은 총량이 30분보다 짧으면 칸을 더 놓지 않는다 (10 · 20분짜리 칸은 만들지 않음)")
+  void noBlockShorterThanStudyBlock() {
+    List<DayPlanRule.Placed> placed =
+        DayPlanRule.placeBlocks(List.of(span(16, 40, 23, 0)), 50, 120, false);
+
+    assertThat(placed)
+        .containsExactly(
+            new DayPlanRule.Placed(at(16, 40), 50), new DayPlanRule.Placed(at(17, 40), 50));
+    assertThat(placed).allSatisfy(block -> assertThat(block.minutes()).isGreaterThanOrEqualTo(30));
   }
 
   @Test
@@ -96,16 +108,14 @@ class DayPlanRuleTest {
 
     assertThat(placed)
         .containsExactly(
-            new DayPlanRule.Placed(at(20, 40), 20),
-            new DayPlanRule.Placed(at(21, 10), 50),
-            new DayPlanRule.Placed(at(22, 10), 50));
+            new DayPlanRule.Placed(at(21, 10), 50), new DayPlanRule.Placed(at(22, 10), 50));
   }
 
   @Test
-  @DisplayName("빈 시간이 짧으면 그만큼만, 15분보다 짧으면 놓지 않는다")
+  @DisplayName("빈 시간이 짧으면 그만큼만, 30분보다 짧으면 놓지 않는다")
   void placeLimitedByFreeTime() {
     List<DayPlanRule.Placed> placed =
-        DayPlanRule.placeBlocks(List.of(span(7, 0, 7, 40), span(21, 0, 21, 14)), 50, 120, false);
+        DayPlanRule.placeBlocks(List.of(span(7, 0, 7, 40), span(21, 0, 21, 25)), 50, 120, false);
 
     assertThat(placed).containsExactly(new DayPlanRule.Placed(at(7, 0), 40));
   }

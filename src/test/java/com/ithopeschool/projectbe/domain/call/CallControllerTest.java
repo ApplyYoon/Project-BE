@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -14,6 +15,7 @@ import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
+import com.ithopeschool.projectbe.domain.call.dto.CheckCallResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.util.Arrays;
@@ -35,6 +37,7 @@ class CallControllerTest {
   @Autowired private MockMvc mockMvc;
 
   @MockitoBean private CallService callService;
+  @MockitoBean private CheckCallService checkCallService;
 
   // FE(src/lib/callCard.ts)가 보내는 모양입니다. 테스트마다 한 군데만 바꿔서 보냅니다.
   private static final String VALID =
@@ -106,6 +109,32 @@ class CallControllerTest {
     start("{\"careLevel\":0,\"maxHarshness\":1,\"card\":{}}").andExpect(status().isOk());
     start("{\"careLevel\":4,\"maxHarshness\":5,\"card\":{\"recentMoods\":[]}}")
         .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName("공부 신호(studySignals)를 받는다")
+  void acceptsStudySignals() throws Exception {
+    given(callService.startSession(any()))
+        .willReturn(new CallSessionResponse("ek_abc123", 1791700000000L, 300, "12"));
+
+    start(
+            "{\"careLevel\":1,\"maxHarshness\":3,\"studySignals\":{\"focusScoreAvg7d\":82,"
+                + "\"focusSessions7d\":9,\"phoneLifts7d\":12,\"quizQuestions7d\":15,"
+                + "\"quizCorrect7d\":11,\"wrongQuizTopics\":[\"수열의 극한\"]}}")
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName("공부 신호의 맞힌 수가 푼 수보다 많거나 틀린 주제가 3개를 넘으면 400")
+  void rejectsBadStudySignals() throws Exception {
+    expectRejected(
+        "{\"careLevel\":1,\"maxHarshness\":3,\"studySignals\":{\"quizQuestions7d\":3,"
+            + "\"quizCorrect7d\":4}}",
+        "quizCorrect7d 는 quizQuestions7d 보다 클 수 없어요");
+    expectRejected(
+        "{\"careLevel\":1,\"maxHarshness\":3,\"studySignals\":{\"wrongQuizTopics\":"
+            + "[\"a\",\"b\",\"c\",\"d\"]}}",
+        "wrongQuizTopics 는 3개까지 보낼 수 있어요");
   }
 
   @Test
@@ -239,5 +268,43 @@ class CallControllerTest {
     List<String> all = Arrays.stream(Weakness.values()).map(Enum::name).toList();
 
     assertThat(names).containsExactlyInAnyOrderElementsOf(all);
+  }
+
+  @Test
+  @DisplayName("공부 전에 통화를 걸면 403 CALL_LOCKED 와 안내 문장을 돌려준다")
+  void lockedCallIs403() throws Exception {
+    given(callService.startSession(any()))
+        .willThrow(new ApiException(ErrorCode.CALL_LOCKED, CheckCall.LOCKED_MESSAGE));
+
+    start(VALID)
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error.code").value("CALL_LOCKED"))
+        .andExpect(jsonPath("$.error.message").value("오늘 공부 하나를 끝내면 확인 통화가 열려요"));
+  }
+
+  @Test
+  @DisplayName("확인 통화 열림 확인: 열리면 방금 공부한 것(제목 · 분 · 끝난 시각 밀리초)을, 닫히면 이유를 돌려준다")
+  void checkCallShape() throws Exception {
+    given(checkCallService.check())
+        .willReturn(
+            new CheckCallResponse(
+                true, new CheckCallResponse.Studied("미적분 3단원", 40, 1792310400000L), null));
+    mockMvc
+        .perform(get("/api/v1/realtime/check-call"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.open").value(true))
+        .andExpect(jsonPath("$.studied.title").value("미적분 3단원"))
+        .andExpect(jsonPath("$.studied.minutes").value(40))
+        .andExpect(jsonPath("$.studied.endedAt").value(1792310400000L))
+        .andExpect(jsonPath("$.reason").doesNotExist());
+
+    given(checkCallService.check())
+        .willReturn(new CheckCallResponse(false, null, CheckCall.NO_STUDY_TODAY));
+    mockMvc
+        .perform(get("/api/v1/realtime/check-call"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.open").value(false))
+        .andExpect(jsonPath("$.studied").doesNotExist())
+        .andExpect(jsonPath("$.reason").value("NO_STUDY_TODAY"));
   }
 }

@@ -14,14 +14,26 @@ import com.ithopeschool.projectbe.domain.cardresult.CardResult;
 import com.ithopeschool.projectbe.domain.cardresult.CardResultService;
 import com.ithopeschool.projectbe.domain.cardresult.JudgedCardDay;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
+import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
+import com.ithopeschool.projectbe.domain.checkin.EmotionTag;
+import com.ithopeschool.projectbe.domain.dailysignal.DailySignal;
+import com.ithopeschool.projectbe.domain.dailysignal.DailySignalRepository;
 import com.ithopeschool.projectbe.domain.exam.Exam;
 import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamScore;
 import com.ithopeschool.projectbe.domain.exam.ExamScoreRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamType;
+import com.ithopeschool.projectbe.domain.experiment.Experiment;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentRepository;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentStatus;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentStrategy;
 import com.ithopeschool.projectbe.domain.goal.Goal;
 import com.ithopeschool.projectbe.domain.goal.GoalKind;
 import com.ithopeschool.projectbe.domain.goal.GoalRepository;
+import com.ithopeschool.projectbe.domain.goal.WeekGoalService;
+import com.ithopeschool.projectbe.domain.goal.dto.WeekGoalDto;
 import com.ithopeschool.projectbe.domain.onboarding.Chronotype;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
@@ -58,6 +70,10 @@ class CallContextLoaderTest {
   private final CardRepository cardRepository = mock(CardRepository.class);
   private final CardResultService cardResultService = mock(CardResultService.class);
   private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
+  private final CheckInRepository checkInRepository = mock(CheckInRepository.class);
+  private final DailySignalRepository dailySignalRepository = mock(DailySignalRepository.class);
+  private final WeekGoalService weekGoalService = mock(WeekGoalService.class);
+  private final ExperimentRepository experimentRepository = mock(ExperimentRepository.class);
 
   private final CallContextLoader loader =
       new CallContextLoader(
@@ -68,7 +84,11 @@ class CallContextLoaderTest {
           onboardingAnswerRepository,
           cardRepository,
           cardResultService,
-          studySessionRepository);
+          studySessionRepository,
+          checkInRepository,
+          dailySignalRepository,
+          weekGoalService,
+          experimentRepository);
 
   private static Exam exam(long id, String name, LocalDate date) {
     Exam exam = new Exam(USER_ID, name, ExamType.MOCK, date);
@@ -188,6 +208,9 @@ class CallContextLoaderTest {
 
     verify(examRepository).findByUserIdOrderByExamDateDescIdDesc(USER_ID);
     verify(goalRepository).findByUserIdOrderById(USER_ID);
+    verify(checkInRepository).findWithEmotionsBetween(USER_ID, TODAY.minusDays(6), TODAY);
+    verify(dailySignalRepository)
+        .findByUserIdAndSignalDateBetweenOrderBySignalDateAsc(USER_ID, TODAY.minusDays(1), TODAY);
   }
 
   // ---- 아침형/저녁형 · 못 채운 이유 ----
@@ -232,7 +255,7 @@ class CallContextLoaderTest {
       "최근 2주(어제까지) 판정된 카드를 시작 시각으로 아침 · 저녁으로 나눠, 체크리스트까지 다 채운 날을 센다. 휴식한 날과 낮 카드는 빼고, 미실행 · 덜 채운 날은 '다 채운 날' 이 아니다")
   void rhythmGap() {
     givenSaid(Chronotype.NIGHT);
-    given(cardResultService.getJudgedDays(USER_ID, TODAY.minusDays(14), TODAY.minusDays(1)))
+    given(cardResultService.getJudgedDays(USER_ID, TODAY.minusDays(21), TODAY.minusDays(1)))
         .willReturn(
             List.of(
                 day(1, CardResult.DONE, null, 1.0),
@@ -287,5 +310,179 @@ class CallContextLoaderTest {
             new CallContext.CauseCount("피곤·수면", 2),
             new CallContext.CauseCount("폰·SNS", 1),
             new CallContext.CauseCount("막힘", 1));
+  }
+
+  // ---- 약속 · 감정 · 실행률 · 수면 (최근 기록) ----
+
+  // daysAgo 일 전 체크인. 약속과 감정 태그만 채웁니다.
+  private static CheckIn checkIn(
+      int daysAgo, String promiseIf, String promiseThen, EmotionTag... emotions) {
+    CheckIn checkIn =
+        new CheckIn(
+            USER_ID,
+            TODAY.minusDays(daysAgo),
+            CheckInSource.QUICK,
+            3,
+            3,
+            null,
+            null,
+            null,
+            promiseIf,
+            promiseThen,
+            null);
+    checkIn.replaceEmotions(Set.of(emotions));
+    return checkIn;
+  }
+
+  // daysAgo 일 전 카드 하루치. runRate: 실행률 (실행 1, 미실행 0)
+  private static JudgedCardDay rateDay(int daysAgo, CardResult result, double runRate) {
+    return new JudgedCardDay(
+        1L,
+        TODAY.minusDays(daysAgo),
+        false,
+        CardPriority.FLEXIBLE,
+        result,
+        runRate,
+        null,
+        null,
+        null);
+  }
+
+  @Test
+  @DisplayName("약속은 오늘 체크인의 것이 먼저고, 없으면 어제 것을 쓴다. 한쪽만 적었으면 쓰지 않는다")
+  void promise() {
+    CheckIn yesterday = checkIn(1, "폰을 보고 싶으면", "물 한 잔 마신다");
+    CheckIn today = checkIn(0, "졸리면", "5분 스트레칭한다");
+    assertThat(CallContextLoader.promiseOf(List.of(yesterday, today), TODAY))
+        .isEqualTo(new CallContext.Promise("졸리면", "5분 스트레칭한다", 0));
+
+    CheckIn todayHalf = checkIn(0, "졸리면", null);
+    assertThat(CallContextLoader.promiseOf(List.of(yesterday, todayHalf), TODAY))
+        .isEqualTo(new CallContext.Promise("폰을 보고 싶으면", "물 한 잔 마신다", 1));
+
+    // 이틀 전 약속은 쓰지 않습니다.
+    assertThat(CallContextLoader.promiseOf(List.of(checkIn(2, "a", "b")), TODAY)).isNull();
+  }
+
+  @Test
+  @DisplayName("약속 글에 위기 표현이 있으면 대본에 넣지 않는다")
+  void promiseWithCrisisText() {
+    CheckIn crisis = checkIn(0, "너무 힘들면", "죽고 싶다");
+
+    assertThat(CallContextLoader.promiseOf(List.of(crisis), TODAY)).isNull();
+  }
+
+  @Test
+  @DisplayName("감정 태그는 최근 체크인에서 고른 횟수를 세어 많은 것부터 돌려준다")
+  void emotions() {
+    given(checkInRepository.findWithEmotionsBetween(USER_ID, TODAY.minusDays(6), TODAY))
+        .willReturn(
+            List.of(
+                checkIn(3, null, null, EmotionTag.TIRED, EmotionTag.ANXIOUS),
+                checkIn(2, null, null, EmotionTag.TIRED),
+                checkIn(1, null, null, EmotionTag.TIRED, EmotionTag.CALM)));
+
+    assertThat(loader.load(USER_ID, TODAY).recent().emotions())
+        .containsExactly(
+            new CallContext.EmotionCount("피곤함", 3),
+            new CallContext.EmotionCount("불안함", 1),
+            new CallContext.EmotionCount("평온함", 1));
+  }
+
+  @Test
+  @DisplayName("실행률은 최근 7일(어제까지)과 그 앞 2주로 나눠 평균을 내고, 휴식한 날은 뺀다")
+  void runRate() {
+    List<JudgedCardDay> days =
+        List.of(
+            rateDay(1, CardResult.DONE, 1),
+            rateDay(7, CardResult.FAILED, 0),
+            rateDay(5, CardResult.REST, 0),
+            rateDay(8, CardResult.DONE, 1),
+            rateDay(21, CardResult.DONE, 1));
+
+    assertThat(CallContextLoader.runRateOf(days, TODAY))
+        .isEqualTo(new CallContext.RunRate(2, 0.5, 2, 1.0));
+    // 한쪽 기간에 카드가 없으면 비교하지 않습니다.
+    assertThat(CallContextLoader.runRateOf(List.of(rateDay(1, CardResult.DONE, 1)), TODAY))
+        .isNull();
+  }
+
+  @Test
+  @DisplayName("수면은 오늘 날짜의 기록이 먼저고, 없으면 어제 것을 쓴다")
+  void sleep() {
+    given(
+            dailySignalRepository.findByUserIdAndSignalDateBetweenOrderBySignalDateAsc(
+                USER_ID, TODAY.minusDays(1), TODAY))
+        .willReturn(
+            List.of(
+                new DailySignal(USER_ID, TODAY.minusDays(1), 420, null, null, null, null),
+                new DailySignal(USER_ID, TODAY, 310, null, null, null, null)));
+    assertThat(loader.load(USER_ID, TODAY).recent().sleep())
+        .isEqualTo(new CallContext.Sleep(310, 0));
+
+    given(
+            dailySignalRepository.findByUserIdAndSignalDateBetweenOrderBySignalDateAsc(
+                USER_ID, TODAY.minusDays(1), TODAY))
+        .willReturn(
+            List.of(
+                new DailySignal(USER_ID, TODAY.minusDays(1), 300, null, null, null, null),
+                new DailySignal(USER_ID, TODAY, null, null, null, 4000, null)));
+    assertThat(loader.load(USER_ID, TODAY).recent().sleep())
+        .isEqualTo(new CallContext.Sleep(300, 1));
+  }
+
+  // ---- 이번 주 목표 · 자기 실험 (지금 하고 있는 약속) ----
+
+  private static Card titled(long id, String title) {
+    Card card = mock(Card.class);
+    given(card.getId()).willReturn(id);
+    given(card.getTitle()).willReturn(title);
+    return card;
+  }
+
+  private static Experiment experiment(
+      ExperimentStrategy strategy, LocalDate start, Long... cardIds) {
+    return new Experiment(USER_ID, "가설", null, strategy, Set.of(cardIds), start, 10, Instant.EPOCH);
+  }
+
+  @Test
+  @DisplayName("이번 주 목표는 제목과 지금 숫자를 꺼내고, 시작 지연 목표는 분 · 나머지는 % 로 적는다")
+  void weekGoal() {
+    given(weekGoalService.thisWeekOf(USER_ID, TODAY))
+        .willReturn(
+            Optional.of(
+                new WeekGoalDto.Item(
+                    TODAY.minusDays(6),
+                    "startDelay",
+                    18,
+                    23,
+                    "시작 지연 18분 안으로",
+                    "missed",
+                    20,
+                    40,
+                    false)));
+
+    assertThat(loader.load(USER_ID, TODAY).ongoing().weekGoal())
+        .isEqualTo(new CallContext.WeekGoalLine("시작 지연 18분 안으로", 20, "분"));
+  }
+
+  @Test
+  @DisplayName("자기 실험은 진행 중이고 14일이 안 끝난 것만, 늦게 시작한 것부터 붙인 카드 제목과 며칠째를 꺼낸다")
+  void experiments() {
+    given(experimentRepository.findByUserIdAndStatus(USER_ID, ExperimentStatus.RUNNING))
+        .willReturn(
+            List.of(
+                experiment(ExperimentStrategy.PHONE_BAG, TODAY.minusDays(4), 1L),
+                // 14일이 끝났지만 아직 판정 전 → 넣지 않음
+                experiment(ExperimentStrategy.PLAN_SHORTER, TODAY.minusDays(20), 2L),
+                experiment(ExperimentStrategy.START_COUNTDOWN, TODAY, 3L, 9L)));
+    // 9번 카드는 지워져서 제목이 없습니다. (가짜 카드는 given 밖에서 먼저 만들어야 합니다)
+    List<Card> cards = List.of(titled(1, "수학 문제집"), titled(3, "영어 단어"));
+    given(cardRepository.findByUserIdAndIdIn(any(), any())).willReturn(cards);
+
+    assertThat(loader.load(USER_ID, TODAY).ongoing().experiments())
+        .containsExactly(
+            new CallContext.ExperimentLine("5초 카운트다운으로 시작하기", List.of("영어 단어"), 1),
+            new CallContext.ExperimentLine("시작할 때 폰을 가방에 넣기", List.of("수학 문제집"), 5));
   }
 }

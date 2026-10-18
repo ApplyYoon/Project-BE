@@ -14,9 +14,10 @@ import java.util.List;
 // 나누는 순서
 //   1. 공부 날: 시작 날 ~ 시험 전날 중 쉬는 요일을 뺀 날
 //   2. 총복습 날: 공부 날이 7일 이상이면 마지막 2일, 3 ~ 6일이면 마지막 1일. 2일 이하면 없음
-//   3. 용량 맞추기: 할 일 시간 합이 (복습 날을 뺀 공부 날 수 × 하루 시간) 을 넘으면 비례로 줄입니다. (각 20분 이상)
+//   3. 용량 맞추기: 할 일 시간 합이 (복습 날을 뺀 공부 날 수 × 하루 시간) 을 넘으면 비례로 줄입니다. (각 30분 이상)
 //   4. 고르게 펴기: 할 일이 적으면 하루 시간을 줄여서 기간 전체에 고르게 둡니다. (안 들어가면 하루 시간 그대로)
-//   5. 채우기: 할 일 순서대로 하루 남은 시간에 넣습니다. 한 장은 120분까지, 15분 미만 조각은 만들지 않고 다음 날로.
+//   5. 채우기: 할 일 순서대로 하루 남은 시간에 넣습니다. 한 장은 120분까지, 30분 미만 조각은 만들지 않고 다음 날로. (30분 밑은 공부 블록으로 보지 않음,
+// StudyBlock)
 //      여러 장으로 나뉜 할 일은 제목 끝에 " (1/3)" 처럼 붙입니다.
 //   6. 시각: 하루 첫 카드는 시작 시각, 다음 카드는 앞 카드 끝 + 10분. 자정을 넘는 카드는 버립니다.
 // 다 넣지 못했으면(줄였거나 · 버렸거나) overflow 가 true 입니다. 카드는 60장까지입니다.
@@ -26,10 +27,10 @@ public final class LongPlanScheduler {
   public static final int MAX_CARDS = 60;
   // 카드 한 장의 최대 길이 (분)
   public static final int MAX_CARD_MINUTES = 120;
-  // 이보다 짧은 조각은 만들지 않습니다 (분)
-  public static final int MIN_PIECE_MINUTES = 15;
+  // 이보다 짧은 조각은 만들지 않습니다 (분). 10 · 20분짜리 공부 카드는 만들지 않습니다 (StudyBlock)
+  public static final int MIN_PIECE_MINUTES = StudyBlock.MIN_MINUTES;
   // 용량에 맞춰 줄여도 할 일 하나에 남기는 시간 (분)
-  public static final int MIN_TOPIC_MINUTES = 20;
+  public static final int MIN_TOPIC_MINUTES = StudyBlock.MIN_MINUTES;
   // 고르게 펼 때 하루 시간의 최소값 (분). 너무 잘게 나뉘지 않게
   public static final int MIN_SPREAD_MINUTES = 30;
   // 카드 사이 쉬는 시간 (분)
@@ -169,9 +170,9 @@ public final class LongPlanScheduler {
     return new Result(cards, overflow);
   }
 
-  // 용량에 맞춰 비례로 줄입니다. 5분 단위로 내리고, 할 일 하나에 20분은 남깁니다.
+  // 용량에 맞춰 비례로 줄입니다. 5분 단위로 내리고, 할 일 하나에 30분은 남깁니다.
   //   예) [120, 60] 을 90분에 → [60, 30]
-  // 20분씩 남기느라 그래도 넘치면, 채우기에서 뒤의 할 일이 빠집니다.
+  // 30분씩 남기느라 그래도 넘치면, 채우기에서 뒤의 할 일이 빠집니다.
   static List<Integer> shrunk(List<Integer> minutes, int capacity) {
     int total = sum(minutes);
     List<Integer> result = new ArrayList<>();
@@ -191,11 +192,11 @@ public final class LongPlanScheduler {
   }
 
   // 할 일 순서대로 하루 budget 분씩 채웁니다.
-  //   - 그날 남은 시간이 15분보다 짧으면 다음 날로 넘어갑니다.
+  //   - 그날 남은 시간이 30분보다 짧으면 다음 날로 넘어갑니다.
   //   - 한 장은 120분까지
-  //   - 남는 꼬리가 15분보다 짧으면 이번 조각에 붙입니다. (그날 시간을 15분 안쪽으로 넘을 수 있음)
-  //     붙이면 120분을 넘을 때만 이번 조각을 줄여 꼬리를 15분으로 남깁니다.
-  //     예) 70분을 60분 남은 날에 → 70 한 장 / 130분을 새 날에 → 115 + 15
+  //   - 남는 꼬리가 30분보다 짧으면 이번 조각에 붙입니다. (그날 시간을 30분 안쪽으로 넘을 수 있음)
+  //     붙이면 120분을 넘을 때만 이번 조각을 줄여 꼬리를 30분으로 남깁니다.
+  //     예) 70분을 60분 남은 날에 → 70 한 장 / 130분을 새 날에 → 100 + 30
   //   - 날이 모자라거나 조각이 maxPieces 개가 되면 멈추고 leftover = true
   private static Fill fill(List<Integer> minutes, int dayCount, int budget, int maxPieces) {
     List<Piece> pieces = new ArrayList<>();

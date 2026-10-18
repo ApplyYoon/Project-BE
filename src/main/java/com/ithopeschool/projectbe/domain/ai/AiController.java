@@ -10,6 +10,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.CoachNudgeRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.CoachNudgeResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DailyMissionsRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.DailyMissionsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
@@ -72,6 +74,7 @@ public class AiController {
   private final DayPlanReviseService dayPlanReviseService;
   private final LongPlanService longPlanService;
   private final StudyQuizService studyQuizService;
+  private final CoachNudgeService coachNudgeService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -221,5 +224,13 @@ public class AiController {
   @PostMapping("/quiz")
   public StudyQuizResponse quiz(@Valid @RequestBody StudyQuizRequest request) {
     return studyQuizService.make(request);
+  }
+
+  @Operation(
+      summary =
+          "코치 알림 문장: 그날 시간표 · 계획 카드 · 전날 기록 · 틀린 문제 · 시험으로 아침 · 밤 알림 문장을 AI 가 미리 씀 (숫자는 입력에 있는 것만 · 저장 안 함 · 못 만든 칸은 null · 토큰 필요)")
+  @PostMapping("/nudges")
+  public CoachNudgeResponse nudges(@Valid @RequestBody CoachNudgeRequest request) {
+    return coachNudgeService.make(request);
   }
 }
