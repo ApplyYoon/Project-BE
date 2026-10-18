@@ -12,4 +12,7 @@ public interface ExamRepository extends JpaRepository<Exam, Long> {
 
   // 내 시험 중에서 번호로 하나 찾습니다. 없는 번호이거나 남의 시험이면 빈 Optional 입니다.
   Optional<Exam> findByIdAndUserId(Long id, Long userId);
+
+  // 내 시험 중 이 목표에 이어진 것. 시험 날짜가 늦은 것부터입니다. (이슈 #228, 목표 상세의 시험 목록)
+  List<Exam> findByUserIdAndGoalIdOrderByExamDateDescIdDesc(Long userId, Long goalId);
 }

@@ -44,10 +44,19 @@ public class Exam {
   @Column(nullable = false)
   private LocalDate examDate;
 
+  // 이 시험이 이어진 점수형 목표(goals.id). 목표 없이 보는 시험이면 비어 있습니다(null). (이슈 #228)
+  // 예: "11월 학평 수학 3등급" 목표에 "11월 학평" 시험을 붙이면, 목표 상세에서 시험의 예상 → 실제 점수를 봅니다.
+  private Long goalId;
+
   public Exam(Long userId, String name, ExamType type, LocalDate examDate) {
     this.userId = userId;
     this.name = name;
     this.type = type;
     this.examDate = examDate;
+  }
+
+  // 시험을 목표에 잇거나(목표 번호), 떼어 냅니다(null). 내 점수형 목표인지는 ExamService 가 먼저 검사합니다.
+  public void linkGoal(Long goalId) {
+    this.goalId = goalId;
   }
 }

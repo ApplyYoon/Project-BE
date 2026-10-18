@@ -61,6 +61,7 @@ erDiagram
     users ||--o{ goals : "user_id"
     goals ||--o{ goal_target_snapshots : "goal_id"
     goals ||--o{ cards : "goal_id"
+    goals |o--o{ exams : "goal_id"
     psych_tests ||--o{ psych_test_answers : "psych_test_id"
     onboarding_answers ||--o{ onboarding_answer_failure_causes : "onboarding_answer_id"
     onboarding_answers ||--o{ onboarding_answer_subject_levels : "onboarding_answer_id"
@@ -339,6 +340,7 @@ erDiagram
         varchar name "시험 이름 (50자까지)"
         varchar type "시험 종류 (MOCK, SCHOOL, QUIZ, ETC 중 하나)"
         date exam_date "시험 날짜"
+        bigint goal_id FK "이어진 점수형 목표 (없으면 비어 있음, 이슈 #228)"
     }
     exam_scores {
         bigint id PK "점수 한 줄을 구분하는 고유 번호"

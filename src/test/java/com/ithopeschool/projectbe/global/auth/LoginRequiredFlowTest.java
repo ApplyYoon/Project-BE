@@ -201,6 +201,8 @@ class LoginRequiredFlowTest {
               "/api/v1/exams/{id}",
               "/api/v1/exams/1",
               "{\"subjectScores\":[{\"subjectId\":\"1\",\"actualScore\":80}]}"),
+          // 시험을 목표에 잇기 · 떼기 (이슈 #228)
+          new Api("PATCH", "/api/v1/exams/{id}/goal", "/api/v1/exams/1/goal", "{\"goalId\":\"1\"}"),
           // 공부 기록
           new Api(
               "POST",

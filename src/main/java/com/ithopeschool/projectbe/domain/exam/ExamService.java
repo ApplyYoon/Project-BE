@@ -3,8 +3,12 @@ package com.ithopeschool.projectbe.domain.exam;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamActualScoreRequest;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamCreateRequest;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamExpectedScoreRequest;
+import com.ithopeschool.projectbe.domain.exam.dto.ExamGoalRequest;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamResponse;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamResultRequest;
+import com.ithopeschool.projectbe.domain.goal.Goal;
+import com.ithopeschool.projectbe.domain.goal.GoalKind;
+import com.ithopeschool.projectbe.domain.goal.GoalRepository;
 import com.ithopeschool.projectbe.domain.subject.SubjectRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -37,14 +41,29 @@ public class ExamService {
   private final ExamScoreRepository examScoreRepository;
   // 점수를 적을 과목이 "내 과목" 인지 확인할 때 씁니다.
   private final SubjectRepository subjectRepository;
+  // 시험을 이을 목표가 "내 점수형 목표" 인지 확인할 때 씁니다. (이슈 #228)
+  private final GoalRepository goalRepository;
   // "오늘" 이 며칠인지 알 때 씁니다. 테스트에서 시각을 고정할 수 있습니다. (global/config/ClockConfig)
   private final Clock clock;
 
   // 내 시험 목록. 시험 날짜가 늦은 것부터입니다. 시험이 없으면 빈 목록입니다.
   @Transactional(readOnly = true)
   public List<ExamResponse> getExams() {
+    return getExams(null);
+  }
+
+  // 내 시험 목록. goalId 를 주면 그 목표에 이어진 시험만 돌려줍니다. (이슈 #228, 목표 상세의 시험 목록)
+  // 남의 목표 · 없는 목표면 404 입니다.
+  @Transactional(readOnly = true)
+  public List<ExamResponse> getExams(Long goalId) {
     Long userId = currentUserProvider.getCurrentUserId();
-    List<Exam> exams = examRepository.findByUserIdOrderByExamDateDescIdDesc(userId);
+    List<Exam> exams;
+    if (goalId == null) {
+      exams = examRepository.findByUserIdOrderByExamDateDescIdDesc(userId);
+    } else {
+      findMyGoal(userId, goalId);
+      exams = examRepository.findByUserIdAndGoalIdOrderByExamDateDescIdDesc(userId, goalId);
+    }
     if (exams.isEmpty()) {
       return List.of();
     }
@@ -78,7 +97,11 @@ public class ExamService {
       checkMySubject(userId, subjectId);
     }
 
-    Exam exam = examRepository.save(new Exam(userId, request.name(), type, request.date()));
+    // 목표를 보냈으면 내 점수형 목표인지 먼저 봅니다. (저장하기 전에 모두 검사)
+    Long goalId = request.goalId() == null ? null : checkMyScoreGoal(userId, request.goalId());
+    Exam newExam = new Exam(userId, request.name(), type, request.date());
+    newExam.linkGoal(goalId);
+    Exam exam = examRepository.save(newExam);
     List<ExamScore> scores = new ArrayList<>();
     for (ExamExpectedScoreRequest item : request.subjectScores()) {
       // 점수는 요청 검사가 "0~100 의 정수" 임을 이미 확인해서, intValueExact() 로 안전하게 정수가 됩니다.
@@ -134,6 +157,33 @@ public class ExamService {
 
     // 엔티티의 값을 바꾸기만 하면 이 메서드가 끝날 때 JPA 가 DB 에 반영합니다.
     return ExamResponse.from(exam, scores);
+  }
+
+  // 시험을 목표에 잇거나(goalId), 떼어 냅니다(null). (이슈 #228)
+  // 점수형 목표에만 이을 수 있습니다. 완주형 목표(영단어장 1회독 등)는 시험 점수와 상관이 없어서 400 입니다.
+  @Transactional
+  public ExamResponse linkGoal(Long id, ExamGoalRequest request) {
+    Long userId = currentUserProvider.getCurrentUserId();
+    Exam exam = findMyExam(userId, id);
+    exam.linkGoal(request.goalId() == null ? null : checkMyScoreGoal(userId, request.goalId()));
+    return ExamResponse.from(
+        exam, examScoreRepository.findByUserIdAndExamIdOrderById(userId, exam.getId()));
+  }
+
+  // 내 목표 중에서 번호로 찾습니다. 없는 번호이거나 남의 목표면 똑같이 404 입니다.
+  private Goal findMyGoal(Long userId, Long goalId) {
+    return goalRepository
+        .findByIdAndUserId(goalId, userId)
+        .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "목표를 찾을 수 없어요"));
+  }
+
+  // 시험을 이을 수 있는 목표인지 봅니다. 내 점수형 목표면 그 번호를 돌려줍니다.
+  private Long checkMyScoreGoal(Long userId, String goalId) {
+    Goal goal = findMyGoal(userId, Long.valueOf(goalId));
+    if (goal.getKind() != GoalKind.SCORE) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "시험은 점수형 목표에만 이을 수 있어요");
+    }
+    return goal.getId();
   }
 
   // 내 시험 중에서 번호로 찾습니다. 없는 번호이거나 남의 시험이면 똑같이 404 입니다.
