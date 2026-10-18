@@ -21,6 +21,7 @@ import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DailyMissionsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.DayPlanReviseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
@@ -65,6 +66,7 @@ class AiControllerTest {
   @MockitoBean private SelfAnalysisService selfAnalysisService;
   @MockitoBean private DayPlanService dayPlanService;
   @MockitoBean private DailyMissionsService dailyMissionsService;
+  @MockitoBean private DayPlanReviseService dayPlanReviseService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -821,5 +823,45 @@ class AiControllerTest {
         .andExpect(
             jsonPath("$.error.message")
                 .value("준비하는 것은 SCHOOL_EXAM · SUNEUNG · CONTEST · OTHER 중 하나예요"));
+  }
+
+  // ---- 계획 핑퐁 ----
+
+  @Test
+  @DisplayName("계획 핑퐁: 200 과 코치의 한 줄 · 고친 계획, 요청이 없으면 400")
+  void reviseDayPlan() throws Exception {
+    given(dayPlanReviseService.revise(any()))
+        .willReturn(
+            DayPlanReviseResponse.of(
+                new DayPlanRevise.Result(
+                    "영어는 뺐어.",
+                    List.of(
+                        new DayPlanRevise.Card(
+                            java.time.LocalDate.parse("2026-10-19"),
+                            "19:00",
+                            30,
+                            "미적분 문제집",
+                            List.of("3단원 10문제"))))));
+    String drafts =
+        "\"drafts\":[{\"date\":\"2026-10-19\",\"startTime\":\"19:00\",\"durationMinutes\":30,"
+            + "\"title\":\"미적분 문제집\",\"checklist\":[\"3단원 10문제\"]}]";
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/day-plan/revise")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{" + drafts + ",\"request\":\"영어는 빼 줘\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.reply").value("영어는 뺐어."))
+        .andExpect(jsonPath("$.drafts[0].startTime").value("19:00"))
+        .andExpect(jsonPath("$.drafts[0].durationMinutes").value(30));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/day-plan/revise")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{" + drafts + "}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("어떻게 고칠지 적어 주세요"));
   }
 }

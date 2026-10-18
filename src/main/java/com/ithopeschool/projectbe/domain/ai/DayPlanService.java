@@ -62,6 +62,9 @@ public class DayPlanService {
   static final int MAX_DAYS_AHEAD = 14;
   // AI 에게 보여 주는 최근 카드 제목 수
   static final int RECENT_TITLES = 10;
+  // 이 컨디션(1~5) 이하면 가벼운 계획 (총량을 LIGHTER_PERCENT % 로)
+  static final int LOW_CONDITION = 2;
+  static final int LIGHTER_PERCENT = 60;
 
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
@@ -152,6 +155,15 @@ public class DayPlanService {
         DayPlanRule.totalMinutesOf(
             dailyMinutesOf(userId, today), selfDaily, planOptimismHigh, alreadyPlanned);
     evidence.addAll(1, total.evidence());
+    // 오늘 컨디션이 낮다고 했으면(1~2) 총량을 60% 로 줄여 가벼운 계획을 짭니다. (2026-10-18 계획 핑퐁)
+    // 학생은 코치 대화에서 [더 늘려 줘] 로 다시 늘릴 수 있습니다. (DayPlanReviseService)
+    if (request.condition() != null
+        && request.condition() <= LOW_CONDITION
+        && total.minutes() >= DayPlanRule.MIN_BLOCK) {
+      int lighter = Math.max(DayPlanRule.MIN_BLOCK, total.minutes() * LIGHTER_PERCENT / 100);
+      evidence.add("오늘 컨디션이 낮다고 해서 " + total.minutes() + "분 대신 " + lighter + "분으로 가볍게 짰어요");
+      total = new DayPlanRule.Total(lighter, total.evidence());
+    }
     if (total.minutes() < DayPlanRule.MIN_BLOCK) {
       evidence.add("그날은 이미 충분히 계획했어요");
       return new DayPlanResponse(date, block.minutes(), total.minutes(), List.of(), evidence);
@@ -224,7 +236,7 @@ public class DayPlanService {
                 .ask(
                     userId,
                     GptUsageKind.ASSIST,
-                    DayPlanPrompt.question(date, blocks, recentTitles),
+                    DayPlanPrompt.question(date, blocks, recentTitles, extraLinesOf(request)),
                     DayPlanPrompt.Answer.class)
                 .orElse(null),
             fallbacks);
@@ -242,6 +254,18 @@ public class DayPlanService {
               goal == null ? null : goal.id()));
     }
     return new DayPlanResponse(date, block.minutes(), total.minutes(), drafts, evidence);
+  }
+
+  // 학생이 알려 준 것(준비하는 것 · 오늘 과목)을 AI 입력 줄로. 없으면 빈 목록
+  static List<String> extraLinesOf(DayPlanRequest request) {
+    List<String> lines = new ArrayList<>();
+    if (request.focus() != null) {
+      lines.add("준비하는 것: " + request.focus().describe());
+    }
+    if (!request.subjects().isEmpty()) {
+      lines.add("오늘 배운 과목: " + String.join(", ", request.subjects()));
+    }
+    return lines;
   }
 
   // 최근 14일(어제까지) 중 공부한 날마다의 순공(분). 노는 기록은 뺍니다.
