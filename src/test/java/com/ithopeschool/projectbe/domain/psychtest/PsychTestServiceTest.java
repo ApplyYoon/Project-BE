@@ -96,6 +96,7 @@ class PsychTestServiceTest {
     assertThat(saved.getValue().getAnswers()).hasSize(35).containsEntry(PsychItem.S1, 6);
 
     assertThat(response.id()).isEqualTo("3");
+    assertThat(response.reliable()).isTrue();
     assertThat(response.answers()).hasSize(35).containsEntry("S2", 5);
     // (6 + 5 + 6 + 5 + 5) / 5 = 5.4
     assertThat(response.scores())
@@ -176,6 +177,8 @@ class PsychTestServiceTest {
     ReflectionTestUtils.setField(test, "id", 5L);
     given(psychTestRepository.findFirstByUserIdOrderByIdDesc(ME)).willReturn(Optional.of(test));
     assertThat(service.getLatest().levels()).containsEntry("carePreference", "low");
+    // 35개가 모두 2 라서 믿기 어렵다고 알려 줍니다. (점수 · 높낮이는 그대로)
+    assertThat(service.getLatest().reliable()).isFalse();
 
     given(psychTestRepository.findFirstByUserIdOrderByIdDesc(ME)).willReturn(Optional.empty());
     assertThatThrownBy(service::getLatest)
