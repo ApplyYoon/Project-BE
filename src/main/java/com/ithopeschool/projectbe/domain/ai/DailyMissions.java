@@ -9,7 +9,7 @@ import java.util.Map;
 // "AI 가 짜는 오늘의 미션" 에서 GPT 에게 줄 질문을 만들고, 받은 답을 검사합니다. (2026-10-18)
 // 오늘 시간표(배운 과목) · 가까운 시험 · 내가 준비하는 것(내신 · 수능 · 대회 · 기타) · 오늘 컨디션으로
 // 오늘 할 공부 미션 1~3개를 짭니다.
-//   수능 준비 + 오늘 미적분Ⅰ 수업  →  "수능 기출 미적분 3문제" (15분, 과목 미적분Ⅰ)
+//   수능 준비 + 오늘 미적분Ⅰ 수업  →  "수능 기출 미적분 3문제" (30분, 과목 미적분Ⅰ)
 //   대회 준비 '정보올림피아드'     →  "정보올림피아드 기출 1문제" (30분)
 //
 // 값만 계산하는 도구라서 객체를 만들 일이 없습니다.
@@ -20,8 +20,8 @@ public final class DailyMissions {
   public static final int MAX_MISSIONS = 3;
   // 미션 제목의 최대 글자 수 (코치 화면 미션 줄 · 알림에 한 줄로 보여야 해서 짧게)
   public static final int MAX_TITLE_LENGTH = 30;
-  // 미션 하나의 길이 (분)
-  public static final int MIN_MINUTES = 5;
+  // 미션 하나의 길이 (분). 공부 미션도 30분부터입니다 (StudyBlock, 2026-10-18 멘토 결정)
+  public static final int MIN_MINUTES = StudyBlock.MIN_MINUTES;
   public static final int MAX_MINUTES = 60;
 
   // 준비하는 것의 종류 → GPT 에게 주는 설명
@@ -33,7 +33,7 @@ public final class DailyMissions {
           "OTHER", "기타");
 
   // GPT 가 돌려주는 JSON 모양 그대로입니다.
-  //   { "missions": [ { "title": "수능 기출 미적분 3문제", "minutes": 15, "subject": "미적분Ⅰ" } ] }
+  //   { "missions": [ { "title": "수능 기출 미적분 3문제", "minutes": 30, "subject": "미적분Ⅰ" } ] }
   public record Answer(List<Mission> missions) {}
 
   // 미션 하나. subject 는 오늘 시간표의 과목 중 하나이거나 null 입니다.
@@ -67,7 +67,7 @@ public final class DailyMissions {
         "2. 학생이 '준비하는 것' 에 맞춰. 수능이면 오늘 배운 과목의 수능 기출 · 개념, 내신이면 오늘 배운 과목 복습 · 시험 범위,"
             + " 대회 · 자격증 · 기타면 그 이름에 맞는 준비. 준비하는 것을 모르면 오늘 배운 과목 복습으로.");
     lines.add("3. 시험이 가까우면(14일 안) 시험 대비를 먼저 넣어. 날짜를 지어내지 마.");
-    lines.add("4. 컨디션이 낮으면(1~2) 미션을 1개, 짧게(10~15분) 잡아.");
+    lines.add("4. 컨디션이 낮으면(1~2) 미션을 1개만 잡아. 길이는 줄이지 말고 30분으로.");
     lines.add(
         "5. 제목은 "
             + MAX_TITLE_LENGTH
@@ -117,7 +117,7 @@ public final class DailyMissions {
 
   // GPT 의 답을 검사합니다. 쓸 미션이 하나도 없으면 null 이고, FE 는 규칙으로 만든 미션을 씁니다.
   //   1. 제목: 앞뒤 공백을 지우고, 비었거나 30자를 넘거나 깎아내리는 말이 있으면 버립니다. 같은 제목은 하나만.
-  //   2. 길이: 없거나 5~60분 밖이면 버립니다.
+  //   2. 길이: 없거나 0 이하이거나 60분을 넘으면 버리고, 30분보다 짧으면 30분으로 올립니다.
   //   3. 과목: 오늘 배운 과목에 없는 이름이면 null 로 바꿉니다. (AI 가 과목을 지어내지 않게)
   //   4. 3개까지만.
   public static List<Mission> from(Answer answer, List<String> subjects) {
@@ -136,14 +136,14 @@ public final class DailyMissions {
               && title.length() <= MAX_TITLE_LENGTH
               && !ToneGuide.hasBannedExpression(title)
               && !titles.contains(title);
-      boolean usableMinutes = raw.minutes() >= MIN_MINUTES && raw.minutes() <= MAX_MINUTES;
+      boolean usableMinutes = raw.minutes() > 0 && raw.minutes() <= MAX_MINUTES;
       if (!usableTitle || !usableMinutes) {
         continue;
       }
       String subject =
           raw.subject() != null && subjects.contains(raw.subject()) ? raw.subject() : null;
       titles.add(title);
-      missions.add(new Mission(title, raw.minutes(), subject));
+      missions.add(new Mission(title, Math.max(MIN_MINUTES, raw.minutes()), subject));
       if (missions.size() == MAX_MISSIONS) {
         break;
       }

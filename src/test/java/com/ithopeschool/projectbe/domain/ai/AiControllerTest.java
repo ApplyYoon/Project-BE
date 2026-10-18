@@ -1016,7 +1016,7 @@ class AiControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{" + plan.replace("90", "500") + ",\"request\":\"줄여 줘\"}"))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.error.message").value("할 일 시간은 20 ~ 240분이에요"));
+        .andExpect(jsonPath("$.error.message").value("할 일 시간은 30 ~ 240분이에요"));
   }
 
   // ---- 코치 알림 문장 ----

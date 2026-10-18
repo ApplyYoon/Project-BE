@@ -18,6 +18,7 @@ import java.util.List;
 // ■ 공부할 수 있는 시간 (studyWindowOf) — 수면 보호 시간(최소 6시간, FE 의 getSleepWindow)과 일어난 뒤 1시간을 뺀 나머지
 // ■ 빈 시간 (freeSlotsOf) — 고정 일정(학교 · 학원)과 그날 카드의 앞뒤로 10분씩 여유를 두고 뺀 나머지
 // ■ 칸 놓기 (placeBlocks) — 빈 시간에 한 칸 길이로 채우고, 칸 사이도 10분 띄웁니다. 저녁형은 늦은 시간부터 채웁니다.
+//   한 칸은 30분 이상입니다(StudyBlock). 남은 시간이 30분보다 짧으면 칸을 더 놓지 않습니다. (총량은 칸 수로 맞춤)
 // ■ 목표 순서 (goalRotation) — D-day 가 가까운 목표부터, 14일 안이면 한 바퀴에 두 번
 public final class DayPlanRule {
 
@@ -27,8 +28,8 @@ public final class DayPlanRule {
   static final int DEFAULT_TOTAL = 120;
   static final double GROW = 1.1;
   static final double SHRINK = 0.8;
-  // 칸 하나의 가장 짧은 길이 (이보다 짧은 빈 시간에는 칸을 놓지 않음)
-  static final int MIN_BLOCK = 15;
+  // 칸 하나의 가장 짧은 길이 (이보다 짧은 빈 시간에는 칸을 놓지 않음). 30분 밑은 공부 블록으로 보지 않음 (StudyBlock)
+  static final int MIN_BLOCK = StudyBlock.MIN_MINUTES;
   // 일정 사이 여유 (FE 의 BUFFER_MINUTES)
   static final int BUFFER = 10;
   // 수면 보호는 최소 6시간 (FE 의 SLEEP_PROTECT_MIN_MINUTES)
@@ -154,12 +155,11 @@ public final class DayPlanRule {
     return free;
   }
 
-  // 빈 시간에 칸을 놓습니다. 칸마다 한 칸 길이(block), 남은 총량이 더 짧으면 그만큼. 15분보다 짧으면 놓지 않습니다.
+  // 빈 시간에 칸을 놓습니다. 칸마다 한 칸 길이(block), 남은 총량이 더 짧으면 그만큼. 30분보다 짧으면 놓지 않습니다.
   // 칸 사이는 10분 띄웁니다. lateFirst(저녁형)면 늦은 빈 시간의 끝에서부터 앞으로 채웁니다. 결과는 시각 순입니다.
-  //   free [16:40 ~ 23:00], block 50, total 120 → 16:40(50분) · 17:40(50분) · 18:40(20분)
-  //   같은 값에 lateFirst(저녁형)                   → 20:40(20분) · 21:10(50분) · 22:10(50분)  (23:00 에서부터
-  // 거꾸로
-  // 채움)
+  //   free [16:40 ~ 23:00], block 50, total 140 → 16:40(50분) · 17:40(50분) · 18:40(40분)
+  //   free [16:40 ~ 23:00], block 50, total 120 → 16:40(50분) · 17:40(50분)  (남은 20분은 30분보다 짧아 놓지 않음)
+  //   같은 값에 lateFirst(저녁형)                   → 21:10(50분) · 22:10(50분)  (23:00 에서부터 거꾸로 채움)
   public static List<Placed> placeBlocks(List<Span> free, int block, int total, boolean lateFirst) {
     List<Placed> placed = new ArrayList<>();
     int left = total;

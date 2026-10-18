@@ -38,7 +38,7 @@ class DailyMissionsTest {
   }
 
   @Test
-  @DisplayName("답 검사: 빈 · 긴 · 겹친 제목과 5~60분 밖은 버리고, 없는 과목은 null, 3개까지")
+  @DisplayName("답 검사: 빈 · 긴 · 겹친 제목과 60분 넘는 것은 버리고, 30분보다 짧으면 30분으로, 없는 과목은 null, 3개까지")
   void from() {
     DailyMissions.Answer answer =
         new DailyMissions.Answer(
@@ -56,9 +56,9 @@ class DailyMissionsTest {
 
     assertThat(missions)
         .containsExactly(
-            new DailyMissions.Mission("수능 기출 미적분 3문제", 15, "미적분Ⅰ"),
-            new DailyMissions.Mission("물리 개념 정리", 20, null),
-            new DailyMissions.Mission("영단어 30개", 10, null));
+            new DailyMissions.Mission("수능 기출 미적분 3문제", 30, "미적분Ⅰ"),
+            new DailyMissions.Mission("물리 개념 정리", 30, null),
+            new DailyMissions.Mission("영단어 30개", 30, null));
   }
 
   @Test
@@ -67,7 +67,7 @@ class DailyMissionsTest {
     assertThat(DailyMissions.from(null, SUBJECTS)).isNull();
     assertThat(
             DailyMissions.from(
-                new DailyMissions.Answer(List.of(new DailyMissions.Mission("짧은", 3, null))),
+                new DailyMissions.Answer(List.of(new DailyMissions.Mission("길이 없음", 0, null))),
                 SUBJECTS))
         .isNull();
   }

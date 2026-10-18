@@ -108,10 +108,11 @@ public class ChatAiClient {
           "[답 모양]",
           "- reply: 학생에게 할 말. 두세 문장.",
           "- quickReplies: 학생이 눌러서 바로 보낼 짧은 답 2~3개. 학생 말투로, 각각 15자 안쪽."
-              + " 예: '좋아, 해 볼게' · '10분만 할래' · '오늘은 힘들어'.",
+              + " 예: '좋아, 해 볼게' · '하나만 할래' · '오늘은 힘들어'.",
           "- action: 학생이 지금 공부를 시작하겠다고 하면 start_timer."
-              + " 목표를 줄이기로 했으면 shrink_today 와 minutes(5~60)."
-              + " 새로 할 일을 정했으면 create_card 와 title(20자 안쪽) · minutes."
+              + " 목표를 줄이기로 했으면 shrink_today 와 minutes(30~60). 카드 수를 줄이자는 뜻이야."
+              + " 새로 할 일을 정했으면 create_card 와 title(20자 안쪽) · minutes(30~120, 보통 40~60)."
+              + " 10분 · 20분처럼 30분보다 짧은 공부는 권하지 마."
               + " 시험 · 대회 · 수행평가처럼 무엇을 언제까지 준비한다고 하면 make_plan 과 title(목표 한 줄, 30자 안쪽) ·"
               + " date(마감 날 YYYY-MM-DD, 모르면 null). 학생이 방금 공부를 끝냈다고 하거나 잘 알았는지 확인해 달라고 하면"
               + " start_quiz 와 title(공부한 주제, 30자 안쪽). 아니면 none. date 는 make_plan 에만 써.",

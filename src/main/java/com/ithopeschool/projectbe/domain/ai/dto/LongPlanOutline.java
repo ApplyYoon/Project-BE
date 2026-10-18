@@ -26,8 +26,8 @@ public record LongPlanOutline(
     @NotNull(message = "계획의 시작 날짜를 보내 주세요") LocalDate startDate,
     @NotNull(message = "시험 · 마감 날짜를 보내 주세요") LocalDate endDate,
     @NotNull(message = "하루 공부 시간을 보내 주세요")
-        @Min(value = 20, message = "하루 공부 시간은 20 ~ 300분이에요")
-        @Max(value = 300, message = "하루 공부 시간은 20 ~ 300분이에요")
+        @Min(value = 30, message = "하루 공부 시간은 30 ~ 300분이에요")
+        @Max(value = 300, message = "하루 공부 시간은 30 ~ 300분이에요")
         Integer dailyMinutes,
     @NotNull(message = "시작 시각을 보내 주세요")
         @Pattern(regexp = LongPlanOutline.TIME_PATTERN, message = "시작 시각은 HH:MM 으로 보내 주세요")
@@ -57,8 +57,8 @@ public record LongPlanOutline(
       @NotBlank(message = "할 일 제목을 보내 주세요") @Size(max = 30, message = "할 일 제목은 30자 이하로 보내 주세요")
           String title,
       @NotNull(message = "할 일 시간을 보내 주세요")
-          @Min(value = 20, message = "할 일 시간은 20 ~ 240분이에요")
-          @Max(value = 240, message = "할 일 시간은 20 ~ 240분이에요")
+          @Min(value = 30, message = "할 일 시간은 30 ~ 240분이에요")
+          @Max(value = 240, message = "할 일 시간은 30 ~ 240분이에요")
           Integer minutes,
       @Size(max = 3, message = "체크리스트는 3개까지 보낼 수 있어요")
           List<
