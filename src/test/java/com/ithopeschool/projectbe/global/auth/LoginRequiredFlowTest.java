@@ -267,6 +267,8 @@ class LoginRequiredFlowTest {
               "/api/v1/realtime/session",
               "/api/v1/realtime/session",
               "{\"careLevel\":1,\"maxHarshness\":3}"),
+          // 확인 통화 문 (오늘 끝낸 공부, 2026-10-18)
+          new Api("GET", "/api/v1/realtime/check-call", "/api/v1/realtime/check-call", null),
           // AI 통화 기록 (자막은 학생의 대화입니다)
           new Api("GET", "/api/v1/calls", "/api/v1/calls", null),
           new Api("GET", "/api/v1/calls/habits", "/api/v1/calls/habits", null),

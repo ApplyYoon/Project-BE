@@ -385,16 +385,76 @@ class ChatServiceTest {
   @Test
   @DisplayName("행동 검사: 줄이기는 5~60분만, 카드는 제목이 있어야 하고 분이 이상하면 25분, 모르는 종류는 버림")
   void cleansActions() {
-    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("start_timer", 99, "x")))
+    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("start_timer", 99, "x"), TODAY))
         .isEqualTo(new ChatReplyResponse.Action("start_timer", null, null));
-    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("shrink_today", 90, null)))
+    assertThat(
+            ChatService.cleanAction(new ChatReplyResponse.Action("shrink_today", 90, null), TODAY))
         .isNull();
-    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("create_card", 0, "영어 단어")))
+    assertThat(
+            ChatService.cleanAction(new ChatReplyResponse.Action("create_card", 0, "영어 단어"), TODAY))
         .isEqualTo(new ChatReplyResponse.Action("create_card", 25, "영어 단어"));
-    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("create_card", 30, " ")))
+    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("create_card", 30, " "), TODAY))
         .isNull();
-    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("delete_all", null, null)))
+    assertThat(
+            ChatService.cleanAction(new ChatReplyResponse.Action("delete_all", null, null), TODAY))
         .isNull();
-    assertThat(ChatService.cleanAction(null)).isNull();
+    assertThat(ChatService.cleanAction(null, TODAY)).isNull();
+  }
+
+  @Test
+  @DisplayName("행동 검사: 긴 계획은 목표가 있어야 하고 마감 날은 내일 ~ 30일 뒤만 (밖이면 date 만 비움)")
+  void cleansMakePlan() {
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("make_plan", 40, " 중간고사 미적분 ", "2026-11-02"), TODAY))
+        .isEqualTo(new ChatReplyResponse.Action("make_plan", null, "중간고사 미적분", "2026-11-02"));
+    // 내일과 30일 뒤는 됨
+    assertThat(
+            ChatService.cleanAction(
+                    new ChatReplyResponse.Action("make_plan", null, "수행평가", "2026-10-18"), TODAY)
+                .date())
+        .isEqualTo("2026-10-18");
+    assertThat(
+            ChatService.cleanAction(
+                    new ChatReplyResponse.Action("make_plan", null, "수행평가", "2026-11-16"), TODAY)
+                .date())
+        .isEqualTo("2026-11-16");
+    // 오늘 · 31일 뒤 · 모양이 틀림 · 없음 → 버튼은 두고 date 만 null
+    for (String date : new String[] {"2026-10-17", "2026-11-17", "11월 2일", null}) {
+      assertThat(
+              ChatService.cleanAction(
+                  new ChatReplyResponse.Action("make_plan", null, "수행평가", date), TODAY))
+          .isEqualTo(new ChatReplyResponse.Action("make_plan", null, "수행평가", null));
+    }
+    // 목표가 비었거나 30자를 넘으면 버튼 없음
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("make_plan", null, " ", "2026-11-02"), TODAY))
+        .isNull();
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("make_plan", null, "가".repeat(31), "2026-11-02"),
+                TODAY))
+        .isNull();
+  }
+
+  @Test
+  @DisplayName("행동 검사: 확인 문제는 주제 1~30자, 분 · 날짜는 버림")
+  void cleansStartQuiz() {
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("start_quiz", 30, " 수열의 극한 ", "2026-11-02"), TODAY))
+        .isEqualTo(new ChatReplyResponse.Action("start_quiz", null, "수열의 극한"));
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("start_quiz", null, "가".repeat(30)), TODAY))
+        .isNotNull();
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("start_quiz", null, "가".repeat(31)), TODAY))
+        .isNull();
+    assertThat(
+            ChatService.cleanAction(new ChatReplyResponse.Action("start_quiz", null, null), TODAY))
+        .isNull();
   }
 }

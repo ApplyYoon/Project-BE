@@ -14,6 +14,9 @@ import java.util.List;
 //   { …, "quickReplies": ["좋아, 해 볼게", "10분만 할래"], "action": { "type": "shrink_today", "minutes":
 // 10, "title": null } }
 //   action 이 null 이면 행동 버튼이 없습니다. 서버가 모양 · 길이 · 말투를 검사한 뒤에만 넣습니다. (ChatService.cleanTurn)
+//   make_plan 만 date(마감 날 "YYYY-MM-DD")를 씁니다. 다른 행동은 date 가 null 입니다. (2026-10-18)
+//   { …, "action": { "type": "make_plan", "minutes": null, "title": "중간고사 미적분", "date":
+// "2026-11-02" } }
 public record ChatReplyResponse(
     String chatId,
     String reply,
@@ -25,7 +28,15 @@ public record ChatReplyResponse(
   // 행동 버튼 하나. 학생이 눌렀을 때만 FE 가 실행합니다.
   //   type: start_timer(공부 시작) · shrink_today(오늘 목표를 minutes 분으로 줄여 시작) · create_card(새 할 일 title,
   // minutes 분)
-  public record Action(String type, Integer minutes, String title) {}
+  //         make_plan(긴 계획 짜기: 목표 title, 마감 날 date → FE 가 /ai/long-plan) ·
+  //         start_quiz(확인 문제: 주제 title → FE 가 /ai/quiz)
+  public record Action(String type, Integer minutes, String title, String date) {
+
+    // date 가 없는 행동 (start_timer · shrink_today · create_card · start_quiz)
+    public Action(String type, Integer minutes, String title) {
+      this(type, minutes, title, null);
+    }
+  }
 
   // 보통의 답
   public static ChatReplyResponse of(Long chatId, String reply) {

@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.push;
 
 import com.ithopeschool.projectbe.domain.call.CallRing;
+import com.ithopeschool.projectbe.domain.call.CheckCallService;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.job.JobContext;
 import com.ithopeschool.projectbe.domain.job.JobResultStore;
@@ -32,6 +33,8 @@ import org.springframework.stereotype.Component;
 //      - "마지막으로 울린 시각" 은 알림 목록(messages)의 가장 최근 전화 알림(CALL)의 보낸 시각입니다.
 //   2. 그 학생의 연락 금지 시간이면 보내지 않습니다. 전화 알림은 버릴 메시지(DROP)라 나중에 보내지도 않습니다. (#57)
 //   3. 오늘 걸 수 있는 통화가 남아 있지 않으면(#33 하루 통화 한도) 보내지 않습니다. 눌러도 통화를 못 하기 때문입니다.
+//      오늘 끝낸 공부가 없어서 확인 통화 문이 닫혀 있어도 보내지 않습니다. 같은 이유입니다. (CheckCall, 2026-10-18)
+//      위로 기간(보호 조치 중 · 최근 7일 위기 표현)이면 문이 열려 있어서 그대로 울립니다.
 //   4. 앱의 알림 목록에 먼저 남기고, 그 학생의 모든 기기에 푸시를 보냅니다. 누르면 통화 화면(/call)이 열립니다.
 //
 // 위기 표현이 감지된 뒤 7일은 통화가 위로하는 통화가 됩니다(#56). 그래서 "오늘의 작전" 과 달리 전화 알림은 멈추지 않습니다.
@@ -60,6 +63,8 @@ public class CallRingJob implements ScheduledJob {
   private final QuietHoursSettings quietHoursSettings;
   private final GptUsageGuard gptUsageGuard;
   private final JobResultStore resultStore;
+  // 확인 통화 문 (오늘 끝낸 공부가 있어야 열림)
+  private final CheckCallService checkCallService;
 
   @Override
   public String name() {
@@ -109,6 +114,9 @@ public class CallRingJob implements ScheduledJob {
 
     // 3) 오늘 걸 수 있는 통화가 남았는지
     if (gptUsageGuard.allowedCallSeconds(userId) <= 0) {
+      return false;
+    }
+    if (!checkCallService.gateOf(userId, context.date()).open()) {
       return false;
     }
 
