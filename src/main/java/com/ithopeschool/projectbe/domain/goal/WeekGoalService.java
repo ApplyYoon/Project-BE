@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -127,6 +128,15 @@ public class WeekGoalService {
       items.add(itemOf(userId, goal, today));
     }
     return items;
+  }
+
+  // 그 사람의 이번 주 목표 한 줄. 안 정했으면 빈 Optional 입니다. (AI 통화 · 채팅 대본의 [기록에서 꺼낸 것], CallContextLoader)
+  // userId 는 부르는 쪽이 로그인 토큰으로 얻은 번호(CurrentUserProvider.getCurrentUserId())입니다.
+  @Transactional(readOnly = true)
+  public Optional<WeekGoalDto.Item> thisWeekOf(Long userId, LocalDate today) {
+    return weekGoalRepository
+        .findByUserIdAndWeekStart(userId, WeeklyFacts.mondayOf(today))
+        .map(goal -> itemOf(userId, goal, today));
   }
 
   // 끝난 주의 판정 전 목표를 모든 학생 것으로 판정합니다. 판정한 개수를 돌려줍니다. (규칙 5, WeekGoalJudgeJob)
