@@ -1,5 +1,7 @@
 package com.ithopeschool.projectbe.domain.ai;
 
+import com.ithopeschool.projectbe.domain.ai.dto.AnalysisRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.AnalysisResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardDefaultsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.CardParseRequest;
@@ -52,6 +54,7 @@ public class AiController {
   private final ProfileLinesService profileLinesService;
   private final CardParseService cardParseService;
   private final CardDefaultsService cardDefaultsService;
+  private final SelfAnalysisService selfAnalysisService;
   private final DayPlanService dayPlanService;
 
   @Operation(
@@ -140,6 +143,14 @@ public class AiController {
   @PostMapping("/profile-lines")
   public ProfileLinesResponse profileLines() {
     return profileLinesService.suggest();
+  }
+
+  @Operation(
+      summary =
+          "AI 자기 분석: 기록에서 계산한 숫자 → 성향 · 생각과 실제 · 약속 지키기 · 공부 효율 · 실패 원인 문단과 다음 실험 제안 (통화 생각 습관은 서버가 더함 · 저장 안 함 · 못 만들면 analysis: null · 토큰 필요)")
+  @PostMapping("/analysis")
+  public AnalysisResponse analysis(@Valid @RequestBody AnalysisRequest request) {
+    return selfAnalysisService.analyze(request);
   }
 
   @Operation(summary = "AI 하루 계획: 내 기록으로 한 칸 길이·총량·과목을 정하고 AI 가 할 일을 씀 (근거 문장 포함 · 저장 안 함 · 토큰 필요)")

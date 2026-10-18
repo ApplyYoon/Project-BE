@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.onboarding;
 
+import com.ithopeschool.projectbe.domain.auth.dto.UserResponse;
 import com.ithopeschool.projectbe.domain.onboarding.dto.InitialPlanRequest;
 import com.ithopeschool.projectbe.domain.onboarding.dto.InitialPlanResponse;
 import com.ithopeschool.projectbe.domain.onboarding.dto.OnboardingResponse;
@@ -19,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-// "온보딩" API 의 입구입니다. 여섯 주소 모두 로그인이 필요합니다. (docs/API.md "온보딩")
+// "온보딩" API 의 입구입니다. 일곱 주소 모두 로그인이 필요합니다. (docs/API.md "온보딩")
 // 주소가 복수형이 아닌 이유: 한 사람에게 "지금 내 설문" 은 하나뿐이라서, 이슈 #21 에 적힌 /onboarding 을 그대로 씁니다.
 @Tag(name = "온보딩")
 @RestController
@@ -29,6 +30,7 @@ public class OnboardingController {
 
   private final OnboardingService onboardingService;
   private final InitialPlanService initialPlanService;
+  private final OnboardingCompletionService onboardingCompletionService;
 
   @Operation(summary = "내 설문 답 (지금 답 + 처음 답한 자기 인식 · 아직 안 했으면 404)")
   @GetMapping
@@ -46,6 +48,13 @@ public class OnboardingController {
   @PatchMapping
   public OnboardingResponse update(@Valid @RequestBody OnboardingUpdateRequest request) {
     return onboardingService.update(request);
+  }
+
+  // 온보딩을 마친 기록을 하나 남기는 것이라, 처음 계획 세우기와 달리 200 으로 답합니다. (여러 번 불러도 같은 결과)
+  @Operation(summary = "온보딩 마침 표시 (다른 기기에서 로그인해도 온보딩을 다시 안 하게 · 여러 번 불러도 같음)")
+  @PostMapping("/completion")
+  public UserResponse complete() {
+    return onboardingCompletionService.complete();
   }
 
   @Operation(summary = "내 처음 계획 (아직 안 세웠으면 404)")

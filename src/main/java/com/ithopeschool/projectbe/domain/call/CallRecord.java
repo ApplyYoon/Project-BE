@@ -158,6 +158,12 @@ public class CallRecord {
     this.crisisDetected = true;
   }
 
+  // 상담 채팅에서 위기 표현이 감지됐을 때, 채팅은 끝내지 않고 "감지됐다" 는 표시만 남깁니다. (2026-10-18)
+  // 이 표시가 있으면 마무리할 때 보호 조치를 다시 하지 않습니다. (CallRecordService.finishWithCrisis)
+  public void markCrisis() {
+    this.crisisDetected = true;
+  }
+
   // 마무리했으면 true
   public boolean isFinished() {
     return finishedAt != null;

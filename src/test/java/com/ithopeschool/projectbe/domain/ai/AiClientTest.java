@@ -165,4 +165,18 @@ class AiClientTest {
     assertThat(client.ask(USER_ID, GptUsageKind.CHECKLIST, QUESTION, Answer.class)).isEmpty();
     assertThat(client.ask(USER_ID, GptUsageKind.CHECKLIST, QUESTION, Answer.class)).isEmpty();
   }
+
+  @Test
+  @DisplayName("askLong 도 ask 와 같은 모양으로 보내고 읽는다 (기다리는 시간만 다르다)")
+  void askLongReadsTheAnswer() {
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.text.format.name").value("checklist"))
+        .andRespond(withSuccess(answerOf("{\"items\":[\"채점하기\"]}"), MediaType.APPLICATION_JSON));
+
+    assertThat(
+            clientWith(KEY, MODEL).askLong(USER_ID, GptUsageKind.CHECKLIST, QUESTION, Answer.class))
+        .contains(new Answer(List.of("채점하기")));
+    openAi.verify();
+  }
 }

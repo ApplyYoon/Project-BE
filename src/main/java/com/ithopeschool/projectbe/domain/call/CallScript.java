@@ -7,10 +7,14 @@ import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.care.ToneGuide;
 import com.ithopeschool.projectbe.domain.checkin.CheckInQuestions;
 import com.ithopeschool.projectbe.domain.plan.AchievementRate;
+import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
+import com.ithopeschool.projectbe.domain.psychtest.PsychScore;
 import com.ithopeschool.projectbe.domain.risk.RiskLevel;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 // AI 통화의 "대본"(AI 에게 줄 지침)을 만드는 곳입니다. 값만 계산하는 도구라서 객체를 만들 일이 없습니다. (이슈 #28)
 //
@@ -185,7 +189,7 @@ public final class CallScript {
     lines.add(
         "- 학생이 죽고 싶다, 사라지고 싶다, 자기를 해치고 싶다는 말을 하면 공부 이야기를 바로 멈춰."
             + " 꾸짖거나 가볍게 넘기지 말고 먼저 들어 줘. 그리고 믿을 수 있는 어른에게 꼭 이야기하고,"
-            + " 앱 설정의 '힘들 때 도움받기' 를 눌러 보라고 말해 줘.");
+            + " 청소년상담 1388(24시간 · 무료 · 비밀 보장)에 바로 이야기할 수 있다고 알려 줘.");
     lines.add("- 공부와 상관없는 부탁(숙제를 대신 풀기, 다른 주제의 긴 이야기)은 짧게 사양하고 통화 순서로 돌아와.");
     lines.add("- 네가 AI 라는 것을 숨기지 마. 사람인 척하지 마.");
     lines.add("");
@@ -242,6 +246,76 @@ public final class CallScript {
       lines.add(step++ + ". " + todayStep(card));
     }
     lines.add(step + ". 오늘의 약속을 같이 정해. '만약 ~하면 → ~한다' 한 문장으로. 학생이 정한 문장을 그대로 다시 말해 주고 통화를 끝내.");
+    return String.join("\n", lines);
+  }
+
+  // ---- 학생 성향 (상담 채팅만) ----
+
+  // 성향 척도마다 "높을 때 어떻게 말을 걸지" 입니다. 점수는 학생에게 말하지 않고, 말 거는 방법에만 씁니다. (2026-10-18)
+  // 척도 설명은 PsychScale 과 기획서 6.1 을 따릅니다.
+  static final Map<PsychScale, String> PSYCH_HIGH_RULES = new EnumMap<>(PsychScale.class);
+
+  static {
+    PSYCH_HIGH_RULES.put(
+        PsychScale.START_RESISTANCE, "시작을 미루는 편이야. 큰 목표 대신 '5분만' 처럼 아주 작게 시작하자고 해.");
+    PSYCH_HIGH_RULES.put(PsychScale.DISTRACTION, "공부 중에 폰 · 딴생각에 잘 흔들려. 시작할 때 폰을 엎어 두자고 먼저 말해.");
+    PSYCH_HIGH_RULES.put(
+        PsychScale.PLAN_OPTIMISM, "계획을 크게 세우는 편이야. 다 하려는 계획보다 끝낼 수 있는 계획으로 줄이자고 해.");
+    PSYCH_HIGH_RULES.put(
+        PsychScale.RECORD_BURDEN, "적는 걸 귀찮아해. 길게 묻지 말고 한 단어나 버튼 하나로 답할 수 있게 짧게 물어.");
+    PSYCH_HIGH_RULES.put(
+        PsychScale.FAIL_SENSITIVITY, "한 번 무너지면 쉽게 자책해. 못 한 날도 '다시 시작' 을 먼저 말하고, 실패를 크게 말하지 마.");
+    PSYCH_HIGH_RULES.put(
+        PsychScale.EXTERNAL_ATTRIBUTION, "원인을 밖에서 찾는 편이야. 반박하지 말고 '내가 바꿀 수 있는 한 가지' 를 같이 찾아.");
+    PSYCH_HIGH_RULES.put(PsychScale.CARE_PREFERENCE, "따끔한 관리를 원해. [말투] 규칙 안에서 조금 더 단호하고 분명하게 말해.");
+  }
+
+  // 상담 채팅 대본 끝에 붙이는 "학생 성향" 칸입니다. 가입 때 한 성향 검사(PsychTest)의 점수로 만듭니다.
+  // 점수가 높은 척도만 규칙을 넣고, 관리 선호가 낮으면 "부드럽게 제안" 을 넣습니다. 넣을 것이 없으면 빈 글자입니다.
+  // 같은 상황이어도 학생마다 말 거는 방법이 달라지게 하려는 칸입니다. (위로하는 날의 규칙 · [말투] 가 먼저)
+  public static String psychSection(Map<PsychScale, Double> scores) {
+    List<String> rules = new ArrayList<>();
+    for (PsychScale scale : PsychScale.values()) {
+      Double score = scores.get(scale);
+      if (score == null) {
+        continue;
+      }
+      PsychScore.Level level = PsychScore.levelOf(score);
+      if (level == PsychScore.Level.HIGH) {
+        rules.add("- " + PSYCH_HIGH_RULES.get(scale));
+      } else if (scale == PsychScale.CARE_PREFERENCE && level == PsychScore.Level.LOW) {
+        rules.add("- 다그치는 말을 싫어해. 지시하지 말고 부드럽게 제안해.");
+      }
+    }
+    if (rules.isEmpty()) {
+      return "";
+    }
+    List<String> lines = new ArrayList<>();
+    lines.add("");
+    lines.add("");
+    lines.add("[학생 성향]");
+    lines.add("- 가입 때 한 성향 검사 결과야. 점수나 '검사 결과' 라는 말은 하지 말고, 말 거는 방법에만 써.");
+    lines.addAll(rules);
+    lines.add("- 위로하는 날이면 위로가 먼저야. 이 칸보다 [말투] · [꼭 지킬 것] 이 먼저야.");
+    return String.join("\n", lines);
+  }
+
+  // ---- 오늘 학교 (상담 채팅만) ----
+
+  // 상담 채팅 대본 끝에 붙이는 "오늘 학교" 칸입니다. 줄이 없으면 빈 글자입니다. (2026-10-18 "AI 코치 채팅 중심")
+  // 줄은 SchoolTodayService.scriptLines 가 만듭니다. 학교 이름 같은 개인정보는 들어 있지 않습니다.
+  public static String schoolSection(List<String> schoolLines) {
+    if (schoolLines.isEmpty()) {
+      return "";
+    }
+    List<String> lines = new ArrayList<>();
+    lines.add("");
+    lines.add("");
+    lines.add("[오늘 학교]");
+    lines.add("- 학생이 다니는 학교의 공개된 오늘 정보야. 적힌 것만 말하고 지어내지 마.");
+    lines.addAll(schoolLines);
+    lines.add("- 인사할 때 이 중 하나만 가볍게 꺼내(예: 급식, 오늘 배운 과목). 오늘 할 공부를 오늘 배운 과목과 이어 줘.");
+    lines.add("- 시험이 가까우면 남은 날만 말하고 겁주지 마.");
     return String.join("\n", lines);
   }
 

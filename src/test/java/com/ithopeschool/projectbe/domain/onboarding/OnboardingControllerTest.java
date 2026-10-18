@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ithopeschool.projectbe.domain.auth.dto.UserResponse;
 import com.ithopeschool.projectbe.domain.onboarding.dto.InitialPlanResponse;
 import com.ithopeschool.projectbe.domain.onboarding.dto.OnboardingResponse;
 import com.ithopeschool.projectbe.domain.onboarding.dto.OnboardingSaveRequest;
@@ -42,6 +43,7 @@ class OnboardingControllerTest {
 
   @MockitoBean private OnboardingService onboardingService;
   @MockitoBean private InitialPlanService initialPlanService;
+  @MockitoBean private OnboardingCompletionService onboardingCompletionService;
 
   private ResultActions send(MockHttpServletRequestBuilder builder, String body) throws Exception {
     return mockMvc.perform(builder.contentType(MediaType.APPLICATION_JSON).content(body));
@@ -287,5 +289,18 @@ class OnboardingControllerTest {
     send(post("/api/v1/onboarding/initial-plan"), "{\"dailyMinutes\":180,\"daysPerWeek\":5}")
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.error.code").value("CONFLICT"));
+  }
+
+  @Test
+  @DisplayName("온보딩 마침 표시: 본문 없이 POST 하면 200 과 onboarded 가 true 인 내 정보를 돌려준다")
+  void completesOnboarding() throws Exception {
+    given(onboardingCompletionService.complete()).willReturn(new UserResponse("1", "티맥이", true));
+
+    mockMvc
+        .perform(post("/api/v1/onboarding/completion"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value("1"))
+        .andExpect(jsonPath("$.name").value("티맥이"))
+        .andExpect(jsonPath("$.onboarded").value(true));
   }
 }
