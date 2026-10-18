@@ -574,7 +574,7 @@ class ChatServiceTest {
     assertThat(ChatService.cleanTurn(turn, TODAY, ChatTopic.SESSION_REVIEW).tags()).isEmpty();
   }
 
-  // ---- 방 3개: 코치 · 목표 메이트 · 과목 쌤 (2026-10-18) ----
+  // ---- 방 3개: 상담 · 계획 · 과목 쌤 (2026-10-18) ----
 
   @Test
   @DisplayName("과목 쌤 방은 대본 끝에 [이번 방: 과목 쌤] 칸을 붙이고, 학생 성향 칸은 붙이지 않고, 방을 기억한다")
@@ -598,22 +598,36 @@ class ChatServiceTest {
   }
 
   @Test
-  @DisplayName("목표 메이트 방에 이번 주 숫자를 주제로 열면 [이번 방] 칸 뒤에 [이번 대화의 주제] 칸이 붙는다")
-  void startInGoalMateRoomWithWeeklyReport() {
+  @DisplayName("계획 방에 이번 주 숫자를 주제로 열면 [이번 방] 칸 뒤에 [이번 대화의 주제] 칸이 붙는다")
+  void startInPlannerRoomWithWeeklyReport() {
     List<String> facts = List.of("이번 주 순공 6시간 10분, 계획의 72%");
     String script =
         SCRIPT
-            + ChatRoom.GOAL_MATE.section()
+            + ChatRoom.PLANNER.section()
             + CallScript.topicSection(ChatTopic.WEEKLY_REPORT, facts);
     given(chatAiClient.turn(script, List.of()))
         .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("이번 주 72% 했네. 다음 주엔 뭘 바꿔 볼까?")));
 
     ChatReplyResponse response =
-        service.start(startIn("GOAL_MATE", new ChatAbout("WEEKLY_REPORT", facts)));
+        service.start(startIn("PLANNER", new ChatAbout("WEEKLY_REPORT", facts)));
 
     assertThat(response.reply()).isEqualTo("이번 주 72% 했네. 다음 주엔 뭘 바꿔 볼까?");
-    assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.GOAL_MATE);
+    assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.PLANNER);
     assertThat(chatScriptStore.findTopic(CHAT_ID, USER_ID)).contains(ChatTopic.WEEKLY_REPORT);
+  }
+
+  @Test
+  @DisplayName("예전 방 이름 GOAL_MATE 로 열어도 계획 방(PLANNER)으로 열리고 계획 방 대본을 쓴다")
+  void startWithOldGoalMateNameOpensPlanner() {
+    String script = SCRIPT + ChatRoom.PLANNER.section();
+    given(chatAiClient.turn(script, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("오늘 할 일부터 말해 줄래?")));
+
+    ChatReplyResponse response = service.start(startIn("GOAL_MATE", null));
+
+    assertThat(response.reply()).isEqualTo("오늘 할 일부터 말해 줄래?");
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(script);
+    assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.PLANNER);
   }
 
   @Test

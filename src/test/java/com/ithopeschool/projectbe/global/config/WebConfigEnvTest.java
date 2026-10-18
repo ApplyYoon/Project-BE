@@ -31,7 +31,8 @@ class WebConfigEnvTest {
 
   @Test
   void originFromEnvIsAllowed() throws Exception {
-    given(healthService.check()).willReturn(new HealthResponse("ok", "connected"));
+    given(healthService.check())
+        .willReturn(new HealthResponse("ok", "connected", false, false, false));
 
     mockMvc
         .perform(get("/api/v1/health").header("Origin", FE_DEPLOY_ORIGIN))
@@ -41,7 +42,8 @@ class WebConfigEnvTest {
 
   @Test
   void secondOriginAfterCommaIsAllowed() throws Exception {
-    given(healthService.check()).willReturn(new HealthResponse("ok", "connected"));
+    given(healthService.check())
+        .willReturn(new HealthResponse("ok", "connected", false, false, false));
 
     // 쉼표 뒤에 띄어쓰기가 있어도 두 번째 주소가 제대로 허락됩니다.
     mockMvc
