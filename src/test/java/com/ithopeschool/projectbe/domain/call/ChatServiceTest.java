@@ -18,6 +18,11 @@ import com.ithopeschool.projectbe.domain.call.dto.ChatMessageRequest;
 import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
+import com.ithopeschool.projectbe.domain.psychtest.PsychItem;
+import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
+import com.ithopeschool.projectbe.domain.psychtest.PsychScore;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTest;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
 import com.ithopeschool.projectbe.domain.safety.HelpLine;
 import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.domain.school.SchoolTodayService;
@@ -29,7 +34,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -59,6 +66,7 @@ class ChatServiceTest {
   private final ChatScriptStore chatScriptStore = new ChatScriptStore(clock);
   private final SafetyService safetyService = mock(SafetyService.class);
   private final SchoolTodayService schoolTodayService = mock(SchoolTodayService.class);
+  private final PsychTestRepository psychTestRepository = mock(PsychTestRepository.class);
   private final ChatService service =
       new ChatService(
           currentUserProvider,
@@ -70,6 +78,7 @@ class ChatServiceTest {
           chatScriptStore,
           safetyService,
           schoolTodayService,
+          psychTestRepository,
           clock);
 
   @BeforeEach
@@ -128,6 +137,25 @@ class ChatServiceTest {
 
     assertThat(response.reply()).isEqualTo("오늘 급식 나주곰탕이네!");
     assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(withSchool);
+  }
+
+  @Test
+  @DisplayName("성향 검사가 있으면 대본에 [학생 성향] 칸을 붙인다 (시작 저항이 높으면 '5분만')")
+  void startAddsPsychSection() {
+    Map<PsychItem, Integer> answers = new EnumMap<>(PsychItem.class);
+    for (PsychItem item : PsychItem.values()) {
+      // 시작 저항 문장만 7점, 나머지는 4점(보통)
+      answers.put(item, item.scale() == PsychScale.START_RESISTANCE ? 7 : 4);
+    }
+    given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(Optional.of(new PsychTest(USER_ID, NOW, answers)));
+    String withPsych = SCRIPT + CallScript.psychSection(PsychScore.scoresOf(answers));
+    given(chatAiClient.reply(withPsych, List.of())).willReturn(Optional.of("5분만 먼저 해 볼까?"));
+
+    ChatReplyResponse response = service.start(START);
+
+    assertThat(response.reply()).isEqualTo("5분만 먼저 해 볼까?");
+    assertThat(withPsych).contains("[학생 성향]").contains("5분만");
   }
 
   @Test

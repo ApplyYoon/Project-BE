@@ -8,6 +8,8 @@ import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import com.ithopeschool.projectbe.domain.care.ToneGuide;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
+import com.ithopeschool.projectbe.domain.psychtest.PsychScore;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
 import com.ithopeschool.projectbe.domain.safety.CrisisText;
 import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.domain.school.SchoolTodayService;
@@ -76,6 +78,8 @@ public class ChatService {
   private final SafetyService safetyService;
   // 대본에 붙일 오늘 학교 정보 (시간표 · 급식 · 학사일정)
   private final SchoolTodayService schoolTodayService;
+  // 대본에 붙일 학생 성향 (가입 때 한 성향 검사, 이슈 #219)
+  private final PsychTestRepository psychTestRepository;
   private final Clock clock;
 
   // 채팅을 엽니다. 요청 모양은 통화 시작(POST /realtime/session)과 같습니다. (학년 · 반 없이)
@@ -94,9 +98,16 @@ public class ChatService {
     CallService.Script script =
         callService.prepareScript(userId, request, now, today, CallChannel.CHAT);
 
-    // 통화와 같은 대본 끝에 "오늘 학교" 칸을 붙입니다. 학교를 안 골랐거나 아무것도 없으면 붙이지 않습니다.
+    // 통화와 같은 대본 끝에 "학생 성향" · "오늘 학교" 칸을 붙입니다. 없으면 붙이지 않습니다.
+    // 성향은 학생마다 말 거는 방법을 다르게 하려고 넣습니다. (시작을 미루는 학생에게는 '5분만' 처럼)
+    String psychPart =
+        psychTestRepository
+            .findFirstByUserIdOrderByIdDesc(userId)
+            .map(test -> CallScript.psychSection(PsychScore.scoresOf(test.getAnswers())))
+            .orElse("");
     String instructions =
         script.instructions()
+            + psychPart
             + CallScript.schoolSection(schoolTodayService.scriptLines(grade, classNo));
     String reply = askAi(instructions, List.of());
     // AI 의 첫 인사를 받은 뒤에 기록을 만듭니다. 못 받았으면 채팅이 열리지 않은 것이라 기록도 남기지 않습니다.
