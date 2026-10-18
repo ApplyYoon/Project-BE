@@ -1,10 +1,12 @@
 package com.ithopeschool.projectbe.domain.call;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -14,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import tools.jackson.core.JacksonException;
@@ -180,8 +183,23 @@ public class ChatAiClient {
   }
 
   // 상담 채팅의 답 한 번: 학생에게 할 말 + 누를 수 있는 짧은 답 + 행동 하나 + 짐작한 이유 값. (2026-10-18)
+  // 과목 쌤 방에서 웹 검색을 했으면 sources(답에 붙은 출처 링크)와 searched(실제로 검색했는지)도 있습니다.
   public record ChatTurn(
-      String reply, List<String> quickReplies, ChatReplyResponse.Action action, List<String> tags) {
+      String reply,
+      List<String> quickReplies,
+      ChatReplyResponse.Action action,
+      List<String> tags,
+      List<ChatReplyResponse.Source> sources,
+      boolean searched) {
+
+    // 검색 없는 답 (상담 · 계획 방, 검색 도구를 붙이지 않은 과목 쌤 답)
+    public ChatTurn(
+        String reply,
+        List<String> quickReplies,
+        ChatReplyResponse.Action action,
+        List<String> tags) {
+      this(reply, quickReplies, action, tags, List.of(), false);
+    }
 
     // 이유 값 없는 답 (주제 없는 채팅 · 테스트에서 씀)
     public ChatTurn(String reply, List<String> quickReplies, ChatReplyResponse.Action action) {
@@ -220,8 +238,55 @@ public class ChatAiClient {
     return sendTurn(imageRestClient, instructions, input);
   }
 
-  // turn · turnWithImage 가 같이 쓰는 보내기. input 은 글 하나이거나, 사진이 섞인 메시지 목록입니다.
+  // 과목 쌤 방의 답 한 번. turn · turnWithImage 와 같고, webSearch 가 true 면 웹 검색 도구를 붙입니다. (2026-10-18)
+  //   imageDataUrl : 학생의 마지막 말에 붙은 사진 (없으면 null)
+  //   webSearch    : 이번 답에 검색 도구를 붙일지 (TutorWebSearch.canSearch 가 정함)
+  // 검색 도구를 붙인 요청이 4xx 로 거절되면(모델이 도구를 못 씀 등) 도구 없이 한 번 더 보냅니다. 채팅이 막히지 않게.
+  public Optional<ChatTurn> turnForTutor(
+      String instructions,
+      List<CallFinishRequest.Line> lines,
+      String imageDataUrl,
+      boolean webSearch) {
+    Object input =
+        imageDataUrl == null
+            ? inputOf(lines)
+            : List.of(
+                Map.of(
+                    "role",
+                    "user",
+                    "content",
+                    List.of(
+                        Map.of("type", "input_text", "text", inputOf(lines)),
+                        Map.of(
+                            "type", "input_image", "image_url", imageDataUrl, "detail", "auto"))));
+    // 검색 · 사진은 오래 걸려서 25초까지 기다리는 연결을 씁니다.
+    RestClient client = webSearch || imageDataUrl != null ? imageRestClient : restClient;
+    return sendTurn(client, instructions, input, webSearch ? webSearchTools() : null);
+  }
+
+  // OpenAI Responses API 의 내장 웹 검색 도구 (공식 문서 "Web search": type "web_search",
+  // filters.allowed_domains 로 찾을 사이트를 정함, search_context_size 는 low · medium · high)
+  // ⚠️ 우리 모델(gpt-6-luna)이 이 도구와 정해진 답 모양(json_schema)을 같이 쓸 수 있는지는 실제 서버로 확인 필요.
+  //    안 되면 4xx 가 오고, 그때는 도구 없이 다시 보냅니다. (sendTurn)
+  static List<Map<String, Object>> webSearchTools() {
+    return List.of(
+        Map.of(
+            "type",
+            "web_search",
+            "search_context_size",
+            "low",
+            "filters",
+            Map.of("allowed_domains", TutorWebSearch.ALLOWED_DOMAINS)));
+  }
+
+  // turn · turnWithImage · turnForTutor 가 같이 쓰는 보내기. input 은 글 하나이거나, 사진이 섞인 메시지 목록입니다.
+  // tools 는 웹 검색 도구 목록이고, 없으면 null 입니다.
   private Optional<ChatTurn> sendTurn(RestClient client, String instructions, Object input) {
+    return sendTurn(client, instructions, input, null);
+  }
+
+  private Optional<ChatTurn> sendTurn(
+      RestClient client, String instructions, Object input, List<Map<String, Object>> tools) {
     if (!isEnabled()) {
       return Optional.empty();
     }
@@ -232,7 +297,8 @@ public class ChatAiClient {
               instructions + TURN_RULES,
               input,
               false,
-              new TextOption(new Format("json_schema", "coach_turn", true, TURN_SCHEMA)));
+              new TextOption(new Format("json_schema", "coach_turn", true, TURN_SCHEMA)),
+              tools);
       OpenAiResponse response =
           client
               .post()
@@ -241,12 +307,60 @@ public class ChatAiClient {
               .body(request)
               .retrieve()
               .body(OpenAiResponse.class);
-      return textOf(response).map(ChatAiClient::parseTurn);
+      Optional<ChatTurn> turn = textOf(response).map(ChatAiClient::parseTurn);
+      if (tools == null) {
+        return turn;
+      }
+      List<ChatReplyResponse.Source> sources = sourcesOf(response);
+      boolean searched = searchedIn(response);
+      return turn.map(
+          t -> new ChatTurn(t.reply(), t.quickReplies(), t.action(), t.tags(), sources, searched));
+    } catch (HttpClientErrorException e) {
+      if (tools != null) {
+        // 검색 도구를 못 쓰는 경우(모델 · 설정)일 수 있어서 도구 없이 한 번 더 보냅니다. 상태 번호만 찍습니다.
+        log.warn("[AI] 검색 도구를 붙인 채팅이 거절되어 도구 없이 다시 보내요: {}", e.getStatusCode().value());
+        return sendTurn(client, instructions, input, null);
+      }
+      log.warn("[AI] 채팅 답을 받지 못했어요: {}", e.getClass().getSimpleName());
+      return Optional.empty();
     } catch (RestClientException e) {
       // 예외 메시지에는 대화가 들어 있을 수 있어서 종류만 찍습니다.
       log.warn("[AI] 채팅 답을 받지 못했어요: {}", e.getClass().getSimpleName());
       return Optional.empty();
     }
+  }
+
+  // 답에 붙은 출처 링크(url_citation)들. 검사는 부르는 쪽이 합니다. (TutorWebSearch.cleanSources)
+  // 공식 문서: message 의 content[].annotations 에 { "type": "url_citation", "url", "title", … }
+  static List<ChatReplyResponse.Source> sourcesOf(OpenAiResponse response) {
+    List<ChatReplyResponse.Source> sources = new ArrayList<>();
+    if (response == null || response.output() == null) {
+      return sources;
+    }
+    for (OpenAiResponse.Item item : response.output()) {
+      if (!"message".equals(item.type()) || item.content() == null) {
+        continue;
+      }
+      for (OpenAiResponse.Content content : item.content()) {
+        if (content.annotations() == null) {
+          continue;
+        }
+        for (OpenAiResponse.Annotation annotation : content.annotations()) {
+          if ("url_citation".equals(annotation.type()) && annotation.url() != null) {
+            sources.add(new ChatReplyResponse.Source(annotation.title(), annotation.url()));
+          }
+        }
+      }
+    }
+    return sources;
+  }
+
+  // 실제로 검색했는지. 공식 문서: 검색하면 output 에 type "web_search_call" 항목이 생깁니다.
+  static boolean searchedIn(OpenAiResponse response) {
+    if (response == null || response.output() == null) {
+      return false;
+    }
+    return response.output().stream().anyMatch(item -> "web_search_call".equals(item.type()));
   }
 
   // 받은 글(JSON)을 답 한 번으로 바꿉니다. JSON 이 아니거나 reply 가 없으면 받은 글을 그대로 말로 씁니다. (버튼 없이)
@@ -325,8 +439,15 @@ public class ChatAiClient {
 
   // 정해진 모양으로 받을 때 보내는 모양: 위에 text.format(json_schema)을 더합니다. (AiClient 와 같은 방법)
   // input 은 글 하나(String)이거나, 사진이 섞인 메시지 목록(turnWithImage)입니다.
+  // tools 는 과목 쌤의 웹 검색 도구이고, 없으면(null) JSON 에 아예 넣지 않습니다.
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   record TurnRequest(
-      String model, String instructions, Object input, boolean store, TextOption text) {}
+      String model,
+      String instructions,
+      Object input,
+      boolean store,
+      TextOption text,
+      List<Map<String, Object>> tools) {}
 
   record TextOption(Format format) {}
 
@@ -347,7 +468,11 @@ public class ChatAiClient {
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Item(String type, List<Content> content) {}
 
+    // annotations: 웹 검색을 했을 때 답에 붙는 출처 (url_citation)
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record Content(String type, String text) {}
+    record Content(String type, String text, List<Annotation> annotations) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record Annotation(String type, String url, String title) {}
   }
 }

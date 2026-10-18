@@ -242,4 +242,90 @@ class ChatAiClientTest {
         .isEmpty();
     openAi.verify();
   }
+
+  // ---- 과목 쌤의 웹 검색 (2026-10-18) ----
+
+  // 검색한 답: output 에 web_search_call 항목이 있고, 글에 url_citation 이 붙어 있습니다. (OpenAI 문서 "Web search")
+  private static final String SEARCHED_ANSWER =
+      """
+      {"output":[
+        {"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","queries":["함수의 극한"]}},
+        {"type":"message","content":[{"type":"output_text",
+          "text":"{\\"reply\\":\\"위키백과에서 찾아봤어.\\",\\"quickReplies\\":[],\\"action\\":{\\"type\\":\\"none\\",\\"minutes\\":null,\\"title\\":null,\\"date\\":null},\\"tags\\":[]}",
+          "annotations":[{"type":"url_citation","start_index":0,"end_index":4,
+                          "url":"https://ko.wikipedia.org/wiki/극한","title":"극한 - 위키백과"}]}]}
+      ]}
+      """;
+
+  private static final String PLAIN_ANSWER =
+      """
+      {"output":[{"type":"message","content":[{"type":"output_text",
+        "text":"{\\"reply\\":\\"어디까지 알아?\\",\\"quickReplies\\":[],\\"action\\":{\\"type\\":\\"none\\",\\"minutes\\":null,\\"title\\":null,\\"date\\":null},\\"tags\\":[]}",
+        "annotations":[]}]}]}
+      """;
+
+  @Test
+  @DisplayName("과목 쌤에 검색을 켜면 web_search 도구(허락한 사이트만)를 붙이고, 출처와 '검색했음' 을 꺼낸다")
+  void tutorWithWebSearch() {
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.tools[0].type").value("web_search"))
+        .andExpect(jsonPath("$.tools[0].filters.allowed_domains[0]").value("ncic.re.kr"))
+        .andExpect(jsonPath("$.text.format.type").value("json_schema"))
+        .andExpect(jsonPath("$.store").value(false))
+        .andRespond(withSuccess(SEARCHED_ANSWER, MediaType.APPLICATION_JSON));
+
+    Optional<ChatAiClient.ChatTurn> turn =
+        clientWith(KEY, MODEL).turnForTutor("과목 쌤 대본", TALK, null, true);
+
+    assertThat(turn).isPresent();
+    assertThat(turn.get().reply()).isEqualTo("위키백과에서 찾아봤어.");
+    assertThat(turn.get().searched()).isTrue();
+    assertThat(turn.get().sources())
+        .containsExactly(
+            new ChatReplyResponse.Source("극한 - 위키백과", "https://ko.wikipedia.org/wiki/극한"));
+    openAi.verify();
+  }
+
+  @Test
+  @DisplayName("검색을 끄면 tools 칸을 아예 보내지 않고, 출처는 빈 목록 · 검색 안 함이다")
+  void tutorWithoutWebSearch() {
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.tools").doesNotExist())
+        .andRespond(withSuccess(PLAIN_ANSWER, MediaType.APPLICATION_JSON));
+
+    Optional<ChatAiClient.ChatTurn> turn =
+        clientWith(KEY, MODEL).turnForTutor("과목 쌤 대본", TALK, null, false);
+
+    assertThat(turn).isPresent();
+    assertThat(turn.get().reply()).isEqualTo("어디까지 알아?");
+    assertThat(turn.get().searched()).isFalse();
+    assertThat(turn.get().sources()).isEmpty();
+    openAi.verify();
+  }
+
+  @Test
+  @DisplayName("검색 도구를 붙인 요청이 4xx 로 거절되면 도구 없이 한 번 더 보낸다 (키 · 대화는 로그에 없음)")
+  void tutorRetriesWithoutToolsOn4xx(CapturedOutput output) {
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.tools[0].type").value("web_search"))
+        .andRespond(
+            withStatus(HttpStatus.BAD_REQUEST)
+                .body("{\"error\":\"tool not supported\"}")
+                .contentType(MediaType.APPLICATION_JSON));
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.tools").doesNotExist())
+        .andRespond(withSuccess(PLAIN_ANSWER, MediaType.APPLICATION_JSON));
+
+    Optional<ChatAiClient.ChatTurn> turn =
+        clientWith(KEY, MODEL).turnForTutor("과목 쌤 대본", TALK, null, true);
+
+    assertThat(turn).isPresent();
+    assertThat(turn.get().searched()).isFalse();
+    assertThat(output).contains("도구 없이 다시").doesNotContain(KEY).doesNotContain("폰 보다가");
+    openAi.verify();
+  }
 }

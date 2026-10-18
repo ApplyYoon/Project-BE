@@ -9,6 +9,8 @@ import com.ithopeschool.projectbe.domain.call.dto.ChatAbout;
 import com.ithopeschool.projectbe.domain.call.dto.ChatMessageRequest;
 import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import com.ithopeschool.projectbe.domain.care.ToneGuide;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumContext;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumService;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.psychtest.PsychScore;
@@ -49,6 +51,11 @@ import org.springframework.stereotype.Service;
 //
 // 사진 질문 (2026-10-18): 말 보내기에 사진(request.image)이 붙으면 그 한 번의 답에만 사진을 AI 에 같이 보내고,
 // 대본 끝에 방마다 다른 [이번 말에 붙은 사진] 칸(ChatRoom.imageRule)을 잠깐 붙입니다. 사진은 저장 · 로그 안 함.
+//
+// 과목 쌤의 교육과정 · 찾아보기 (2026-10-18 "어느 정도 RAG 하고, 어느 정도 지식은 너가 찾는 방식으로"):
+//   - 열 때: 학년 · 교육과정 버전 · 오늘 과목으로 [교육과정] · [찾아보기] 칸을 붙이고 교육과정을 기억합니다. (CurriculumService)
+//   - 말마다: 학생의 마지막 말로 고른 성취기준 몇 줄([관련 성취기준])을 그 한 번의 답에만 붙입니다. (가벼운 RAG)
+//   - 말마다: 오늘 검색 한도가 남았으면 웹 검색 도구를 붙이고, 답에 붙은 출처(sources)를 검사해 돌려줍니다. (TutorWebSearch)
 //
 // AI 의 답은 한 번마다 GPT 글 호출 하루 한도(GptUsageGuard, 이슈 #33)를 하나씩 씁니다.
 // 모든 메서드는 로그인한 사람의 번호(CurrentUserProvider)로 시작하고, 내 채팅만 찾습니다. 남의 채팅 번호는 404 입니다.
@@ -102,6 +109,10 @@ public class ChatService {
   private final SchoolTodayService schoolTodayService;
   // 대본에 붙일 학생 성향 (가입 때 한 성향 검사, 이슈 #219)
   private final PsychTestRepository psychTestRepository;
+  // 과목 쌤 방의 교육과정 · 성취기준 (2026-10-18)
+  private final CurriculumService curriculumService;
+  // 과목 쌤 방의 웹 검색 한도 · 출처 검사 (2026-10-18)
+  private final TutorWebSearch tutorWebSearch;
   private final Clock clock;
 
   // 채팅을 엽니다. 요청 모양은 통화 시작(POST /realtime/session)과 같습니다. (학년 · 반 없이)
@@ -148,20 +159,46 @@ public class ChatService {
                 .orElse("");
     // 방 칸([이번 방])을 붙이고, 주제가 있으면 맨 끝에 [이번 대화의 주제] 칸을 붙입니다. 첫 말이 그 주제로 시작합니다.
     String topicPart = topic == null ? "" : CallScript.topicSection(topic, about.lines());
+    // 과목 쌤 방은 그 학생의 교육과정을 정해 [교육과정] · [찾아보기] 칸을 붙입니다. 학년을 모르면 [찾아보기] 만.
+    CurriculumContext curriculum =
+        room == ChatRoom.TUTOR
+            ? curriculumService
+                .contextOf(userId, grade, schoolTodayService.todaySubjects(grade, classNo))
+                .orElse(null)
+            : null;
+    String curriculumPart =
+        room == ChatRoom.TUTOR ? CurriculumService.tutorSection(curriculum) : "";
     String instructions =
         script.instructions()
             + psychPart
             + CallScript.schoolSection(schoolTodayService.scriptLines(grade, classNo))
             + room.section()
+            + curriculumPart
             + topicPart;
-    ChatAiClient.ChatTurn first = askAi(instructions, List.of(), topic);
+    ChatAiClient.ChatTurn first =
+        room == ChatRoom.TUTOR
+            ? askTutor(
+                userId,
+                // 주제(틀린 문제 등)로 열었으면 그 사실 줄로 성취기준을 고릅니다.
+                instructions
+                    + curriculumService.standardsSection(
+                        curriculum, about == null ? "" : String.join(" ", about.lines())),
+                List.of(),
+                topic,
+                null)
+            : askAi(instructions, List.of(), topic);
     // AI 의 첫 인사를 받은 뒤에 기록을 만듭니다. 못 받았으면 채팅이 열리지 않은 것이라 기록도 남기지 않습니다.
     CallRecord record =
         callRecordRepository.save(
             new CallRecord(userId, today, now, script.biasQuestion(), CallChannel.CHAT));
-    chatScriptStore.save(record.getId(), userId, instructions, topic, room);
+    chatScriptStore.save(record.getId(), userId, instructions, topic, room, curriculum);
     return ChatReplyResponse.withButtons(
-        record.getId(), first.reply(), first.quickReplies(), first.action(), first.tags());
+        record.getId(),
+        first.reply(),
+        first.quickReplies(),
+        first.action(),
+        first.tags(),
+        first.sources());
   }
 
   // 주제의 사실 줄에 위기 표현이 있을 때 채팅을 엽니다. AI 를 부르지 않고 정해 둔 안내로 답합니다.
@@ -224,16 +261,24 @@ public class ChatService {
       CardPhotoService.checkImage(image);
     }
     checkAiReady(userId);
+    // 방을 잊었으면 코치로 봅니다. 사진 규칙 · 성취기준 칸은 이번 한 번의 답에만 붙이고 기억해 둔 대본에는 남기지 않습니다.
+    ChatRoom room = chatScriptStore.findRoom(chatId, userId).orElse(ChatRoom.COACH);
     ChatAiClient.ChatTurn next;
-    if (image == null) {
+    if (room == ChatRoom.TUTOR) {
+      // 과목 쌤: 학생의 마지막 말로 성취기준을 고르고, 검색 한도가 남았으면 웹 검색 도구를 붙입니다.
+      String standards =
+          curriculumService.standardsSection(
+              chatScriptStore.findCurriculum(chatId, userId).orElse(null),
+              lines.get(lines.size() - 1).text());
+      String imageRule = image == null ? "" : room.imageRule();
+      next = askTutor(userId, instructions + standards + imageRule, lines, topic, image);
+    } else if (image == null) {
       next = askAi(instructions, lines, topic);
     } else {
-      // 방을 잊었으면 코치로 봅니다. 사진 규칙은 이번 한 번의 답에만 붙이고 기억해 둔 대본에는 남기지 않습니다.
-      ChatRoom room = chatScriptStore.findRoom(chatId, userId).orElse(ChatRoom.COACH);
       next = askAiWithImage(instructions + room.imageRule(), lines, topic, image);
     }
     return ChatReplyResponse.withButtons(
-        chatId, next.reply(), next.quickReplies(), next.action(), next.tags());
+        chatId, next.reply(), next.quickReplies(), next.action(), next.tags(), next.sources());
   }
 
   // 위기 표현이 감지됐을 때. 보호 조치(관리 한도 0 · 회복 메시지)는 이 채팅에서 처음 감지했을 때 한 번만 합니다.
@@ -292,11 +337,33 @@ public class ChatService {
     return cleanTurn(turn.get(), DayRule.dateOf(clock.instant()), topic);
   }
 
+  // 과목 쌤 방의 답. 오늘 검색 한도가 남았으면 웹 검색 도구를 붙이고, AI 가 실제로 검색했으면 한 번 셉니다.
+  // image 는 학생의 마지막 말에 붙은 사진(없으면 null)입니다. 못 받았으면 503 입니다.
+  private ChatAiClient.ChatTurn askTutor(
+      Long userId,
+      String instructions,
+      List<CallFinishRequest.Line> lines,
+      ChatTopic topic,
+      String image) {
+    boolean webSearch = tutorWebSearch.canSearch(userId);
+    Optional<ChatAiClient.ChatTurn> turn =
+        chatAiClient.turnForTutor(instructions, lines, image, webSearch);
+    if (turn.isEmpty()) {
+      throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
+    }
+    if (turn.get().searched()) {
+      tutorWebSearch.recordSearch(userId);
+    }
+    return cleanTurn(turn.get(), DayRule.dateOf(clock.instant()), topic);
+  }
+
   // AI 가 준 답을 검사합니다. (2026-10-18 빠른 답 · 행동 버튼)
   //   - 말에 깎아내리는 말이 섞였으면 정해 둔 말로 바꾸고 버튼은 모두 뺍니다.
   //   - 빠른 답: 비었거나 20자가 넘거나 깎아내리는 말이 있으면 빼고, 같은 것은 하나만, 3개까지.
   //   - 행동: cleanAction 의 규칙에 맞을 때만 넣습니다. (today 는 make_plan 의 마감 날을 검사하는 기준)
   //   - 이유 값(tags): cleanTags 의 규칙대로 그 주제의 값만 남깁니다. 주제가 없으면 빈 목록입니다.
+  //   - 출처(sources, 과목 쌤의 웹 검색): TutorWebSearch.cleanSources 로 거릅니다. 링크는 앱이 따로 보여 주니
+  //     말 안의 링크 표시([글](주소) · 주소)는 글만 남깁니다. (withoutLinks)
   static ChatAiClient.ChatTurn cleanTurn(ChatAiClient.ChatTurn turn, LocalDate today) {
     return cleanTurn(turn, today, null);
   }
@@ -322,10 +389,24 @@ public class ChatService {
       }
     }
     return new ChatAiClient.ChatTurn(
-        turn.reply(),
+        withoutLinks(turn.reply()),
         quickReplies,
         cleanAction(turn.action(), today),
-        cleanTags(turn.tags(), topic));
+        cleanTags(turn.tags(), topic),
+        TutorWebSearch.cleanSources(turn.sources()),
+        turn.searched());
+  }
+
+  // 말 안의 링크 표시를 글만 남깁니다. 검색한 답에 AI 가 출처를 말 안에 적는 경우가 있어서입니다.
+  //   "극한은 [위키백과](https://ko.wikipedia.org/…)에 따르면 …" → "극한은 위키백과에 따르면 …"
+  //   "자세한 건 https://ebs.co.kr/abc 에" → "자세한 건  에" 처럼 주소만 지웁니다.
+  static String withoutLinks(String reply) {
+    if (reply == null) {
+      return null;
+    }
+    String text = reply.replaceAll("\\[([^\\]]+)]\\((https?://[^)\\s]+)\\)", "$1");
+    text = text.replaceAll("\\(?https?://[^\\s)]+\\)?", "");
+    return text.trim();
   }
 
   // AI 가 짐작한 이유 값 검사. 그 주제(ChatTopic.tags)에 있는 값만, 같은 것은 하나만, 3개까지 남깁니다.

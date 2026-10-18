@@ -42,6 +42,11 @@ app:
     # ⚠️ 어림값이라 실제 요금은 OpenAI 사용량 화면에서 확인해 주세요.
     cost-won-per-call-minute: ${AI_COST_WON_PER_CALL_MINUTE:80}
     cost-won-per-text-call: ${AI_COST_WON_PER_TEXT_CALL:1}
+    # 과목 쌤 방의 "찾아보기"(웹 검색)를 켤지와, 한 사람이 하루에 검색한 답을 받을 수 있는 횟수입니다. (domain/call/TutorWebSearch)
+    # 검색은 글 호출보다 비싸서 따로 작게 셉니다. 서버 메모리에서만 세서 서버가 다시 켜지면 0 부터입니다.
+    # 끄려면 AI_TUTOR_WEB_SEARCH_ENABLED=false. 꺼도 과목 쌤은 성취기준 · 아는 것으로 그대로 답합니다.
+    tutor-web-search-enabled: ${AI_TUTOR_WEB_SEARCH_ENABLED:true}
+    tutor-web-search-daily-limit: ${AI_TUTOR_WEB_SEARCH_DAILY_LIMIT:5}
   neis:
     # 교육부 NEIS(교육정보 개방 포털) 인증키입니다. 학교 학사일정을 받을 때 씁니다. (domain/school/NeisClient, 이슈 #282)
     # 비어 있어도 동작하지만 NEIS 가 한 번에 5건만 줘서 한 주씩 나눠 받고, 오늘부터 120일만 받습니다.
