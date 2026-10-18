@@ -32,6 +32,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.SettingsFromTextRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.SettingsFromTextResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.StudyQuizRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.StudyQuizResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.TextLabelRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.TextLabelResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -69,6 +71,7 @@ public class AiController {
   private final DailyMissionsService dailyMissionsService;
   private final DayPlanReviseService dayPlanReviseService;
   private final LongPlanService longPlanService;
+  private final StudyQuizService studyQuizService;
 
   @Operation(
       summary = "카드 체크리스트 추천: 카드 제목 → 항목 3~6개 (저장 안 함 · 내 지난 기록을 봄 · 못 만들면 items: null · 토큰 필요)")
@@ -210,5 +213,13 @@ public class AiController {
   @PostMapping("/long-plan/revise")
   public LongPlanResponse reviseLongPlan(@Valid @RequestBody LongPlanReviseRequest request) {
     return longPlanService.revise(request);
+  }
+
+  @Operation(
+      summary =
+          "확인 문제: 공부한 주제 · 자료 글 · 교과서 사진으로 4지선다 1~5문제 (정답 · 해설 포함, 채점은 FE · 저장 안 함 · 못 만들면 questions: null · 토큰 필요)")
+  @PostMapping("/quiz")
+  public StudyQuizResponse quiz(@Valid @RequestBody StudyQuizRequest request) {
+    return studyQuizService.make(request);
   }
 }

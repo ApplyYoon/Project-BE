@@ -15,7 +15,11 @@ class SelfAnalysisTest {
       List.of(
           new AnalysisRequest.Fact("slotRate", "tendency", "시간대별 실행률", "아침 95% · 밤 63%", "카드 64번"),
           new AnalysisRequest.Fact(
-              "hypothesisChronotype", "distortion", "아침형/밤형 가설", "밤형이라고 함 → 아침 95% · 밤 63%", "12일"),
+              "hypothesisChronotype",
+              "distortion",
+              "아침형/저녁형 가설",
+              "저녁형이라고 함 → 아침 95% · 밤 63%",
+              "12일"),
           new AnalysisRequest.Fact("topFailCause", "failure", "실패 원인 1위", "폰·SNS 5번", "실패 9번"));
 
   private static SelfAnalysis.Answer.Section section(
@@ -54,7 +58,7 @@ class SelfAnalysisTest {
   void keepsGoodSections() {
     SelfAnalysis.Answer answer =
         new SelfAnalysis.Answer(
-            "아침에 더 잘 되는데 밤형이라고 믿는 편이야",
+            "아침에 더 잘 되는데 저녁형이라고 믿는 편이야",
             List.of(
                 section(
                     "failure",
@@ -72,7 +76,7 @@ class SelfAnalysisTest {
     AnalysisResponse.Analysis analysis = SelfAnalysis.from(answer, FACTS);
 
     assertThat(analysis).isNotNull();
-    assertThat(analysis.summary()).isEqualTo("아침에 더 잘 되는데 밤형이라고 믿는 편이야");
+    assertThat(analysis.summary()).isEqualTo("아침에 더 잘 되는데 저녁형이라고 믿는 편이야");
     assertThat(analysis.sections())
         .extracting(AnalysisResponse.Section::group)
         .containsExactly("tendency", "failure");
@@ -88,7 +92,7 @@ class SelfAnalysisTest {
             "아침에 더 잘 되는 편이야",
             List.of(
                 section("tendency", "아침이 80% 더 잘 돼", "지어낸 숫자야.", "slotRate"),
-                section("distortion", "밤형이 아니야", "근거가 없어.", "모르는키"),
+                section("distortion", "저녁형이 아니야", "근거가 없어.", "모르는키"),
                 section("failure", "놓친 날엔 폰이 1위야", "가".repeat(161), "topFailCause"),
                 section("willpower", "게으른 편이야", "실패 9번이야.", "topFailCause"),
                 section("tendency", "아침 카드가 더 잘 돼", "아침 95%, 밤 63%야.", "slotRate"),

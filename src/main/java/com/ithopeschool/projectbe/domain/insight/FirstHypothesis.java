@@ -12,15 +12,15 @@ import java.util.List;
 //
 // 정해 둔 규칙
 //   1. 가설 문장은 AI 가 아니라 아래 코드의 규칙으로 만듭니다. 답 하나에 문장 하나입니다.
-//   2. 재료는 "과거에 계획이 무너졌던 때"(여러 개) 와 자기 인식 세 가지(아침형/밤형 · 한 번에 집중 가능한 시간 · 가장 큰 방해 요소)
+//   2. 재료는 "과거에 계획이 무너졌던 때"(여러 개) 와 자기 인식 세 가지(아침형/저녁형 · 한 번에 집중 가능한 시간 · 가장 큰 방해 요소)
 // 입니다.
 //      하루 공부 가능 시간은 자기 인식이지만 모두가 꼭 답하는 칸이라 쓰지 않습니다. (그 비교는 #40 "처음 계획 대비 지금" 이 합니다)
-//   3. 순서: 무너졌던 때(FailureCause 순서) → 아침형/밤형 → 집중 시간 → 방해 요소
+//   3. 순서: 무너졌던 때(FailureCause 순서) → 아침형/저녁형 → 집중 시간 → 방해 요소
 //   4. 답이 하나도 없으면 가설을 억지로 만들지 않고 빈 목록입니다. 대신 DEFAULT_SENTENCE 를 보여줍니다.
 //   5. 문장은 사용자를 깎아내리지 않습니다. "~라고 했지? 확인해볼게" 처럼 같이 알아보는 말투입니다. (CLAUDE.md 4장)
 //
 // 예시
-//   무너졌던 때 [주말] + 밤형  →  "주말에 무너지는 편이라고 했지? ..." (#37), "밤형이라고 했지? ..." (#40)
+//   무너졌던 때 [주말] + 저녁형  →  "주말에 무너지는 편이라고 했지? ..." (#37), "저녁형이라고 했지? ..." (#40)
 //   설문을 안 했거나 필수 칸만 답함  →  [] (기본 문장)
 public final class FirstHypothesis {
 
@@ -95,12 +95,12 @@ public final class FirstHypothesis {
     return new Hypothesis("pastFailureCauses", cause.getValue(), sentence, analysis);
   }
 
-  // 아침형 / 밤형 → 가설. 자기 인식과 실제 시간대 효율(#37)을 견주는 것은 #40 입니다.
+  // 아침형 / 저녁형 → 가설. 자기 인식과 실제 시간대 효율(#37)을 견주는 것은 #40 입니다.
   static Hypothesis fromChronotype(Chronotype chronotype) {
     String sentence =
         chronotype == Chronotype.MORNING
             ? "아침형이라고 했지? 오전과 밤 중 언제 더 오래 집중하는지 2주 동안 확인해볼게."
-            : "밤형이라고 했지? 밤과 오전 중 언제 더 오래 집중하는지 2주 동안 확인해볼게.";
+            : "저녁형이라고 했지? 밤과 오전 중 언제 더 오래 집중하는지 2주 동안 확인해볼게.";
     return new Hypothesis(
         "chronotype", chronotype.getValue(), sentence, HypothesisAnalysis.PERCEPTION_GAP);
   }

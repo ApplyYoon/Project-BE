@@ -15,7 +15,7 @@ import java.util.List;
 //   2. 꺼낼 것이 하나도 없으면 빈 글자입니다. 대본이 그대로입니다.
 //   3. 학생이 직접 쓴 글은 목표 제목 · 걸림돌 · 방법만, 앞 40자까지만 넣습니다. (줄바꿈은 띄어쓰기로)
 //   4. 위로하는 통화에서는 이 칸을 붙이지 않습니다. 부르는 쪽(CallService)이 정합니다.
-//   5. 아침형/밤형 답과 기록은 "답과 반대 시간대가 20%p 이상 높을 때" 만 넣습니다. 두 시간대 모두 카드가 4번 이상이어야 합니다.
+//   5. 아침형/저녁형 답과 기록은 "답과 반대 시간대가 20%p 이상 높을 때" 만 넣습니다. 두 시간대 모두 카드가 4번 이상이어야 합니다.
 //      (기획서의 "인지 왜곡 교정": 스스로 말한 것과 실제가 다를 때 학생이 알아차리게 묻습니다)
 //   6. 못 채운 이유는 2번 이상 나온 것만, 많은 것부터 2개까지 넣습니다.
 public final class CallContext {
@@ -24,7 +24,7 @@ public final class CallContext {
   static final int MAX_TEXT_LENGTH = 40;
   // 시간대 하나에 있어야 하는 카드 수 (규칙 5). 적으면 우연일 수 있어서 말하지 않습니다.
   static final int MIN_BAND_CARDS = 4;
-  // 아침과 밤의 실행률이 이만큼(%p) 이상 차이 나야 말합니다. (규칙 5)
+  // 아침과 저녁의 다 채운 비율이 이만큼(%p) 이상 차이 나야 말합니다. (규칙 5)
   static final int MIN_GAP_POINTS = 20;
   // 못 채운 이유를 넣으려면 나와야 하는 횟수와, 넣는 최대 개수 (규칙 6)
   static final int MIN_CAUSE_COUNT = 2;
@@ -43,10 +43,10 @@ public final class CallContext {
   // obstacle · plan: 목표를 만들 때 스스로 적은 걸림돌과 방법. 없으면 null
   public record GoalLine(String title, int daysUntil, String level, String obstacle, String plan) {}
 
-  // 가입 때 답한 아침형/밤형과 최근 2주 카드 기록. (규칙 5)
-  // saidNight: 밤형이라고 답했으면 true, 아침형이면 false
+  // 가입 때 답한 아침형/저녁형과 최근 2주 카드 기록. (규칙 5)
+  // saidNight: 저녁형이라고 답했으면 true, 아침형이면 false
   // morningDone / morningTotal: 아침(04:00 ~ 11:59 시작) 카드 중 체크리스트까지 다 채운 날 / 있던 날 (휴식한 날은 뺌)
-  // nightDone / nightTotal: 밤(18:00 ~ 03:59 시작) 카드 중 체크리스트까지 다 채운 날 / 있던 날
+  // nightDone / nightTotal: 저녁(18:00 ~ 03:59 시작) 카드 중 체크리스트까지 다 채운 날 / 있던 날
   // ("했다" 만 보면 끝까지 못 한 날도 한 날이 되어서, 기획서 5.1 의 계획 축(체크리스트 달성률)으로 셉니다)
   public record RhythmGap(
       boolean saidNight, int morningDone, int morningTotal, int nightDone, int nightTotal) {}
@@ -137,9 +137,9 @@ public final class CallContext {
     return lines;
   }
 
-  // 아침형/밤형 답과 다른 기록 줄 (규칙 5). 답과 같거나, 차이가 작거나, 카드가 적으면 빈 목록입니다.
-  //   밤형이라고 답함 · 아침 10번 중 9번(90%) · 밤 12번 중 6번(50%) → 두 줄
-  //   밤형이라고 답함 · 아침 50% · 밤 60%                         → 없음 (답과 같은 쪽이 높음)
+  // 아침형/저녁형 답과 다른 기록 줄 (규칙 5). 답과 같거나, 차이가 작거나, 카드가 적으면 빈 목록입니다.
+  //   저녁형이라고 답함 · 아침 10번 중 9번(90%) · 저녁 12번 중 6번(50%) → 두 줄
+  //   저녁형이라고 답함 · 아침 50% · 저녁 60%                         → 없음 (답과 같은 쪽이 높음)
   static List<String> rhythmLines(RhythmGap gap) {
     if (gap == null || gap.morningTotal() < MIN_BAND_CARDS || gap.nightTotal() < MIN_BAND_CARDS) {
       return List.of();
@@ -151,9 +151,9 @@ public final class CallContext {
     if (against < MIN_GAP_POINTS) {
       return List.of();
     }
-    String said = gap.saidNight() ? "밤형" : "아침형";
-    String better = gap.saidNight() ? "아침" : "밤";
-    String worse = gap.saidNight() ? "밤" : "아침";
+    String said = gap.saidNight() ? "저녁형" : "아침형";
+    String better = gap.saidNight() ? "아침" : "저녁";
+    String worse = gap.saidNight() ? "저녁" : "아침";
     return List.of(
         "- 가입 때 스스로 '"
             + said
@@ -163,7 +163,7 @@ public final class CallContext {
             + gap.morningDone()
             + "번("
             + morningRate
-            + "%), 밤 카드 "
+            + "%), 저녁 카드 "
             + gap.nightTotal()
             + "번 중 "
             + gap.nightDone()

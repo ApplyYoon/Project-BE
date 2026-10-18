@@ -201,6 +201,8 @@ class LoginRequiredFlowTest {
               "/api/v1/exams/{id}",
               "/api/v1/exams/1",
               "{\"subjectScores\":[{\"subjectId\":\"1\",\"actualScore\":80}]}"),
+          // 시험을 목표에 잇기 · 떼기 (이슈 #228)
+          new Api("PATCH", "/api/v1/exams/{id}/goal", "/api/v1/exams/1/goal", "{\"goalId\":\"1\"}"),
           // 공부 기록
           new Api(
               "POST",
@@ -493,6 +495,7 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/day-plan/revise",
               "{\"drafts\":[{\"date\":\"2099-01-01\",\"startTime\":\"19:00\",\"durationMinutes\":30,"
                   + "\"title\":\"수학\"}],\"request\":\"줄여 줘\"}"),
+          new Api("POST", "/api/v1/ai/quiz", "/api/v1/ai/quiz", "{\"topic\":\"수열의 극한\"}"),
           // 긴 계획(30일) (목표 한 줄로 할 일을 쓰고 날짜별로 나눕니다. 2026-10-18)
           new Api(
               "POST",

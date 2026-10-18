@@ -22,17 +22,19 @@ import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DailyMissionsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanReviseResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.LongPlanOutline;
+import com.ithopeschool.projectbe.domain.ai.dto.LongPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
-import com.ithopeschool.projectbe.domain.ai.dto.LongPlanOutline;
-import com.ithopeschool.projectbe.domain.ai.dto.LongPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ProfileLinesResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.SettingsFromTextResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.StudyQuizRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.StudyQuizResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.TextLabelResponse;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -70,6 +72,7 @@ class AiControllerTest {
   @MockitoBean private DailyMissionsService dailyMissionsService;
   @MockitoBean private DayPlanReviseService dayPlanReviseService;
   @MockitoBean private LongPlanService longPlanService;
+  @MockitoBean private StudyQuizService studyQuizService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -866,6 +869,56 @@ class AiControllerTest {
                 .content("{" + drafts + "}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("어떻게 고칠지 적어 주세요"));
+  }
+
+  // ---- 확인 문제 ----
+
+  @Test
+  @DisplayName("확인 문제: 200 과 문제 · 보기 · 정답 위치 · 해설, 앞뒤 공백을 지우고 문제 수는 기본 3으로 넘긴다")
+  void quizReturnsQuestions() throws Exception {
+    given(studyQuizService.make(any()))
+        .willReturn(
+            StudyQuizResponse.of(
+                List.of(
+                    new StudyQuiz.Question(
+                        "lim (n→∞) 1/n 의 값은?", List.of("0", "1", "∞", "없다"), 0, "0 에 가까워져."))));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/quiz")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"topic\":\" 수열의 극한 \",\"material\":\" \"}"))
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .json(
+                    "{\"showHelp\":false,\"questions\":[{\"question\":\"lim (n→∞) 1/n 의 값은?\",\"choices\":[\"0\",\"1\",\"∞\",\"없다\"],\"answerIndex\":0,\"explanation\":\"0 에 가까워져.\"}],\"reason\":null}",
+                    true));
+    verify(studyQuizService).make(new StudyQuizRequest("수열의 극한", List.of(), null, null, 3));
+  }
+
+  @Test
+  @DisplayName("확인 문제: 주제가 없거나 · 문제 수가 1~5 밖이거나 · 자료 글이 2000자를 넘으면 400 이고 서비스를 부르지 않는다")
+  void quizRejectsBadRequests() throws Exception {
+    mockMvc
+        .perform(post("/api/v1/ai/quiz").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("무엇을 공부했는지 보내 주세요"));
+    mockMvc
+        .perform(
+            post("/api/v1/ai/quiz")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"topic\":\"수학\",\"count\":6}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("문제 수는 1 ~ 5 로 보내 주세요"));
+    mockMvc
+        .perform(
+            post("/api/v1/ai/quiz")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"topic\":\"수학\",\"material\":\"" + "가".repeat(2001) + "\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("자료 글은 2000자 이하로 보내 주세요"));
+    verifyNoInteractions(studyQuizService);
   }
 
   // ---- 긴 계획(30일) ----
