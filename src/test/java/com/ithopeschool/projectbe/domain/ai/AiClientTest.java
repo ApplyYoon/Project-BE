@@ -130,6 +130,33 @@ class AiClientTest {
   }
 
   @Test
+  @DisplayName("사진과 함께 물으면 input 을 메시지 목록으로 보낸다: 질문 글(input_text) + 사진(input_image, data URL)")
+  void sendsTheImageWithTheQuestion() {
+    String image = "data:image/jpeg;base64,AQID";
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.instructions").value("지침"))
+        .andExpect(jsonPath("$.store").value(false))
+        .andExpect(jsonPath("$.input[0].role").value("user"))
+        .andExpect(jsonPath("$.input[0].content[0].type").value("input_text"))
+        .andExpect(jsonPath("$.input[0].content[0].text").value("카드 제목: 수학 문제집"))
+        .andExpect(jsonPath("$.input[0].content[1].type").value("input_image"))
+        .andExpect(jsonPath("$.input[0].content[1].image_url").value(image))
+        .andExpect(jsonPath("$.input[0].content[1].detail").value("auto"))
+        .andExpect(jsonPath("$.text.format.name").value("checklist"))
+        .andRespond(withSuccess(answerOf("{\"items\":[\"52쪽 읽기\"]}"), MediaType.APPLICATION_JSON));
+
+    Answer answer =
+        clientWith(KEY, MODEL)
+            .askWithImage(USER_ID, GptUsageKind.CHECKLIST, QUESTION, image, Answer.class)
+            .orElseThrow();
+
+    assertThat(answer.items()).containsExactly("52쪽 읽기");
+    verify(gptUsageGuard).tryUseText(USER_ID, GptUsageKind.CHECKLIST);
+    openAi.verify();
+  }
+
+  @Test
   @DisplayName("답이 JSON 이 아니거나 모양이 다르면 빈 값이다")
   void wrongShapeMeansEmpty() {
     openAi
