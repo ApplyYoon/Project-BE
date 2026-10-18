@@ -233,4 +233,37 @@ class SchoolTodayServiceTest {
     assertThatThrownBy(() -> service.getMyToday(0, 0)).isInstanceOf(ApiException.class);
     verifyNoInteractions(neisClient);
   }
+
+  @Test
+  @DisplayName("대본 줄: 시간표 · 오늘 급식 · 우리 학년 학사일정(3개까지)을 쓰고, 학교 이름은 넣지 않는다")
+  void scriptLinesForChat() {
+    SchoolTodayResponse today =
+        SchoolTodayResponse.of(
+            TODAY,
+            SCHOOL,
+            "한국디지털미디어고등학교",
+            List.of(
+                new SchoolTodayResponse.Period(1, "미적분Ⅰ"), new SchoolTodayResponse.Period(2, "문학")),
+            true,
+            List.of(
+                new SchoolTodayResponse.Meal(TODAY, "중식", List.of("흑미밥", "나주곰탕")),
+                new SchoolTodayResponse.Meal(TOMORROW, "중식", List.of("카레"))),
+            List.of(
+                new SchoolTodayResponse.Event(TODAY, "체육대회", List.of(), false, 0),
+                new SchoolTodayResponse.Event(
+                    LocalDate.of(2026, 11, 2), "3학년 모의평가", List.of(3), true, 14),
+                new SchoolTodayResponse.Event(
+                    LocalDate.of(2026, 11, 2), "2학기 2차 정기시험", List.of(1, 2), true, 14)));
+
+    List<String> lines = SchoolTodayService.linesOf(today, 2);
+
+    assertThat(lines)
+        .containsExactly(
+            "- 오늘 시간표: 1교시 미적분Ⅰ, 2교시 문학 (5교시까지만 알아)",
+            "- 오늘 중식: 흑미밥, 나주곰탕",
+            "- 다가오는 학사일정: 10월 19일 체육대회(오늘) / 11월 2일 2학기 2차 정기시험(시험, 14일 남음)");
+    assertThat(String.join("\n", lines)).doesNotContain("한국디지털미디어고등학교");
+    // 학교를 안 골랐으면 빈 목록
+    assertThat(SchoolTodayService.linesOf(SchoolTodayResponse.noSchool(TODAY), null)).isEmpty();
+  }
 }

@@ -159,6 +159,20 @@ class CallRecordServiceTest {
   }
 
   @Test
+  @DisplayName("채팅 중에 이미 위기 표현을 감지해 보호 조치를 했으면, 마무리 때 보호 조치를 다시 하지 않는다")
+  void crisisMarkedDuringChatIsNotActivatedTwice() {
+    call.markCrisis();
+    CallFinishRequest crisis =
+        new CallFinishRequest(List.of(new Line("ai", "요즘 어때?"), new Line("me", "그냥 다 사라지고 싶어")));
+
+    CallFinishResponse response = service.finish(CALL_ID, crisis);
+
+    assertThat(response.showHelp()).isTrue();
+    assertThat(call.isFinished()).isTrue();
+    verify(safetyService, never()).activate(any());
+  }
+
+  @Test
   @DisplayName("학생 말에 위기 표현이 있으면 GPT 를 부르지 않고, 내용 없이 '감지됨' 만 남기고 도움 안내를 돌려준다")
   void crisisWordsSkipGpt() {
     CallFinishRequest crisis =

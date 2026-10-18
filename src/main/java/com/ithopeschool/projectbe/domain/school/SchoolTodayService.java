@@ -121,6 +121,83 @@ public class SchoolTodayService {
         events);
   }
 
+  // AI 코치 채팅의 대본에 넣을 "오늘 학교" 줄들입니다. 학교를 안 골랐거나 아무것도 없으면 빈 목록입니다. (ChatService)
+  // - 학교 이름은 넣지 않습니다. (외부 AI 에 개인정보를 보내지 않는 규칙, AiQuestion)
+  // - 학년 · 반이 이상하면 채팅을 막지 않고 시간표만 뺍니다.
+  public List<String> scriptLines(Integer grade, Integer classNo) {
+    boolean hasClass =
+        grade != null
+            && classNo != null
+            && grade >= 1
+            && grade <= 3
+            && classNo >= 1
+            && classNo <= MAX_CLASS_NO;
+    SchoolTodayResponse today = hasClass ? getMyToday(grade, classNo) : getMyToday(null, null);
+    return linesOf(today, hasClass ? grade : null);
+  }
+
+  // 오늘 학교 정보 → 대본 줄. 예:
+  //   - 오늘 시간표: 1교시 미적분Ⅰ, 2교시 문학 (5교시까지만 알아)
+  //   - 오늘 중식: 흑미밥, 나주곰탕, 배추김치
+  //   - 다가오는 학사일정: 11월 2일 2학기 2차 정기시험(시험, 14일 남음)
+  static List<String> linesOf(SchoolTodayResponse today, Integer grade) {
+    List<String> lines = new ArrayList<>();
+    if (today.school() == null) {
+      return lines;
+    }
+    if (today.timetable() != null && !today.timetable().isEmpty()) {
+      List<String> periods = new ArrayList<>();
+      for (SchoolTodayResponse.Period period : today.timetable()) {
+        periods.add(period.period() + "교시 " + cut(period.subject(), 20));
+      }
+      lines.add(
+          "- 오늘 시간표: "
+              + String.join(", ", periods)
+              + (today.timetablePartial() ? " (5교시까지만 알아)" : ""));
+    }
+    for (SchoolTodayResponse.Meal meal : today.meals()) {
+      // 대본에는 오늘 급식만 넣습니다. 메뉴는 앞에서부터 5개까지
+      if (!meal.date().equals(today.date())) {
+        continue;
+      }
+      List<String> dishes = new ArrayList<>();
+      for (String dish : meal.dishes()) {
+        if (dishes.size() >= 5) {
+          break;
+        }
+        dishes.add(cut(dish, 20));
+      }
+      lines.add("- 오늘 " + meal.kind() + ": " + String.join(", ", dishes));
+    }
+    List<String> events = new ArrayList<>();
+    for (SchoolTodayResponse.Event event : today.events()) {
+      // 학년을 알면 우리 학년 행사만 (학년 구분이 없는 행사는 모두)
+      boolean forMe = grade == null || event.grades().isEmpty() || event.grades().contains(grade);
+      if (!forMe || events.size() >= 3) {
+        continue;
+      }
+      String left = event.dDay() == 0 ? "오늘" : event.dDay() + "일 남음";
+      events.add(
+          event.date().getMonthValue()
+              + "월 "
+              + event.date().getDayOfMonth()
+              + "일 "
+              + cut(event.name(), 30)
+              + "("
+              + (event.exam() ? "시험, " : "")
+              + left
+              + ")");
+    }
+    if (!events.isEmpty()) {
+      lines.add("- 다가오는 학사일정: " + String.join(" / ", events));
+    }
+    return lines;
+  }
+
+  private static String cut(String text, int max) {
+    return text.length() <= max ? text : text.substring(0, max);
+  }
+
   // 학년 · 반은 둘 다 주거나 둘 다 안 줘야 하고, 고등학교 1~3학년 · 1~30반이어야 합니다.
   private static void checkClass(Integer grade, Integer classNo) {
     if (grade == null && classNo == null) {
