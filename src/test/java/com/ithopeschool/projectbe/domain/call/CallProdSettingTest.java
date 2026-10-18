@@ -26,6 +26,8 @@ class CallProdSettingTest {
   class WithKeyAndRealtimeModel {
 
     @MockitoBean private CallService callService;
+    // 확인 통화 문(2026-10-18)도 Controller 가 쓰니 가짜로 둡니다.
+    @MockitoBean private CheckCallService checkCallService;
     @Autowired private CallKeyClient callKeyClient;
 
     @Test
@@ -44,6 +46,8 @@ class CallProdSettingTest {
   class WithoutRealtimeModel {
 
     @MockitoBean private CallService callService;
+    // 확인 통화 문(2026-10-18)도 Controller 가 쓰니 가짜로 둡니다.
+    @MockitoBean private CheckCallService checkCallService;
     @Autowired private CallKeyClient callKeyClient;
 
     @Test
