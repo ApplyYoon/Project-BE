@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.call.dto;
 
+import com.ithopeschool.projectbe.domain.call.ChatRoom;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -46,7 +47,27 @@ public record CallSessionRequest(
                     regexp = WEAKNESS_NAMES,
                     message = "selfReportedWeaknesses 는 정해진 약점 이름이어야 해요")
                 String>
-            selfReportedWeaknesses) {
+            selfReportedWeaknesses,
+    // 상담 채팅을 "무엇에 대한 대화인지" 와 함께 열 때만 씁니다. (2026-10-18 "코치랑 이야기하기", ChatAbout)
+    // 음성 통화(POST /realtime/session)는 이 칸을 쓰지 않습니다. 없으면 null 입니다.
+    @Valid ChatAbout about,
+    // 상담 채팅의 방: COACH(상담, 기본) · PLANNER(계획) · TUTOR(과목 쌤). 없으면 상담입니다. (2026-10-18, ChatRoom)
+    // 예전 이름 GOAL_MATE(목표 메이트)도 받아서 PLANNER 로 봅니다. 음성 통화는 이 칸을 쓰지 않습니다.
+    @Pattern(regexp = ROOMS, message = "방(room)은 COACH · PLANNER · TUTOR 중 하나예요") String room) {
+
+  // 받을 수 있는 방 이름들입니다. ChatRoom 에 방을 더하면 여기에도 더해야 합니다. (ChatRoomTest 가 확인)
+  // 맨 끝의 GOAL_MATE 는 예전 이름이라 받기만 하고 PLANNER 로 바꿉니다. (ChatRoom.from)
+  public static final String ROOMS = "COACH|PLANNER|TUTOR|" + ChatRoom.OLD_GOAL_MATE;
+
+  // 주제 · 방 없이 여는 예전 모양 (통화 · 코치 채팅 · 테스트에서 씀)
+  public CallSessionRequest(
+      Integer careLevel,
+      Integer maxHarshness,
+      Card card,
+      List<String> selfReportedBiases,
+      List<String> selfReportedWeaknesses) {
+    this(careLevel, maxHarshness, card, selfReportedBiases, selfReportedWeaknesses, null, null);
+  }
 
   // 받을 수 있는 생각 습관 이름들입니다. CognitiveBias 에 습관을 더하면 여기에도 더해야 합니다. (CallControllerTest 가 확인)
   // 받을 수 있는 약점 이름들입니다. Weakness 에 칩을 더하면 여기에도 더해야 합니다. (CallControllerTest 가 확인)

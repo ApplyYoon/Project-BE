@@ -179,6 +179,18 @@ class LoginRequiredFlowTest {
               "/api/v1/cards/results?from=2026-10-01&to=2026-10-07",
               null),
           new Api("GET", "/api/v1/cards/plan-pattern", "/api/v1/cards/plan-pattern?goalId=1", null),
+          // 이번 주 목표 (내 계획 · 기록 · 목표를 봅니다. 이슈 #88)
+          new Api("GET", "/api/v1/weekly-goals/proposal", "/api/v1/weekly-goals/proposal", null),
+          new Api(
+              "PUT",
+              "/api/v1/weekly-goals/{weekStart}",
+              "/api/v1/weekly-goals/2026-10-19",
+              "{\"kind\":\"keep\",\"target\":50,\"baseline\":50}"),
+          new Api(
+              "GET",
+              "/api/v1/weekly-goals",
+              "/api/v1/weekly-goals?from=2026-10-01&to=2026-10-31",
+              null),
           // 달력 (내 카드 결과 · 체크인을 봅니다. 이슈 #235)
           new Api("GET", "/api/v1/calendar", "/api/v1/calendar?month=2026-10", null),
           // 관리 단계 (내 카드 결과 · 체크인으로 판정해 저장합니다. 이슈 #62)
@@ -520,7 +532,9 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/long-plan/revise",
               "{\"plan\":{\"goal\":\"중간고사\",\"startDate\":\"2099-01-01\",\"endDate\":\"2099-01-05\","
                   + "\"dailyMinutes\":60,\"startTime\":\"19:00\","
-                  + "\"topics\":[{\"title\":\"수학\",\"minutes\":60}]},\"request\":\"줄여 줘\"}"));
+                  + "\"topics\":[{\"title\":\"수학\",\"minutes\":60}]},\"request\":\"줄여 줘\"}"),
+          // 코치 알림 문장 (그날 아침 · 밤 알림 문장을 미리 받습니다. 2026-10-18)
+          new Api("POST", "/api/v1/ai/nudges", "/api/v1/ai/nudges", "{\"date\":\"2099-01-01\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

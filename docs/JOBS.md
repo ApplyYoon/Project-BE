@@ -41,6 +41,7 @@ cron-job.org (알람 시계)                         Render 의 BE 서버
 | `domain/push/CallRingJob.java` | `call-ring` 작업. 정해 둔 AI 전화 시간에 전화 알림 (아래 6-5) |
 | `domain/risk/RiskConfirmJob.java` | `risk-confirm` 작업. 그날이 지난 위험 예측에 실제 달성률과 맞았는지를 채움 (아래 6-6) |
 | `domain/school/SchoolEventsJob.java` | `school-events` 작업. 우리 학생이 고른 학교의 학사일정을 NEIS 에서 새로 받음 (아래 6-7) |
+| `domain/goal/WeekGoalJudgeJob.java` | `weekly-goals` 작업. 끝난 주의 "이번 주 목표" 를 기록으로 달성 · 미달 판정해 적음 (아래 6-8) |
 | `domain/job/JobResultStore.java` | 결과를 "작업 이름 + 날짜" 한 칸에 **덮어써서** 저장 (연습용 메모리 저장소) |
 | `global/time/DayRule.java` | **하루의 기준(새벽 4시, 한국 시간)** 계산기. 날짜별로 세는 곳은 모두 이걸 씀 |
 | `global/config/ClockConfig.java` | 시계. 테스트에서 시간을 고정하려고 따로 둠 |
@@ -286,6 +287,30 @@ curl -i -X POST http://localhost:8080/api/v1/jobs/risk-confirm -H "X-Job-Key: lo
 
 ```bash
 curl -i -X POST http://localhost:8080/api/v1/jobs/school-events -H "X-Job-Key: local-job-key"
+```
+
+### 6-8. 이번 주 목표 판정 (`weekly-goals`)
+
+주가 끝난 **이번 주 목표**를 그 주의 기록(계획 · 타이머)으로 달성 · 미달 · 알 수 없음으로 판정해 적습니다. (이슈 #88, `domain/goal/WeekGoalJudgeJob.java`, 규칙은 `WeeklyGoal`)
+"지켰어?" 를 묻지 않고 타이머 기록으로 정해야 스스로 좋게 기억할 틈이 없습니다.
+
+| 칸 | 값 |
+| -- | -- |
+| URL | `https://<받은 주소>/api/v1/jobs/weekly-goals` |
+| 실행 주기 | **매주 월요일 새벽 5시** (한 주가 끝나는 월요일 새벽 4시 뒤) |
+| 요청 방법 | **POST** |
+| 헤더 | 이름 `X-Job-Key`, 값 = Render 에 넣은 **같은 키** |
+
+- **모든 학생**의 목표 중, **지난 일요일까지 끝난 주**이고 아직 판정하지 않은 것을 판정합니다.
+- **이미 판정한 목표는 건드리지 않습니다.** 그래서 같은 작업이 두 번 돌아도 결과가 같습니다. (두 번째는 판정할 것이 없어서 0개)
+- 작업이 한 주 늦게 돌아도 빠지는 목표가 없습니다. 끝난 주라면 몇 주 전 것이든 판정 전이면 채웁니다.
+- 작업이 돌기 전에도 목록(`GET /api/v1/weekly-goals`)은 그 주 기록으로 계산한 상태를 보여 줍니다. (`judged: false`)
+- 로그에는 `[주 목표 판정] n개` 처럼 **숫자만** 남깁니다.
+
+**내 컴퓨터에서 시험**
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/jobs/weekly-goals -H "X-Job-Key: local-job-key"
 ```
 
 ### 6-9. 오늘의 관리 단계 정하기 (`care-stages`)

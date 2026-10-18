@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest.Line;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
+import com.ithopeschool.projectbe.domain.call.dto.ChatAbout;
 import com.ithopeschool.projectbe.domain.call.dto.ChatMessageRequest;
 import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
@@ -29,11 +30,13 @@ import com.ithopeschool.projectbe.domain.school.SchoolTodayService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -456,5 +459,253 @@ class ChatServiceTest {
     assertThat(
             ChatService.cleanAction(new ChatReplyResponse.Action("start_quiz", null, null), TODAY))
         .isNull();
+  }
+
+  // ---- 코치랑 이야기하기 (주제가 있는 채팅, 2026-10-18) ----
+
+  private static CallSessionRequest startAbout(String kind, String... facts) {
+    return new CallSessionRequest(
+        2, 3, null, null, null, new ChatAbout(kind, List.of(facts)), null);
+  }
+
+  private static CallSessionRequest startIn(String room, ChatAbout about) {
+    return new CallSessionRequest(2, 3, null, null, null, about, room);
+  }
+
+  @Test
+  @DisplayName("주제와 함께 열면 대본 끝에 [이번 대화의 주제] 칸을 붙이고, 주제를 기억하고, 그 주제의 이유 값만 돌려준다")
+  void startWithTopic() {
+    List<String> facts = List.of("카드: 미적분 3단원 40분", "집중도 82%, 폰 3번 들었음");
+    String withTopic = SCRIPT + CallScript.topicSection(ChatTopic.SESSION_REVIEW, facts);
+    given(chatAiClient.turn(withTopic, List.of()))
+        .willReturn(
+            Optional.of(
+                new ChatAiClient.ChatTurn(
+                    "40분 했네! 폰을 3번 들었던데 어땠어?",
+                    List.of("폰이 신경 쓰였어"),
+                    null,
+                    List.of("phone", "sick", "phone"))));
+
+    ChatReplyResponse response =
+        service.start(startAbout("SESSION_REVIEW", facts.get(0), facts.get(1)));
+
+    assertThat(response.reply()).isEqualTo("40분 했네! 폰을 3번 들었던데 어땠어?");
+    // "sick" 은 후기의 이유 값이 아니라서, 두 번째 "phone" 은 겹쳐서 빠집니다.
+    assertThat(response.tags()).containsExactly("phone");
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(withTopic);
+    assertThat(chatScriptStore.findTopic(CHAT_ID, USER_ID)).contains(ChatTopic.SESSION_REVIEW);
+  }
+
+  @Test
+  @DisplayName("주제로 연 채팅은 말을 주고받을 때도 그 주제의 이유 값만 돌려준다")
+  void sendKeepsTopicTags() {
+    givenOpenChat();
+    chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, ChatTopic.CARD_FAIL);
+    ChatMessageRequest request = said("어제 미루다가 그냥 잤어");
+    given(chatAiClient.turn(SCRIPT, request.lines()))
+        .willReturn(
+            Optional.of(
+                new ChatAiClient.ChatTurn(
+                    "미루다 보니 늦어졌구나. 이유: 미루다 보니 · 피곤 — 맞아?",
+                    List.of(),
+                    null,
+                    List.of("procrastinated", "stuck", "tired", "phone", "sick"))));
+
+    ChatReplyResponse response = service.send(CHAT_ID, request);
+
+    // "stuck" 은 못 한 카드의 이유 값이 아니라서 빠지고, 3개까지만 남습니다.
+    assertThat(response.tags()).containsExactly("procrastinated", "tired", "phone");
+  }
+
+  @Test
+  @DisplayName("주제 없이 연 채팅 · 서버가 주제를 잊은 채팅은 이유 값이 늘 빈 목록이다")
+  void noTopicMeansNoTags() {
+    givenOpenChat();
+    ChatMessageRequest request = said("폰 봤어");
+    given(chatAiClient.turn(SCRIPT, request.lines()))
+        .willReturn(
+            Optional.of(new ChatAiClient.ChatTurn("그랬구나", List.of(), null, List.of("phone"))));
+
+    assertThat(service.send(CHAT_ID, request).tags()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("주제의 사실 줄에 위기 표현이 있으면 AI 를 부르지 않고 안내로 열고, 보호 조치를 한 번 한다")
+  void startWithCrisisInTopic() {
+    ChatReplyResponse response = service.start(startAbout("QUIZ_WRONG", "문제: 죽고 싶다는 말의 뜻은?"));
+
+    assertThat(response.showHelp()).isTrue();
+    assertThat(response.reply()).isEqualTo(ChatService.CHAT_CRISIS_REPLY);
+    assertThat(response.chatId()).isEqualTo(String.valueOf(CHAT_ID));
+    verify(chatAiClient, never()).turn(any(), anyList());
+    verify(gptUsageGuard, never()).tryUseText(any(), any());
+    verify(safetyService).activate(USER_ID);
+    ArgumentCaptor<CallRecord> saved = ArgumentCaptor.forClass(CallRecord.class);
+    verify(callRecordRepository).save(saved.capture());
+    assertThat(saved.getValue().isCrisisDetected()).isTrue();
+    // 이어지는 대화는 주제 없이 "들어 주기만" 하는 대본으로 갑니다.
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID))
+        .contains(SCRIPT + ChatService.CRISIS_FOLLOW_UP);
+    assertThat(chatScriptStore.findTopic(CHAT_ID, USER_ID)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("이유 값 검사: 그 주제의 값만, 겹치지 않게, 3개까지. 주제가 없거나 이유 값을 안 쓰는 주제면 빈 목록")
+  void cleansTags() {
+    assertThat(
+            ChatService.cleanTags(
+                List.of("phone", "PHONE", " tired ", "sick", "phone"), ChatTopic.SESSION_REVIEW))
+        .containsExactly("phone", "tired");
+    assertThat(ChatService.cleanTags(List.of("phone"), ChatTopic.WEEKLY_REPORT)).isEmpty();
+    assertThat(ChatService.cleanTags(List.of("phone"), null)).isEmpty();
+    assertThat(ChatService.cleanTags(null, ChatTopic.CARD_FAIL)).isEmpty();
+    List<String> withNull = new ArrayList<>();
+    withNull.add(null);
+    withNull.add("sick");
+    assertThat(ChatService.cleanTags(withNull, ChatTopic.CARD_FAIL)).containsExactly("sick");
+  }
+
+  @Test
+  @DisplayName("AI 의 말에 깎아내리는 말이 있으면 이유 값도 같이 뺀다")
+  void bannedReplyDropsTags() {
+    ChatAiClient.ChatTurn turn =
+        new ChatAiClient.ChatTurn("이것도 못 하다니 한심해.", List.of(), null, List.of("phone"));
+
+    assertThat(ChatService.cleanTurn(turn, TODAY, ChatTopic.SESSION_REVIEW).tags()).isEmpty();
+  }
+
+  // ---- 방 3개: 상담 · 계획 · 과목 쌤 (2026-10-18) ----
+
+  @Test
+  @DisplayName("과목 쌤 방은 대본 끝에 [이번 방: 과목 쌤] 칸을 붙이고, 학생 성향 칸은 붙이지 않고, 방을 기억한다")
+  void startInTutorRoom() {
+    Map<PsychItem, Integer> answers = new EnumMap<>(PsychItem.class);
+    for (PsychItem item : PsychItem.values()) {
+      answers.put(item, item.scale() == PsychScale.START_RESISTANCE ? 7 : 4);
+    }
+    given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(Optional.of(new PsychTest(USER_ID, NOW, answers)));
+    String tutorScript = SCRIPT + ChatRoom.TUTOR.section();
+    given(chatAiClient.turn(tutorScript, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("어떤 문제가 막혔어?")));
+
+    ChatReplyResponse response = service.start(startIn("TUTOR", null));
+
+    assertThat(response.reply()).isEqualTo("어떤 문제가 막혔어?");
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(tutorScript);
+    assertThat(tutorScript).doesNotContain("[학생 성향]");
+    assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.TUTOR);
+  }
+
+  @Test
+  @DisplayName("계획 방에 이번 주 숫자를 주제로 열면 [이번 방] 칸 뒤에 [이번 대화의 주제] 칸이 붙는다")
+  void startInPlannerRoomWithWeeklyReport() {
+    List<String> facts = List.of("이번 주 순공 6시간 10분, 계획의 72%");
+    String script =
+        SCRIPT
+            + ChatRoom.PLANNER.section()
+            + CallScript.topicSection(ChatTopic.WEEKLY_REPORT, facts);
+    given(chatAiClient.turn(script, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("이번 주 72% 했네. 다음 주엔 뭘 바꿔 볼까?")));
+
+    ChatReplyResponse response =
+        service.start(startIn("PLANNER", new ChatAbout("WEEKLY_REPORT", facts)));
+
+    assertThat(response.reply()).isEqualTo("이번 주 72% 했네. 다음 주엔 뭘 바꿔 볼까?");
+    assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.PLANNER);
+    assertThat(chatScriptStore.findTopic(CHAT_ID, USER_ID)).contains(ChatTopic.WEEKLY_REPORT);
+  }
+
+  @Test
+  @DisplayName("예전 방 이름 GOAL_MATE 로 열어도 계획 방(PLANNER)으로 열리고 계획 방 대본을 쓴다")
+  void startWithOldGoalMateNameOpensPlanner() {
+    String script = SCRIPT + ChatRoom.PLANNER.section();
+    given(chatAiClient.turn(script, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("오늘 할 일부터 말해 줄래?")));
+
+    ChatReplyResponse response = service.start(startIn("GOAL_MATE", null));
+
+    assertThat(response.reply()).isEqualTo("오늘 할 일부터 말해 줄래?");
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(script);
+    assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.PLANNER);
+  }
+
+  @Test
+  @DisplayName("방을 고르지 않으면 코치 방이고 대본은 지금과 같다 (주제와 방이 안 맞아도 그대로 연다)")
+  void startWithoutRoomIsCoach() {
+    List<String> facts = List.of("문제: lim 1/n / 학생 답: 1 / 정답: 0");
+    String script = SCRIPT + CallScript.topicSection(ChatTopic.QUIZ_WRONG, facts);
+    given(chatAiClient.turn(script, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("왜 1 이라고 생각했어?")));
+
+    service.start(startIn(null, new ChatAbout("QUIZ_WRONG", facts)));
+
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(script);
+    assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.COACH);
+  }
+
+  // ---- 사진 질문 (2026-10-18) ----
+
+  // 진짜로 읽을 수 있는 아주 작은 사진 글자 (내용은 상관없고, base64 로 풀리기만 하면 됩니다)
+  private static final String IMAGE =
+      "data:image/jpeg;base64,"
+          + Base64.getEncoder().encodeToString("사진".getBytes(StandardCharsets.UTF_8));
+
+  @Test
+  @DisplayName("사진이 붙은 말은 그 한 번만 사진과 함께 보내고, 과목 쌤 방의 사진 규칙을 잠깐 붙인다 (기억한 대본은 그대로)")
+  void sendWithImageInTutorRoom() {
+    givenOpenChat();
+    chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, null, ChatRoom.TUTOR);
+    ChatMessageRequest request = new ChatMessageRequest(said("이 문제 어디서 틀렸어?").lines(), IMAGE);
+    given(chatAiClient.turnWithImage(SCRIPT + ChatRoom.TUTOR.imageRule(), request.lines(), IMAGE))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("3번 문제 맞지? 어디까지 풀었어?")));
+
+    ChatReplyResponse response = service.send(CHAT_ID, request);
+
+    assertThat(response.reply()).isEqualTo("3번 문제 맞지? 어디까지 풀었어?");
+    verify(chatAiClient, never()).turn(any(), anyList());
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(SCRIPT);
+  }
+
+  @Test
+  @DisplayName("방을 잊은 채팅에 사진이 오면 코치 방의 사진 규칙을 쓴다")
+  void sendWithImageWhenRoomIsLost() {
+    givenOpenChat();
+    ChatMessageRequest request = new ChatMessageRequest(said("이거 내 계획표야").lines(), IMAGE);
+    given(chatAiClient.turnWithImage(SCRIPT + ChatRoom.COACH.imageRule(), request.lines(), IMAGE))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("계획표 봤어!")));
+
+    assertThat(service.send(CHAT_ID, request).reply()).isEqualTo("계획표 봤어!");
+  }
+
+  @Test
+  @DisplayName("사진이 없으면 사진 없이 보낸다")
+  void sendWithoutImage() {
+    givenOpenChat();
+    ChatMessageRequest request = said("폰 봤어");
+    given(chatAiClient.turn(SCRIPT, request.lines()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("그랬구나")));
+
+    service.send(CHAT_ID, request);
+
+    verify(chatAiClient, never()).turnWithImage(any(), anyList(), any());
+  }
+
+  @Test
+  @DisplayName("사진 모양이 틀리면 400 이고 AI 한도를 쓰지 않는다")
+  void rejectsBadImage() {
+    givenOpenChat();
+    ChatMessageRequest gif =
+        new ChatMessageRequest(said("이거 봐").lines(), "data:image/gif;base64,R0lGOD");
+    ChatMessageRequest broken =
+        new ChatMessageRequest(said("이거 봐").lines(), "data:image/jpeg;base64,@@@");
+
+    assertError(
+        () -> service.send(CHAT_ID, gif),
+        ErrorCode.VALIDATION_ERROR,
+        "사진은 jpeg · png · webp 의 data URL 로 보내 주세요");
+    assertError(
+        () -> service.send(CHAT_ID, broken), ErrorCode.VALIDATION_ERROR, "사진을 읽을 수 없어요. 다시 찍어 주세요");
+    verify(gptUsageGuard, never()).tryUseText(any(), any());
   }
 }
