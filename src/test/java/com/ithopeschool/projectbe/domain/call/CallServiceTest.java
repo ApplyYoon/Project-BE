@@ -16,6 +16,8 @@ import com.ithopeschool.projectbe.domain.call.CallKeyClient.CallKey;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
+import com.ithopeschool.projectbe.domain.card.CardRepository;
+import com.ithopeschool.projectbe.domain.cardresult.CardResultService;
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.domain.checkin.CheckIn;
 import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
@@ -26,6 +28,7 @@ import com.ithopeschool.projectbe.domain.exam.ExamScoreRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamType;
 import com.ithopeschool.projectbe.domain.goal.GoalRepository;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
+import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
@@ -77,13 +80,17 @@ class CallServiceTest {
   private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
   // 오늘이 위험한 날인지는 가짜로 둡니다. 진짜 계산은 RiskRuleTest · RiskServiceTest 가 확인합니다. (기본은 위험 없음)
   private final RiskService riskService = mock(RiskService.class);
-  // 대본 끝 "[기록에서 꺼낸 것]" 의 재료(시험 점수 · 과목 · 목표)도 기본으로 없습니다. (CallContextLoader)
+  // 대본 끝 "[기록에서 꺼낸 것]" 의 재료(시험 점수 · 과목 · 목표 · 설문 · 카드 판정)도 기본으로 없습니다. (CallContextLoader)
   private final CallContextLoader callContextLoader =
       new CallContextLoader(
           examRepository,
           mock(ExamScoreRepository.class),
           mock(SubjectRepository.class),
-          mock(GoalRepository.class));
+          mock(GoalRepository.class),
+          mock(OnboardingAnswerRepository.class),
+          mock(CardRepository.class),
+          mock(CardResultService.class),
+          studySessionRepository);
   // 지금은 2026-10-11 오후 3시(한국 시간)입니다. 오늘 날짜는 2026-10-11 입니다.
   private static final Instant NOW = Instant.parse("2026-10-11T06:00:00Z");
   private static final LocalDate TODAY = LocalDate.of(2026, 10, 11);

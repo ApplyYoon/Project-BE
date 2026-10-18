@@ -80,4 +80,47 @@ class CallContextTest {
     assertThat(CallContext.cut("가".repeat(41))).isEqualTo("가".repeat(40) + "…");
     assertThat(CallContext.cut("가".repeat(40))).isEqualTo("가".repeat(40));
   }
+
+  @Test
+  @DisplayName("밤형이라고 답했는데 아침 카드가 20%p 이상 더 잘 됐으면, 몇 번 중 몇 번인지 적고 스스로 알아차리게 물으라고 한다")
+  void rhythmAgainstWhatTheySaid() {
+    List<String> lines = CallContext.rhythmLines(new CallContext.RhythmGap(true, 9, 10, 6, 12));
+
+    assertThat(lines.get(0))
+        .isEqualTo(
+            "- 가입 때 스스로 '밤형' 이라고 답했어. 그런데 최근 2주 기록에서 체크리스트까지 다 채운 날은 아침 카드 10번 중 9번(90%), 밤 카드 12번 중 6번(50%)이야.");
+    assertThat(lines.get(1)).contains("단정하지 말고", "아침이 더 잘 되는 것 같은데", "밤에 하던 카드 하나를 아침으로");
+  }
+
+  @Test
+  @DisplayName("아침형이라고 답했는데 밤이 더 잘 됐어도 같은 방식으로 적는다")
+  void morningSaidButNightBetter() {
+    assertThat(CallContext.rhythmLines(new CallContext.RhythmGap(false, 2, 5, 4, 5)).get(1))
+        .contains("밤이 더 잘 되는 것 같은데", "아침에 하던 카드 하나를 밤으로");
+  }
+
+  @Test
+  @DisplayName("답한 쪽이 더 잘 됐거나, 차이가 20%p 보다 작거나, 한쪽 카드가 4번보다 적으면 넣지 않는다")
+  void noRhythmLines() {
+    assertThat(CallContext.rhythmLines(new CallContext.RhythmGap(true, 2, 5, 5, 5))).isEmpty();
+    assertThat(CallContext.rhythmLines(new CallContext.RhythmGap(true, 7, 10, 6, 10))).isEmpty();
+    assertThat(CallContext.rhythmLines(new CallContext.RhythmGap(true, 3, 3, 1, 10))).isEmpty();
+    assertThat(CallContext.rhythmLines(null)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("못 채운 이유는 2번 이상 나온 것만, 앞에서부터 2개까지 적는다")
+  void causeLines() {
+    List<String> lines =
+        CallContext.causeLines(
+            List.of(
+                new CallContext.CauseCount("피곤·수면", 6),
+                new CallContext.CauseCount("계획 과다", 3),
+                new CallContext.CauseCount("딴생각", 2),
+                new CallContext.CauseCount("막힘", 1)));
+
+    assertThat(lines.get(0)).isEqualTo("- 최근 2주 카드를 못 채웠을 때 고른 이유: 피곤·수면 6번, 계획 과다 3번");
+    assertThat(lines.get(1)).contains("탓하지 말고");
+    assertThat(CallContext.causeLines(List.of(new CallContext.CauseCount("막힘", 1)))).isEmpty();
+  }
 }
