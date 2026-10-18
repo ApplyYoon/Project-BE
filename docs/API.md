@@ -2731,8 +2731,15 @@ AI 문단이 없을 때도 **200** 이고, `paragraph` 만 `null` 입니다(`evi
 열기 · 말 보내기의 **응답 200**
 
 ```json
-{ "chatId": "12", "reply": "그때 폰은 어디 있었어?", "showHelp": false, "helpLines": [] }
+{ "chatId": "12", "reply": "그때 폰은 어디 있었어?", "showHelp": false, "helpLines": [],
+  "quickReplies": ["침대 옆에 있었어", "책상 위에"], "action": null }
 ```
+
+- **빠른 답 · 행동 버튼 (2026-10-18):** AI 가 답할 때 정해진 JSON 모양(`text.format: json_schema`, `ChatAiClient.TURN_SCHEMA`)으로 `reply` · `quickReplies` · `action` 을 같이 줍니다.
+  - `quickReplies`: 학생이 눌러서 바로 보낼 짧은 답. 서버가 빈 것 · 20자 넘는 것 · 깎아내리는 말 · 겹치는 것을 빼고 **3개까지** 넣습니다. 없으면 빈 목록입니다.
+  - `action`: `{ type, minutes, title }` 하나 또는 `null`. `start_timer`(공부 시작) · `shrink_today`(오늘 목표를 `minutes` 5~60분으로 줄여 시작) · `create_card`(새 할 일 `title` 1~20자, `minutes` 5~120, 이상하면 25분). 규칙에 안 맞으면 `null` 입니다. FE 는 학생이 눌렀을 때만 실행합니다.
+  - AI 의 말에 깎아내리는 말이 있으면 정해 둔 말로 바꾸고 버튼은 모두 뺍니다. 받은 글이 JSON 이 아니면 그 글을 그대로 말로 쓰고 버튼은 없습니다.
+  - 위기 표현일 때 · '목표 만들기' 대화는 버튼이 없습니다(빈 목록 · `null`).
 
 - **대화 원문은 서버에 저장하지 않습니다.** FE 가 대화를 들고 있다가 매번 같이 보내고, 끝낼 때도 같은 줄들을 `finish` 로 보냅니다. (통화와 같은 원칙, CLAUDE.md 4장)
 - `lines` 는 1 ~ 60줄, 한 줄은 500자까지, `speaker` 는 `ai` · `me` 입니다. **마지막 줄은 학생(`me`)의 말**이어야 합니다.
