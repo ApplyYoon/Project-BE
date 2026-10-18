@@ -22,7 +22,10 @@ import java.util.List;
 //   8. 감정 태그는 최근 7일에 2번 이상 고른 것만, 많은 것부터 3개까지 넣습니다.
 //   9. 카드 실행률은 최근 7일과 그 앞 2주 모두 카드가 3번 이상이고, 15%p 이상 차이 날 때만 넣습니다.
 //  10. 수면은 6시간보다 적게 잤을 때만 넣습니다. (수면 보호 시간 6시간과 같은 기준)
+//  11. 이번 주 목표는 정했을 때만, 제목과 지금 숫자를 넣습니다. (WeekGoalService, 이슈 #88)
+//  12. 진행 중인 자기 실험은 14일이 안 끝난 것만, 실험 규칙 · 붙인 카드 제목(3장까지) · 며칠째를 넣습니다. (이슈 #52)
 // 7 ~ 10 은 "ChatGPT 는 내 어제를 모른다" 를 보여 주는 최근 기록입니다. 대본에서 시험 · 목표보다 앞에 둡니다. (2026-10-18)
+// 11 · 12 는 학생이 지금 하고 있는 약속(이번 주 목표 · 실험)이라 최근 기록 바로 뒤에 둡니다.
 public final class CallContext {
 
   // 학생이 쓴 글을 넣을 때의 최대 글자 수 (규칙 3)
@@ -42,6 +45,8 @@ public final class CallContext {
   static final int MIN_RATE_GAP_POINTS = 15;
   // 이보다 적게 잤으면 말합니다. (분, 규칙 10)
   static final int SHORT_SLEEP_MINUTES = 360;
+  // 실험 하나에 적는 카드 제목의 최대 개수 (규칙 12)
+  static final int MAX_EXPERIMENT_CARDS = 3;
 
   // 다음 시험. name: 시험 이름 / daysUntil: 남은 날 (오늘이면 0)
   public record NextExam(String name, int daysUntil) {}
@@ -86,6 +91,18 @@ public final class CallContext {
     public static final Recent NONE = new Recent(null, List.of(), null, null);
   }
 
+  // 이번 주 목표 (규칙 11). title: "완주율 65% 넘기기" / current: 지금 숫자, 아직 모르면 null / unit: "%" 또는 "분"
+  public record WeekGoalLine(String title, Integer current, String unit) {}
+
+  // 진행 중인 자기 실험 하나 (규칙 12). rule: 실험 규칙 한 줄 / cardTitles: 붙인 카드 제목 / day: 며칠째 (1 ~ 14)
+  public record ExperimentLine(String rule, List<String> cardTitles, int day) {}
+
+  // 학생이 지금 하고 있는 약속 (규칙 11 · 12). 없는 것은 null 이나 빈 목록입니다.
+  public record Ongoing(WeekGoalLine weekGoal, List<ExperimentLine> experiments) {
+
+    public static final Ongoing NONE = new Ongoing(null, List.of());
+  }
+
   // 대본에 넣을 기록 전부. 없는 것은 null 이나 빈 목록입니다.
   public record Facts(
       NextExam nextExam,
@@ -93,13 +110,25 @@ public final class CallContext {
       List<GoalLine> goals,
       RhythmGap rhythmGap,
       List<CauseCount> causes,
-      Recent recent) {
+      Recent recent,
+      Ongoing ongoing) {
 
     public static final Facts NONE = new Facts(null, null, List.of());
 
     // 시험 · 목표만 있을 때
     public Facts(NextExam nextExam, PastExam pastExam, List<GoalLine> goals) {
-      this(nextExam, pastExam, goals, null, List.of(), Recent.NONE);
+      this(nextExam, pastExam, goals, null, List.of(), Recent.NONE, Ongoing.NONE);
+    }
+
+    // 이번 주 목표 · 실험(규칙 11 · 12)이 없을 때
+    public Facts(
+        NextExam nextExam,
+        PastExam pastExam,
+        List<GoalLine> goals,
+        RhythmGap rhythmGap,
+        List<CauseCount> causes,
+        Recent recent) {
+      this(nextExam, pastExam, goals, rhythmGap, causes, recent, Ongoing.NONE);
     }
 
     // 최근 기록(규칙 7 ~ 10)이 없을 때
@@ -109,7 +138,7 @@ public final class CallContext {
         List<GoalLine> goals,
         RhythmGap rhythmGap,
         List<CauseCount> causes) {
-      this(nextExam, pastExam, goals, rhythmGap, causes, Recent.NONE);
+      this(nextExam, pastExam, goals, rhythmGap, causes, Recent.NONE, Ongoing.NONE);
     }
   }
 
@@ -120,6 +149,8 @@ public final class CallContext {
   public static String section(Facts facts) {
     List<String> body = new ArrayList<>();
     body.addAll(recentLines(facts.recent()));
+    body.addAll(weekGoalLines(facts.ongoing().weekGoal()));
+    body.addAll(experimentLines(facts.ongoing().experiments()));
     body.addAll(examLines(facts.nextExam(), facts.pastExam()));
     body.addAll(goalLines(facts.goals()));
     body.addAll(rhythmLines(facts.rhythmGap()));
@@ -329,6 +360,40 @@ public final class CallContext {
             + rate.baselineCards()
             + "번)",
         guide);
+  }
+
+  // 이번 주 목표 줄 (규칙 11)
+  //   「완주율 65% 넘기기」, 지금 50%  →  "- 이번 주 목표: 「완주율 65% 넘기기」 (지금 50%)"
+  static List<String> weekGoalLines(WeekGoalLine goal) {
+    if (goal == null) {
+      return List.of();
+    }
+    String now = goal.current() == null ? "아직 기록 없음" : "지금 " + goal.current() + goal.unit();
+    return List.of(
+        "- 이번 주 목표: 「" + goal.title() + "」 (" + now + ")",
+        "  - 남은 날 중 오늘 할 수 있는 한 가지로 이어 줘. 달성을 재촉하거나 겁주지 마.");
+  }
+
+  // 진행 중인 자기 실험 줄 (규칙 12). 카드 제목은 3장까지, 학생이 쓴 글이라 앞 40자만
+  //   「시작할 때 폰을 가방에 넣기」, 카드 「수학 문제집」, 5일째
+  //     →  "- 진행 중인 자기 실험 (14일 중 5일째): 「시작할 때 폰을 가방에 넣기」 · 붙인 카드 「수학 문제집」"
+  static List<String> experimentLines(List<ExperimentLine> experiments) {
+    List<String> lines = new ArrayList<>();
+    for (ExperimentLine experiment : experiments) {
+      List<String> titles = new ArrayList<>();
+      for (String title : experiment.cardTitles()) {
+        if (titles.size() < MAX_EXPERIMENT_CARDS) {
+          titles.add("「" + cut(title) + "」");
+        }
+      }
+      String cards = titles.isEmpty() ? "" : " · 붙인 카드 " + String.join(", ", titles);
+      lines.add(
+          "- 진행 중인 자기 실험 (14일 중 " + experiment.day() + "일째): 「" + experiment.rule() + "」" + cards);
+    }
+    if (!lines.isEmpty()) {
+      lines.add("  - 그 카드를 할 때 이 실험 규칙을 떠올리게 해. 지켰는지는 카드 기록으로 판정하니 캐묻지 마.");
+    }
+    return lines;
   }
 
   // 학생이 쓴 글을 대본에 넣을 모양으로 다듬습니다. 줄바꿈은 띄어쓰기로, 40자가 넘으면 자르고 "…" 를 붙입니다. (규칙 3)

@@ -206,4 +206,54 @@ class CallContextTest {
   void noRecent() {
     assertThat(CallContext.section(recentOnly(CallContext.Recent.NONE))).isEmpty();
   }
+
+  // ---- 이번 주 목표 · 자기 실험 (규칙 11 · 12) ----
+
+  @Test
+  @DisplayName("이번 주 목표 · 진행 중 실험은 최근 기록 뒤, 시험 앞에 적는다")
+  void ongoingOrder() {
+    CallContext.Recent recent =
+        new CallContext.Recent(null, List.of(new CallContext.EmotionCount("피곤함", 2)), null, null);
+    CallContext.Ongoing ongoing =
+        new CallContext.Ongoing(
+            new CallContext.WeekGoalLine("완주율 65% 넘기기", 50, "%"),
+            List.of(new CallContext.ExperimentLine("시작할 때 폰을 가방에 넣기", List.of("수학 문제집"), 5)));
+    String section =
+        CallContext.section(
+            new Facts(
+                new NextExam("11월 학평", 33), null, List.of(), null, List.of(), recent, ongoing));
+
+    assertThat(section)
+        .containsSubsequence(
+            "- 최근 7일 체크인에서 고른 감정: 피곤함 2번",
+            "- 이번 주 목표: 「완주율 65% 넘기기」 (지금 50%)",
+            "- 진행 중인 자기 실험 (14일 중 5일째): 「시작할 때 폰을 가방에 넣기」 · 붙인 카드 「수학 문제집」",
+            "캐묻지 마",
+            "- 다음 시험: 11월 학평 (D-33)");
+  }
+
+  @Test
+  @DisplayName("이번 주 목표: 아직 숫자가 없으면 '아직 기록 없음', 없으면 아무 줄도 없다")
+  void weekGoalLines() {
+    assertThat(
+            CallContext.weekGoalLines(new CallContext.WeekGoalLine("시작 지연 18분 안으로", null, "분"))
+                .get(0))
+        .isEqualTo("- 이번 주 목표: 「시작 지연 18분 안으로」 (아직 기록 없음)");
+    assertThat(CallContext.weekGoalLines(null)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("실험: 카드 제목은 3장까지, 카드가 없으면 규칙만, 실험이 없으면 아무 줄도 없다")
+  void experimentLines() {
+    List<String> lines =
+        CallContext.experimentLines(
+            List.of(
+                new CallContext.ExperimentLine("체크리스트를 하나 줄이기", List.of("a", "b", "c", "d"), 2),
+                new CallContext.ExperimentLine("끝나면 한 일을 한 줄로 남기기", List.of(), 14)));
+
+    assertThat(lines.get(0)).endsWith("붙인 카드 「a」, 「b」, 「c」");
+    assertThat(lines.get(1)).isEqualTo("- 진행 중인 자기 실험 (14일 중 14일째): 「끝나면 한 일을 한 줄로 남기기」");
+    assertThat(lines).hasSize(3);
+    assertThat(CallContext.experimentLines(List.of())).isEmpty();
+  }
 }

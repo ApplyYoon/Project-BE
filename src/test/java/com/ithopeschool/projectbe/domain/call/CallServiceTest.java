@@ -28,7 +28,9 @@ import com.ithopeschool.projectbe.domain.exam.Exam;
 import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamScoreRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamType;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentRepository;
 import com.ithopeschool.projectbe.domain.goal.GoalRepository;
+import com.ithopeschool.projectbe.domain.goal.WeekGoalService;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
@@ -82,7 +84,7 @@ class CallServiceTest {
   private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
   // 오늘이 위험한 날인지는 가짜로 둡니다. 진짜 계산은 RiskRuleTest · RiskServiceTest 가 확인합니다. (기본은 위험 없음)
   private final RiskService riskService = mock(RiskService.class);
-  // 대본 끝 "[기록에서 꺼낸 것]" 의 재료(시험 점수 · 과목 · 목표 · 설문 · 카드 판정 · 체크인 · 수면)도 기본으로 없습니다.
+  // 대본 끝 "[기록에서 꺼낸 것]" 의 재료(시험 점수 · 과목 · 목표 · 설문 · 카드 판정 · 체크인 · 수면 · 이번 주 목표 · 실험)도 기본으로 없습니다.
   // (CallContextLoader)
   private final CallContextLoader callContextLoader =
       new CallContextLoader(
@@ -95,7 +97,9 @@ class CallServiceTest {
           mock(CardResultService.class),
           studySessionRepository,
           mock(CheckInRepository.class),
-          mock(DailySignalRepository.class));
+          mock(DailySignalRepository.class),
+          mock(WeekGoalService.class),
+          mock(ExperimentRepository.class));
   // 지금은 2026-10-11 오후 3시(한국 시간)입니다. 오늘 날짜는 2026-10-11 입니다.
   private static final Instant NOW = Instant.parse("2026-10-11T06:00:00Z");
   private static final LocalDate TODAY = LocalDate.of(2026, 10, 11);

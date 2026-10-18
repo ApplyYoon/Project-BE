@@ -16,10 +16,17 @@ import com.ithopeschool.projectbe.domain.exam.ExamDday;
 import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamScore;
 import com.ithopeschool.projectbe.domain.exam.ExamScoreRepository;
+import com.ithopeschool.projectbe.domain.experiment.Experiment;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentRepository;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentRule;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentStatus;
 import com.ithopeschool.projectbe.domain.goal.Goal;
 import com.ithopeschool.projectbe.domain.goal.GoalKind;
 import com.ithopeschool.projectbe.domain.goal.GoalRepository;
 import com.ithopeschool.projectbe.domain.goal.GoalStatus;
+import com.ithopeschool.projectbe.domain.goal.WeekGoalService;
+import com.ithopeschool.projectbe.domain.goal.WeeklyGoal;
+import com.ithopeschool.projectbe.domain.goal.dto.WeekGoalDto;
 import com.ithopeschool.projectbe.domain.onboarding.Chronotype;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
@@ -59,12 +66,16 @@ import org.springframework.stereotype.Component;
 //   - 감정 태그: 오늘 포함 최근 7일 체크인에서 고른 감정과 횟수
 //   - 카드 실행률: 최근 7일(어제까지)과 그 앞 2주의 실행률 평균 (휴식한 날은 뺌)
 //   - 수면: 오늘, 없으면 어제 날짜의 하루 신호에 적힌 잔 시간
+//   - 이번 주 목표: 이번 주(월요일) 목표와 지금 숫자 (WeekGoalService.thisWeekOf)
+//   - 자기 실험: 진행 중이고 14일이 안 끝난 실험과 붙인 카드 제목
 @Component
 @RequiredArgsConstructor
 public class CallContextLoader {
 
   // 대본에 넣는 목표의 최대 개수. 많으면 AI 가 늘어놓기 쉬워서 줄입니다.
   static final int MAX_GOALS = 2;
+  // 이번 주 목표 중 "분" 으로 세는 종류 (시작 지연). 나머지는 % 입니다.
+  static final String START_DELAY_KIND = WeekGoalDto.kindValue(WeeklyGoal.Kind.START_DELAY);
   // 아침형/저녁형 · 못 채운 이유를 볼 기간(일). 어제까지 14일입니다. (오늘 카드는 아직 끝나지 않았을 수 있음)
   static final int RECENT_DAYS = 14;
   // 아침 카드: 이 시각부터 정오 전까지 시작 / 저녁 카드: 18시부터 다음 날 이 시각 전까지 시작 (하루의 기준 새벽 4시)
@@ -87,6 +98,8 @@ public class CallContextLoader {
   private final StudySessionRepository studySessionRepository;
   private final CheckInRepository checkInRepository;
   private final DailySignalRepository dailySignalRepository;
+  private final WeekGoalService weekGoalService;
+  private final ExperimentRepository experimentRepository;
 
   // 그 사람의 기록. today: 오늘 (새벽 4시 기준, DayRule)
   public CallContext.Facts load(Long userId, LocalDate today) {
@@ -111,13 +124,67 @@ public class CallContextLoader {
             emotionsOf(checkIns),
             runRateOf(threeWeeks, today),
             sleepOf(userId, today));
+    CallContext.Ongoing ongoing =
+        new CallContext.Ongoing(weekGoalOf(userId, today), experimentsOf(userId, today));
     return new CallContext.Facts(
         nextExamOf(exams, today),
         pastExamOf(userId, exams, today),
         goalsOf(userId, today),
         rhythmGapOf(userId, judged),
         causesOf(userId, judged, from, to),
-        recent);
+        recent,
+        ongoing);
+  }
+
+  // 이번 주 목표의 제목과 지금 숫자. 안 정했으면 null. 시작 지연 목표는 분, 나머지는 % 입니다.
+  private CallContext.WeekGoalLine weekGoalOf(Long userId, LocalDate today) {
+    return weekGoalService
+        .thisWeekOf(userId, today)
+        .map(
+            item ->
+                new CallContext.WeekGoalLine(
+                    item.title(), item.current(), START_DELAY_KIND.equals(item.kind()) ? "분" : "%"))
+        .orElse(null);
+  }
+
+  // 진행 중이고 14일이 안 끝난 실험, 늦게 시작한 것부터. 붙인 카드 제목은 카드 번호 순서대로입니다.
+  // (끝났는데 아직 판정 전인 실험은 넣지 않습니다. 판정은 목록을 볼 때 합니다)
+  private List<CallContext.ExperimentLine> experimentsOf(Long userId, LocalDate today) {
+    List<Experiment> running = new ArrayList<>();
+    for (Experiment experiment :
+        experimentRepository.findByUserIdAndStatus(userId, ExperimentStatus.RUNNING)) {
+      if (!ExperimentRule.isJudgeDay(experiment.getStartDate(), today)) {
+        running.add(experiment);
+      }
+    }
+    if (running.isEmpty()) {
+      return List.of();
+    }
+    running.sort(Comparator.comparing(Experiment::getStartDate).reversed());
+    List<Long> cardIds = new ArrayList<>();
+    for (Experiment experiment : running) {
+      cardIds.addAll(experiment.getCardIds());
+    }
+    Map<Long, String> titles = new HashMap<>();
+    for (Card card : cardRepository.findByUserIdAndIdIn(userId, cardIds)) {
+      titles.put(card.getId(), card.getTitle());
+    }
+    List<CallContext.ExperimentLine> lines = new ArrayList<>();
+    for (Experiment experiment : running) {
+      List<String> cardTitles = new ArrayList<>();
+      for (Long cardId : experiment.getCardIds().stream().sorted().toList()) {
+        // 지운 카드는 제목이 없어서 건너뜁니다.
+        if (titles.containsKey(cardId)) {
+          cardTitles.add(titles.get(cardId));
+        }
+      }
+      lines.add(
+          new CallContext.ExperimentLine(
+              experiment.getStrategy().getRule(),
+              cardTitles,
+              ExperimentRule.dayOf(experiment.getStartDate(), today)));
+    }
+    return lines;
   }
 
   // 오늘 체크인의 약속, 없으면 어제 체크인의 약속. 둘 다 적은 것만 씁니다. 위기 표현이 있으면 넣지 않습니다. (null)

@@ -25,9 +25,15 @@ import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamScore;
 import com.ithopeschool.projectbe.domain.exam.ExamScoreRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamType;
+import com.ithopeschool.projectbe.domain.experiment.Experiment;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentRepository;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentStatus;
+import com.ithopeschool.projectbe.domain.experiment.ExperimentStrategy;
 import com.ithopeschool.projectbe.domain.goal.Goal;
 import com.ithopeschool.projectbe.domain.goal.GoalKind;
 import com.ithopeschool.projectbe.domain.goal.GoalRepository;
+import com.ithopeschool.projectbe.domain.goal.WeekGoalService;
+import com.ithopeschool.projectbe.domain.goal.dto.WeekGoalDto;
 import com.ithopeschool.projectbe.domain.onboarding.Chronotype;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
@@ -66,6 +72,8 @@ class CallContextLoaderTest {
   private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
   private final CheckInRepository checkInRepository = mock(CheckInRepository.class);
   private final DailySignalRepository dailySignalRepository = mock(DailySignalRepository.class);
+  private final WeekGoalService weekGoalService = mock(WeekGoalService.class);
+  private final ExperimentRepository experimentRepository = mock(ExperimentRepository.class);
 
   private final CallContextLoader loader =
       new CallContextLoader(
@@ -78,7 +86,9 @@ class CallContextLoaderTest {
           cardResultService,
           studySessionRepository,
           checkInRepository,
-          dailySignalRepository);
+          dailySignalRepository,
+          weekGoalService,
+          experimentRepository);
 
   private static Exam exam(long id, String name, LocalDate date) {
     Exam exam = new Exam(USER_ID, name, ExamType.MOCK, date);
@@ -419,5 +429,60 @@ class CallContextLoaderTest {
                 new DailySignal(USER_ID, TODAY, null, null, null, 4000, null)));
     assertThat(loader.load(USER_ID, TODAY).recent().sleep())
         .isEqualTo(new CallContext.Sleep(300, 1));
+  }
+
+  // ---- 이번 주 목표 · 자기 실험 (지금 하고 있는 약속) ----
+
+  private static Card titled(long id, String title) {
+    Card card = mock(Card.class);
+    given(card.getId()).willReturn(id);
+    given(card.getTitle()).willReturn(title);
+    return card;
+  }
+
+  private static Experiment experiment(
+      ExperimentStrategy strategy, LocalDate start, Long... cardIds) {
+    return new Experiment(USER_ID, "가설", null, strategy, Set.of(cardIds), start, 10, Instant.EPOCH);
+  }
+
+  @Test
+  @DisplayName("이번 주 목표는 제목과 지금 숫자를 꺼내고, 시작 지연 목표는 분 · 나머지는 % 로 적는다")
+  void weekGoal() {
+    given(weekGoalService.thisWeekOf(USER_ID, TODAY))
+        .willReturn(
+            Optional.of(
+                new WeekGoalDto.Item(
+                    TODAY.minusDays(6),
+                    "startDelay",
+                    18,
+                    23,
+                    "시작 지연 18분 안으로",
+                    "missed",
+                    20,
+                    40,
+                    false)));
+
+    assertThat(loader.load(USER_ID, TODAY).ongoing().weekGoal())
+        .isEqualTo(new CallContext.WeekGoalLine("시작 지연 18분 안으로", 20, "분"));
+  }
+
+  @Test
+  @DisplayName("자기 실험은 진행 중이고 14일이 안 끝난 것만, 늦게 시작한 것부터 붙인 카드 제목과 며칠째를 꺼낸다")
+  void experiments() {
+    given(experimentRepository.findByUserIdAndStatus(USER_ID, ExperimentStatus.RUNNING))
+        .willReturn(
+            List.of(
+                experiment(ExperimentStrategy.PHONE_BAG, TODAY.minusDays(4), 1L),
+                // 14일이 끝났지만 아직 판정 전 → 넣지 않음
+                experiment(ExperimentStrategy.PLAN_SHORTER, TODAY.minusDays(20), 2L),
+                experiment(ExperimentStrategy.START_COUNTDOWN, TODAY, 3L, 9L)));
+    // 9번 카드는 지워져서 제목이 없습니다. (가짜 카드는 given 밖에서 먼저 만들어야 합니다)
+    List<Card> cards = List.of(titled(1, "수학 문제집"), titled(3, "영어 단어"));
+    given(cardRepository.findByUserIdAndIdIn(any(), any())).willReturn(cards);
+
+    assertThat(loader.load(USER_ID, TODAY).ongoing().experiments())
+        .containsExactly(
+            new CallContext.ExperimentLine("5초 카운트다운으로 시작하기", List.of("영어 단어"), 1),
+            new CallContext.ExperimentLine("시작할 때 폰을 가방에 넣기", List.of("수학 문제집"), 5));
   }
 }
