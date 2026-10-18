@@ -179,4 +179,48 @@ class NeisClientTest {
         .isEmpty();
     assertThat(NeisClient.rowsOf(Optional.of("<html>"), "SchoolSchedule")).isEmpty();
   }
+
+  @Test
+  @DisplayName("급식은 그날 하루를 받고, <br/> 로 나눈 메뉴에서 알레르기 번호를 뗀다")
+  void fetchesMeals() {
+    NeisClient client = new NeisClient("", builder);
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/mealServiceDietInfo")))
+        .andExpect(queryParam("ATPT_OFCDC_SC_CODE", "J10"))
+        .andExpect(queryParam("SD_SCHUL_CODE", "7530560"))
+        .andExpect(queryParam("MLSV_YMD", "20261012"))
+        .andRespond(
+            withSuccess(
+                """
+                {"mealServiceDietInfo":[{"head":[{"list_total_count":2}]},{"row":[
+                  {"MMEAL_SC_NM":"중식","MLSV_YMD":"20261012","DDISH_NM":"흑미밥 <br/>나주곰탕 (1.5.6.16)<br/>배추김치 (9)"},
+                  {"MMEAL_SC_NM":"석식","MLSV_YMD":"20261012","DDISH_NM":""}
+                ]}]}
+                """,
+                MediaType.APPLICATION_JSON));
+
+    Optional<List<NeisClient.NeisMeal>> meals =
+        client.fetchMeals("J10", "7530560", LocalDate.of(2026, 10, 12));
+
+    // 메뉴가 빈 석식은 버립니다.
+    assertThat(meals)
+        .contains(
+            List.of(
+                new NeisClient.NeisMeal(
+                    LocalDate.of(2026, 10, 12), "중식", List.of("흑미밥", "나주곰탕", "배추김치"))));
+    neis.verify();
+  }
+
+  @Test
+  @DisplayName("급식이 없는 날(INFO-200)은 빈 목록, NEIS 가 멈추면 빈 값(실패)")
+  void mealsNoDataAndFailure() {
+    NeisClient client = new NeisClient("", builder);
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/mealServiceDietInfo")))
+        .andRespond(withSuccess(NO_DATA, MediaType.APPLICATION_JSON));
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/mealServiceDietInfo")))
+        .andRespond(withServerError());
+
+    assertThat(client.fetchMeals("J10", "7530560", LocalDate.of(2026, 10, 17))).contains(List.of());
+    assertThat(client.fetchMeals("J10", "7530560", LocalDate.of(2026, 10, 19))).isEmpty();
+    neis.verify();
+  }
 }
