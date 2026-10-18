@@ -1,7 +1,9 @@
 package com.ithopeschool.projectbe.domain.onboarding;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -13,12 +15,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.ithopeschool.projectbe.domain.auth.dto.UserResponse;
 import com.ithopeschool.projectbe.domain.onboarding.dto.InitialPlanResponse;
 import com.ithopeschool.projectbe.domain.onboarding.dto.OnboardingResponse;
+import com.ithopeschool.projectbe.domain.onboarding.dto.OnboardingSaveRequest;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -98,25 +102,40 @@ class OnboardingControllerTest {
   }
 
   @Test
-  @DisplayName("PUT 에서 꼭 있어야 하는 네 개 중 하나라도 빠지거나 비면 400 이고 서비스를 부르지 않는다")
-  void putRequiresFour() throws Exception {
+  @DisplayName("PUT 에서 꼭 있어야 하는 학년 · 하루 공부 가능 시간이 빠지거나 비면 400 이고 서비스를 부르지 않는다")
+  void putRequiresTwo() throws Exception {
     expectRejected(
         put("/api/v1/onboarding"),
         "{\"targetExam\":\"수능\",\"targetExamDate\":\"2027-11-18\",\"dailyAvailableMinutes\":180}",
         "학년을 골라 주세요");
     expectRejected(
         put("/api/v1/onboarding"),
-        "{\"grade\":\"고2\",\"targetExam\":\"   \",\"targetExamDate\":\"2027-11-18\",\"dailyAvailableMinutes\":180}",
-        "목표 시험을 입력해 주세요");
-    expectRejected(
-        put("/api/v1/onboarding"),
-        "{\"grade\":\"고2\",\"targetExam\":\"수능\",\"dailyAvailableMinutes\":180}",
-        "시험 날짜를 보내 주세요");
-    expectRejected(
-        put("/api/v1/onboarding"),
         "{\"grade\":\"고2\",\"targetExam\":\"수능\",\"targetExamDate\":\"2027-11-18\"}",
         "하루 공부 가능 시간을 골라 주세요");
+    expectRejected(
+        put("/api/v1/onboarding"),
+        "{\"grade\":\"고2\",\"targetExam\":\""
+            + "가".repeat(31)
+            + "\",\"dailyAvailableMinutes\":180}",
+        "목표 시험은 30자 이하로 적어 주세요");
     verifyNoInteractions(onboardingService);
+  }
+
+  @Test
+  @DisplayName("PUT 에서 목표 시험 · 시험 날짜는 안 보내도 된다 (새 온보딩은 묻지 않음, 빈 글은 null)")
+  void putWithoutExam() throws Exception {
+    given(onboardingService.save(any())).willReturn(sample());
+    mockMvc
+        .perform(
+            put("/api/v1/onboarding")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"grade\":\"고2\",\"targetExam\":\"  \",\"dailyAvailableMinutes\":120}"))
+        .andExpect(status().isOk());
+    ArgumentCaptor<OnboardingSaveRequest> captor =
+        ArgumentCaptor.forClass(OnboardingSaveRequest.class);
+    verify(onboardingService).save(captor.capture());
+    assertThat(captor.getValue().targetExam()).isNull();
+    assertThat(captor.getValue().targetExamDate()).isNull();
   }
 
   @Test
