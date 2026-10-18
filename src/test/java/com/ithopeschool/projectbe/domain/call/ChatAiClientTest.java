@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.client.ExpectedCount.never;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.anything;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
@@ -169,5 +170,76 @@ class ChatAiClientTest {
         .isEqualTo(ChatAiClient.ChatTurn.textOnly("그냥 글이야"));
     assertThat(ChatAiClient.parseTurn("{\"reply\":\"\"}"))
         .isEqualTo(ChatAiClient.ChatTurn.textOnly("{\"reply\":\"\"}"));
+  }
+
+  @Test
+  @DisplayName("주제가 있는 채팅의 이유 값(tags)을 읽고, 없으면 빈 목록이다")
+  void parseTurnReadsTags() {
+    String withTags =
+        "{\"reply\":\"어땠어?\",\"quickReplies\":[],\"action\":null,\"tags\":[\"phone\",\"tired\"]}";
+    String withoutTags = "{\"reply\":\"어땠어?\",\"quickReplies\":[],\"action\":null}";
+
+    assertThat(ChatAiClient.parseTurn(withTags).tags()).containsExactly("phone", "tired");
+    assertThat(ChatAiClient.parseTurn(withoutTags).tags()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("답 모양(TURN_SCHEMA)은 tags 를 꼭 채우게 한다 (strict 모드는 모든 칸이 required 여야 함)")
+  void schemaRequiresTags() {
+    assertThat(ChatAiClient.TURN_SCHEMA.get("required"))
+        .isEqualTo(List.of("reply", "quickReplies", "action", "tags"));
+  }
+
+  @Test
+  @DisplayName("사진이 붙은 말은 입력을 메시지 목록으로 바꿔 글과 사진(input_image)을 같이 보낸다")
+  void turnWithImageSendsImage() {
+    String image = "data:image/jpeg;base64,AAAA";
+    ChatAiClient client = clientWith(KEY, MODEL);
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.store").value(false))
+        .andExpect(jsonPath("$.input[0].role").value("user"))
+        .andExpect(jsonPath("$.input[0].content[0].type").value("input_text"))
+        .andExpect(jsonPath("$.input[0].content[0].text").value(containsString("학생: 이 문제 봐 줘")))
+        .andExpect(jsonPath("$.input[0].content[1].type").value("input_image"))
+        .andExpect(jsonPath("$.input[0].content[1].image_url").value(image))
+        .andRespond(
+            withSuccess(
+                answerOf(
+                    "{\\\"reply\\\":\\\"어디까지 풀었어?\\\",\\\"quickReplies\\\":[],\\\"action\\\":null,\\\"tags\\\":[]}"),
+                MediaType.APPLICATION_JSON));
+
+    Optional<ChatAiClient.ChatTurn> turn =
+        client.turnWithImage("대본", List.of(new Line("me", "이 문제 봐 줘")), image);
+
+    assertThat(turn.map(ChatAiClient.ChatTurn::reply)).contains("어디까지 풀었어?");
+    openAi.verify();
+  }
+
+  @Test
+  @DisplayName("사진이 없는 말은 지금처럼 입력을 글 하나로 보낸다")
+  void turnWithoutImageSendsText() {
+    ChatAiClient client = clientWith(KEY, MODEL);
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.input").isString())
+        .andRespond(
+            withSuccess(
+                answerOf(
+                    "{\\\"reply\\\":\\\"응\\\",\\\"quickReplies\\\":[],\\\"action\\\":null,\\\"tags\\\":[]}"),
+                MediaType.APPLICATION_JSON));
+
+    assertThat(client.turn("대본", List.of(new Line("me", "안녕")))).isPresent();
+    openAi.verify();
+  }
+
+  @Test
+  @DisplayName("AI 가 꺼져 있으면 사진이 있어도 부르지 않는다")
+  void turnWithImageWhenDisabled() {
+    openAi.expect(never(), anything());
+
+    assertThat(clientWith("", MODEL).turnWithImage("대본", List.of(), "data:image/jpeg;base64,AAAA"))
+        .isEmpty();
+    openAi.verify();
   }
 }

@@ -99,7 +99,8 @@ public class CardPhotoService {
   }
 
   // 사진이 받는 모양인지 봅니다. 아니면 400 입니다. (사진 내용은 메시지에 넣지 않습니다)
-  static void checkImage(String image) {
+  // 긴 계획 · 확인 문제 · 상담 채팅의 사진 질문(ChatService)도 같은 규칙을 씁니다.
+  public static void checkImage(String image) {
     String prefix = IMAGE_PREFIXES.stream().filter(image::startsWith).findFirst().orElse(null);
     if (prefix == null) {
       throw new ApiException(
