@@ -492,7 +492,8 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/day-plan/revise",
               "/api/v1/ai/day-plan/revise",
               "{\"drafts\":[{\"date\":\"2099-01-01\",\"startTime\":\"19:00\",\"durationMinutes\":30,"
-                  + "\"title\":\"수학\"}],\"request\":\"줄여 줘\"}"));
+                  + "\"title\":\"수학\"}],\"request\":\"줄여 줘\"}"),
+          new Api("POST", "/api/v1/ai/quiz", "/api/v1/ai/quiz", "{\"topic\":\"수열의 극한\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.
