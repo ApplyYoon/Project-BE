@@ -462,7 +462,12 @@ class ChatServiceTest {
   // ---- 코치랑 이야기하기 (주제가 있는 채팅, 2026-10-18) ----
 
   private static CallSessionRequest startAbout(String kind, String... facts) {
-    return new CallSessionRequest(2, 3, null, null, null, new ChatAbout(kind, List.of(facts)));
+    return new CallSessionRequest(
+        2, 3, null, null, null, new ChatAbout(kind, List.of(facts)), null);
+  }
+
+  private static CallSessionRequest startIn(String room, ChatAbout about) {
+    return new CallSessionRequest(2, 3, null, null, null, about, room);
   }
 
   @Test
@@ -565,5 +570,61 @@ class ChatServiceTest {
         new ChatAiClient.ChatTurn("이것도 못 하다니 한심해.", List.of(), null, List.of("phone"));
 
     assertThat(ChatService.cleanTurn(turn, TODAY, ChatTopic.SESSION_REVIEW).tags()).isEmpty();
+  }
+
+  // ---- 방 3개: 코치 · 목표 메이트 · 과목 쌤 (2026-10-18) ----
+
+  @Test
+  @DisplayName("과목 쌤 방은 대본 끝에 [이번 방: 과목 쌤] 칸을 붙이고, 학생 성향 칸은 붙이지 않고, 방을 기억한다")
+  void startInTutorRoom() {
+    Map<PsychItem, Integer> answers = new EnumMap<>(PsychItem.class);
+    for (PsychItem item : PsychItem.values()) {
+      answers.put(item, item.scale() == PsychScale.START_RESISTANCE ? 7 : 4);
+    }
+    given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(Optional.of(new PsychTest(USER_ID, NOW, answers)));
+    String tutorScript = SCRIPT + ChatRoom.TUTOR.section();
+    given(chatAiClient.turn(tutorScript, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("어떤 문제가 막혔어?")));
+
+    ChatReplyResponse response = service.start(startIn("TUTOR", null));
+
+    assertThat(response.reply()).isEqualTo("어떤 문제가 막혔어?");
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(tutorScript);
+    assertThat(tutorScript).doesNotContain("[학생 성향]");
+    assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.TUTOR);
+  }
+
+  @Test
+  @DisplayName("목표 메이트 방에 이번 주 숫자를 주제로 열면 [이번 방] 칸 뒤에 [이번 대화의 주제] 칸이 붙는다")
+  void startInGoalMateRoomWithWeeklyReport() {
+    List<String> facts = List.of("이번 주 순공 6시간 10분, 계획의 72%");
+    String script =
+        SCRIPT
+            + ChatRoom.GOAL_MATE.section()
+            + CallScript.topicSection(ChatTopic.WEEKLY_REPORT, facts);
+    given(chatAiClient.turn(script, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("이번 주 72% 했네. 다음 주엔 뭘 바꿔 볼까?")));
+
+    ChatReplyResponse response =
+        service.start(startIn("GOAL_MATE", new ChatAbout("WEEKLY_REPORT", facts)));
+
+    assertThat(response.reply()).isEqualTo("이번 주 72% 했네. 다음 주엔 뭘 바꿔 볼까?");
+    assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.GOAL_MATE);
+    assertThat(chatScriptStore.findTopic(CHAT_ID, USER_ID)).contains(ChatTopic.WEEKLY_REPORT);
+  }
+
+  @Test
+  @DisplayName("방을 고르지 않으면 코치 방이고 대본은 지금과 같다 (주제와 방이 안 맞아도 그대로 연다)")
+  void startWithoutRoomIsCoach() {
+    List<String> facts = List.of("문제: lim 1/n / 학생 답: 1 / 정답: 0");
+    String script = SCRIPT + CallScript.topicSection(ChatTopic.QUIZ_WRONG, facts);
+    given(chatAiClient.turn(script, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("왜 1 이라고 생각했어?")));
+
+    service.start(startIn(null, new ChatAbout("QUIZ_WRONG", facts)));
+
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(script);
+    assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.COACH);
   }
 }

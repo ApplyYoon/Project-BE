@@ -43,6 +43,9 @@ import org.springframework.stereotype.Service;
 // 대본 끝에 [이번 대화의 주제] 칸을 붙여 AI 가 그 주제로 첫 말을 꺼내게 하고, 주제를 채팅이 끝날 때까지 기억합니다.
 // 후기 · 못 한 카드 주제면 AI 가 학생 말에서 짐작한 이유 값(tags)을 그 주제의 값만 남겨 돌려줍니다. (ChatTopic)
 //
+// 방 3개 (2026-10-18 "코치 · 목표 메이트 · 과목 쌤"): 열 때 request.room 으로 방을 고릅니다. 없으면 코치입니다.
+// 방은 대본 끝에 [이번 방] 칸을 붙여 바꾸고(ChatRoom.section), 과목 쌤은 학생 성향 칸을 붙이지 않습니다.
+//
 // AI 의 답은 한 번마다 GPT 글 호출 하루 한도(GptUsageGuard, 이슈 #33)를 하나씩 씁니다.
 // 모든 메서드는 로그인한 사람의 번호(CurrentUserProvider)로 시작하고, 내 채팅만 찾습니다. 남의 채팅 번호는 404 입니다.
 //
@@ -117,6 +120,8 @@ public class ChatService {
       return startInCrisis(userId, request, now, today);
     }
     ChatTopic topic = about == null ? null : ChatTopic.from(about.kind()).orElse(null);
+    // 방은 고르지 않았으면 코치입니다. 주제와 방이 어울리지 않아도(예: 틀린 문제를 코치 방에서) 그대로 엽니다.
+    ChatRoom room = ChatRoom.from(request.room()).orElse(ChatRoom.COACH);
 
     checkAiReady(userId);
     CallService.Script script =
@@ -125,28 +130,32 @@ public class ChatService {
     // 통화와 같은 대본 끝에 "학생 성향" · "오늘 학교" 칸을 붙입니다. 없으면 붙이지 않습니다.
     // 성향은 학생마다 말 거는 방법을 다르게 하려고 넣습니다. (시작을 미루는 학생에게는 '5분만' 처럼)
     // 답이 거의 다 같아서 믿기 어려운 검사면 점수 대신 "대화로 하나만 확인해" 칸을 붙입니다. (2026-10-18)
+    // 과목 쌤 방은 붙이지 않습니다. (ChatRoom.usesPsychSection)
     String psychPart =
-        psychTestRepository
-            .findFirstByUserIdOrderByIdDesc(userId)
-            .map(
-                test ->
-                    test.isReliable()
-                        ? CallScript.psychSection(PsychScore.scoresOf(test.getAnswers()))
-                        : CallScript.unsurePsychSection())
-            .orElse("");
-    // 주제가 있으면 맨 끝에 [이번 대화의 주제] 칸을 붙입니다. 첫 말이 그 주제로 시작합니다.
+        !room.usesPsychSection()
+            ? ""
+            : psychTestRepository
+                .findFirstByUserIdOrderByIdDesc(userId)
+                .map(
+                    test ->
+                        test.isReliable()
+                            ? CallScript.psychSection(PsychScore.scoresOf(test.getAnswers()))
+                            : CallScript.unsurePsychSection())
+                .orElse("");
+    // 방 칸([이번 방])을 붙이고, 주제가 있으면 맨 끝에 [이번 대화의 주제] 칸을 붙입니다. 첫 말이 그 주제로 시작합니다.
     String topicPart = topic == null ? "" : CallScript.topicSection(topic, about.lines());
     String instructions =
         script.instructions()
             + psychPart
             + CallScript.schoolSection(schoolTodayService.scriptLines(grade, classNo))
+            + room.section()
             + topicPart;
     ChatAiClient.ChatTurn first = askAi(instructions, List.of(), topic);
     // AI 의 첫 인사를 받은 뒤에 기록을 만듭니다. 못 받았으면 채팅이 열리지 않은 것이라 기록도 남기지 않습니다.
     CallRecord record =
         callRecordRepository.save(
             new CallRecord(userId, today, now, script.biasQuestion(), CallChannel.CHAT));
-    chatScriptStore.save(record.getId(), userId, instructions, topic);
+    chatScriptStore.save(record.getId(), userId, instructions, topic, room);
     return ChatReplyResponse.withButtons(
         record.getId(), first.reply(), first.quickReplies(), first.action(), first.tags());
   }
@@ -162,7 +171,12 @@ public class ChatService {
     record.markCrisis();
     record = callRecordRepository.save(record);
     safetyService.activate(userId);
-    chatScriptStore.save(record.getId(), userId, script.instructions() + CRISIS_FOLLOW_UP, null);
+    chatScriptStore.save(
+        record.getId(),
+        userId,
+        script.instructions() + CRISIS_FOLLOW_UP,
+        null,
+        ChatRoom.from(request.room()).orElse(ChatRoom.COACH));
     return ChatReplyResponse.crisis(record.getId(), CHAT_CRISIS_REPLY);
   }
 
