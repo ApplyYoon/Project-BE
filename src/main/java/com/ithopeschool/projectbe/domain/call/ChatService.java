@@ -66,6 +66,10 @@ public class ChatService {
   // AI 의 답에 깎아내리는 말이 섞였을 때 대신 돌려주는 말입니다. (CLAUDE.md 4장: 비하 · 비교 금지)
   static final String SAFE_REPLY = "내가 방금 한 말은 다시 할게. 오늘 하나만 해 본다면 무엇부터 할 것 같아?";
 
+  // 빠른 답 버튼은 이만큼까지, 한 버튼은 이 글자 수까지
+  static final int MAX_QUICK_REPLIES = 3;
+  static final int MAX_QUICK_REPLY_LENGTH = 20;
+
   private final CurrentUserProvider currentUserProvider;
   private final ChatAiClient chatAiClient;
   private final GptUsageGuard gptUsageGuard;
@@ -109,13 +113,14 @@ public class ChatService {
         script.instructions()
             + psychPart
             + CallScript.schoolSection(schoolTodayService.scriptLines(grade, classNo));
-    String reply = askAi(instructions, List.of());
+    ChatAiClient.ChatTurn first = askAi(instructions, List.of());
     // AI 의 첫 인사를 받은 뒤에 기록을 만듭니다. 못 받았으면 채팅이 열리지 않은 것이라 기록도 남기지 않습니다.
     CallRecord record =
         callRecordRepository.save(
             new CallRecord(userId, today, now, script.biasQuestion(), CallChannel.CHAT));
     chatScriptStore.save(record.getId(), userId, instructions);
-    return ChatReplyResponse.of(record.getId(), reply);
+    return ChatReplyResponse.withButtons(
+        record.getId(), first.reply(), first.quickReplies(), first.action());
   }
 
   // 학생이 말을 보냅니다. lines 는 지금까지의 대화 전체이고, 맨 끝이 방금 학생이 쓴 말입니다.
@@ -151,7 +156,8 @@ public class ChatService {
             .find(chatId, userId)
             .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "채팅이 오래되어 끝났어요. 새로 시작해 주세요"));
     checkAiReady(userId);
-    return ChatReplyResponse.of(chatId, askAi(instructions, lines));
+    ChatAiClient.ChatTurn next = askAi(instructions, lines);
+    return ChatReplyResponse.withButtons(chatId, next.reply(), next.quickReplies(), next.action());
   }
 
   // 위기 표현이 감지됐을 때. 보호 조치(관리 한도 0 · 회복 메시지)는 이 채팅에서 처음 감지했을 때 한 번만 합니다.
@@ -189,13 +195,69 @@ public class ChatService {
     }
   }
 
-  // AI 의 다음 말을 받습니다. 못 받았으면 503, 깎아내리는 말이 섞였으면 정해 둔 말로 바꿉니다.
-  private String askAi(String instructions, List<CallFinishRequest.Line> lines) {
-    Optional<String> reply = chatAiClient.reply(instructions, lines);
-    if (reply.isEmpty()) {
+  // AI 의 다음 말과 버튼을 받습니다. 못 받았으면 503 입니다. 받은 것은 cleanTurn 으로 검사합니다.
+  private ChatAiClient.ChatTurn askAi(String instructions, List<CallFinishRequest.Line> lines) {
+    Optional<ChatAiClient.ChatTurn> turn = chatAiClient.turn(instructions, lines);
+    if (turn.isEmpty()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
     }
-    return ToneGuide.hasBannedExpression(reply.get()) ? SAFE_REPLY : reply.get();
+    return cleanTurn(turn.get());
+  }
+
+  // AI 가 준 답을 검사합니다. (2026-10-18 빠른 답 · 행동 버튼)
+  //   - 말에 깎아내리는 말이 섞였으면 정해 둔 말로 바꾸고 버튼은 모두 뺍니다.
+  //   - 빠른 답: 비었거나 20자가 넘거나 깎아내리는 말이 있으면 빼고, 같은 것은 하나만, 3개까지.
+  //   - 행동: cleanAction 의 규칙에 맞을 때만 넣습니다.
+  static ChatAiClient.ChatTurn cleanTurn(ChatAiClient.ChatTurn turn) {
+    if (ToneGuide.hasBannedExpression(turn.reply())) {
+      return ChatAiClient.ChatTurn.textOnly(SAFE_REPLY);
+    }
+    List<String> quickReplies = new ArrayList<>();
+    for (String quickReply : turn.quickReplies()) {
+      String text = quickReply == null ? "" : quickReply.trim();
+      boolean usable =
+          !text.isEmpty()
+              && text.length() <= MAX_QUICK_REPLY_LENGTH
+              && !ToneGuide.hasBannedExpression(text)
+              && !quickReplies.contains(text);
+      if (usable) {
+        quickReplies.add(text);
+      }
+      if (quickReplies.size() == MAX_QUICK_REPLIES) {
+        break;
+      }
+    }
+    return new ChatAiClient.ChatTurn(turn.reply(), quickReplies, cleanAction(turn.action()));
+  }
+
+  // 행동 버튼 검사. 맞지 않으면 null(버튼 없음)입니다.
+  //   start_timer  : 숫자 · 제목 없이
+  //   shrink_today : 5 ~ 60 분
+  //   create_card  : 제목 1 ~ 20자(깎아내리는 말 없음), 분은 5 ~ 120 (없거나 벗어나면 25분)
+  static ChatReplyResponse.Action cleanAction(ChatReplyResponse.Action action) {
+    if (action == null || action.type() == null) {
+      return null;
+    }
+    switch (action.type()) {
+      case "start_timer":
+        return new ChatReplyResponse.Action("start_timer", null, null);
+      case "shrink_today":
+        Integer minutes = action.minutes();
+        return minutes != null && minutes >= 5 && minutes <= 60
+            ? new ChatReplyResponse.Action("shrink_today", minutes, null)
+            : null;
+      case "create_card":
+        String title = action.title() == null ? "" : action.title().trim();
+        if (title.isEmpty() || title.length() > 20 || ToneGuide.hasBannedExpression(title)) {
+          return null;
+        }
+        Integer cardMinutes = action.minutes();
+        int safeMinutes =
+            cardMinutes != null && cardMinutes >= 5 && cardMinutes <= 120 ? cardMinutes : 25;
+        return new ChatReplyResponse.Action("create_card", safeMinutes, title);
+      default:
+        return null;
+    }
   }
 
   // 내 채팅 중 아직 끝나지 않은 것. 없거나 남의 것이거나 음성 통화면 404, 이미 끝났으면 409 입니다.
