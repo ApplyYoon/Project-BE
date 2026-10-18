@@ -49,7 +49,7 @@ public class ChatAiClient {
 
   // 상담 채팅 답의 모양(JSON schema)입니다. OpenAI 가 이 모양으로만 답하게 합니다. (turn)
   //   { "reply": "…", "quickReplies": ["…"], "action": { "type": "none", "minutes": null, "title":
-  // null } }
+  // null, "date": null } }
   // 개수 · 길이 제한은 schema 대신 서버가 검사합니다. (ChatService.cleanTurn)
   static final Map<String, Object> TURN_SCHEMA =
       Map.of(
@@ -72,7 +72,7 @@ public class ChatAiClient {
                   "additionalProperties",
                   false,
                   "required",
-                  List.of("type", "minutes", "title"),
+                  List.of("type", "minutes", "title", "date"),
                   "properties",
                   Map.of(
                       "type",
@@ -80,10 +80,18 @@ public class ChatAiClient {
                           "type",
                           "string",
                           "enum",
-                          List.of("none", "start_timer", "shrink_today", "create_card")),
+                          List.of(
+                              "none",
+                              "start_timer",
+                              "shrink_today",
+                              "create_card",
+                              "make_plan",
+                              "start_quiz")),
                       "minutes",
                       Map.of("type", List.of("integer", "null")),
                       "title",
+                      Map.of("type", List.of("string", "null")),
+                      "date",
                       Map.of("type", List.of("string", "null"))))));
 
   // 상담 채팅 대본 끝에 붙이는 "답 모양" 규칙입니다.
@@ -98,7 +106,10 @@ public class ChatAiClient {
               + " 예: '좋아, 해 볼게' · '10분만 할래' · '오늘은 힘들어'.",
           "- action: 학생이 지금 공부를 시작하겠다고 하면 start_timer."
               + " 목표를 줄이기로 했으면 shrink_today 와 minutes(5~60)."
-              + " 새로 할 일을 정했으면 create_card 와 title(20자 안쪽) · minutes. 아니면 none.",
+              + " 새로 할 일을 정했으면 create_card 와 title(20자 안쪽) · minutes."
+              + " 시험 · 대회 · 수행평가처럼 무엇을 언제까지 준비한다고 하면 make_plan 과 title(목표 한 줄, 30자 안쪽) ·"
+              + " date(마감 날 YYYY-MM-DD, 모르면 null). 학생이 방금 공부를 끝냈다고 하거나 잘 알았는지 확인해 달라고 하면"
+              + " start_quiz 와 title(공부한 주제, 30자 안쪽). 아니면 none. date 는 make_plan 에만 써.",
           "- 학생이 힘든 마음을 말하면 action 은 none 이고 quickReplies 는 비워.");
 
   private final String apiKey;
@@ -199,7 +210,10 @@ public class ChatAiClient {
           raw.action() == null
               ? null
               : new ChatReplyResponse.Action(
-                  raw.action().type(), raw.action().minutes(), raw.action().title());
+                  raw.action().type(),
+                  raw.action().minutes(),
+                  raw.action().title(),
+                  raw.action().date());
       return new ChatTurn(
           raw.reply().trim(), raw.quickReplies() == null ? List.of() : raw.quickReplies(), action);
     } catch (JacksonException e) {
@@ -269,7 +283,7 @@ public class ChatAiClient {
   record RawTurn(String reply, List<String> quickReplies, RawAction action) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record RawAction(String type, Integer minutes, String title) {}
+    record RawAction(String type, Integer minutes, String title, String date) {}
   }
 
   // 받는 모양에서 우리가 읽는 부분만 적었습니다. 나머지 필드는 무시합니다.

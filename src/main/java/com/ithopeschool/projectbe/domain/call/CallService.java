@@ -40,7 +40,9 @@ import org.springframework.stereotype.Service;
 // 순서
 //   1. 로그인한 사람인지 확인한다             (아니면 401)
 //   2. 통화를 켤 수 있는 서버인지 본다         (내 컴퓨터에서는 꺼져 있습니다 → 503)
-//   3. 오늘 건 횟수 · 통화 시간이 한도 안인지 본다 (넘었으면 429. GptUsageGuard, 이슈 #33)
+//   3. 확인 통화 문이 열렸는지 본다           (오늘 끝낸 공부가 없으면 403 CALL_LOCKED. CheckCall, 2026-10-18)
+//      위로 기간(보호 조치 중 · 최근 7일 위기 표현)이면 공부 없이도 열립니다.
+//   3-2. 오늘 건 횟수 · 통화 시간이 한도 안인지 본다 (넘었으면 429. GptUsageGuard, 이슈 #33)
 //      오늘 남은 시간이 한 번 최대 길이보다 짧으면, 이번 통화의 최대 길이를 남은 시간으로 줄입니다.
 //   4. 최근 2주의 통화 기록을 읽는다          (CallRecord)
 //   5. 오늘 확인할 생각 습관 질문을 고른다     (BiasQuestion: 자주 보인 습관 → 어제 이유 → 시작 지연 → 가입 테스트)
@@ -51,6 +53,7 @@ import org.springframework.stereotype.Service;
 //      서버에 계획·공부 기록이 아직 없으면(FE 가 기기에만 저장하던 학생) FE 가 보낸 카드를 씁니다.
 //      오늘이 무너지기 쉬운 날이면 대본에 "표시" 를 넣습니다. (RiskService.levelOn: 위험 예측 이슈 #49. 저장하지 않고 지금 기록으로 계산)
 //      대본 끝에 시험 · 목표 · 가입 심리검사를 "[기록에서 꺼낸 것]" 으로 붙입니다. 위로하는 통화에서는 붙이지 않습니다. (CallContext)
+//      오늘 끝낸 공부가 있으면 "[방금 공부한 것]" 을 붙여 확인 통화로 시작합니다. 위로하는 통화에서는 붙이지 않습니다.
 //   7. OpenAI 에서 그 대본이 묶인 임시 키를 받는다 (못 받으면 503)
 //   8. 통화 기록을 한 줄 만들고, GPT 호출 기록에도 "통화 시작" 을 남긴 뒤, 임시 키와 기록 번호를 돌려준다
 //
@@ -88,6 +91,8 @@ public class CallService {
   private final RiskService riskService;
   // 시험 · 목표 · 가입 심리검사를 서버 DB 에서 꺼냅니다. (CallContext)
   private final CallContextLoader callContextLoader;
+  // 확인 통화 문 (오늘 끝낸 공부가 있어야 열림, 2026-10-18)
+  private final CheckCallService checkCallService;
 
   public CallService(
       CurrentUserProvider currentUserProvider,
@@ -102,7 +107,8 @@ public class CallService {
       Clock clock,
       SafetyService safetyService,
       RiskService riskService,
-      CallContextLoader callContextLoader) {
+      CallContextLoader callContextLoader,
+      CheckCallService checkCallService) {
     this.currentUserProvider = currentUserProvider;
     this.callKeyClient = callKeyClient;
     this.gptUsageGuard = gptUsageGuard;
@@ -116,6 +122,7 @@ public class CallService {
     this.safetyService = safetyService;
     this.riskService = riskService;
     this.callContextLoader = callContextLoader;
+    this.checkCallService = checkCallService;
   }
 
   public CallSessionResponse startSession(CallSessionRequest request) {
@@ -125,15 +132,20 @@ public class CallService {
     if (!callKeyClient.isEnabled()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 통화가 아직 켜져 있지 않아요");
     }
+    Instant now = clock.instant();
+    LocalDate today = DayRule.dateOf(now);
+    // 확인 통화 문: 오늘 공부를 하나 끝내야 열립니다. (위로 기간은 예외)
+    CheckCall.Gate gate = checkCallService.gateOf(userId, today);
+    if (!gate.open()) {
+      throw new ApiException(ErrorCode.CALL_LOCKED, CheckCall.LOCKED_MESSAGE);
+    }
     // 이번 통화를 최대 몇 초까지 해도 되는지. 0 이면 오늘 횟수나 시간을 다 쓴 것입니다.
     int allowedSeconds = gptUsageGuard.allowedCallSeconds(userId);
     if (allowedSeconds <= 0) {
       throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 통화는 다 썼어요. 내일 다시 만나요");
     }
 
-    Instant now = clock.instant();
-    LocalDate today = DayRule.dateOf(now);
-    Script script = prepareScript(userId, request, now, today, CallChannel.VOICE);
+    Script script = prepareScript(userId, request, now, today, CallChannel.VOICE, gate.studied());
     String instructions = script.instructions();
     BiasQuestion biasQuestion = script.biasQuestion();
     // OpenAI 에는 "어느 사용자의 요청인지" 를 알아볼 수 없는 글자로만 알려 줍니다. (번호를 그대로 보내지 않습니다)
@@ -162,6 +174,17 @@ public class CallService {
   // channel 이 CHAT 이면 같은 대본의 글 버전입니다. (CallScript.chatInstructions)
   Script prepareScript(
       Long userId, CallSessionRequest request, Instant now, LocalDate today, CallChannel channel) {
+    return prepareScript(userId, request, now, today, channel, null);
+  }
+
+  // studied 가 있으면 대본 끝에 "[방금 공부한 것]" 을 붙여 확인 통화로 시작합니다. (음성 통화, 위로하는 통화는 빼고)
+  Script prepareScript(
+      Long userId,
+      CallSessionRequest request,
+      Instant now,
+      LocalDate today,
+      CallChannel channel,
+      CheckCall.Studied studied) {
     // 최근 2주의 내 통화 기록 (최근 것이 앞)
     List<CallRecord> recentCalls =
         callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
@@ -211,6 +234,7 @@ public class CallService {
     // 위로하는 통화에서는 시험 · 점수 이야기가 부담이 될 수 있어서 기록 칸을 붙이지 않습니다.
     if (!CallScript.isSupportive(careLevel, card)) {
       instructions += CallContext.section(callContextLoader.load(userId, today));
+      instructions += CallScript.studiedSection(studied);
     }
     return new Script(instructions, biasQuestion);
   }

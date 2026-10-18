@@ -95,6 +95,9 @@ class CallServiceTest {
   private static final Instant NOW = Instant.parse("2026-10-11T06:00:00Z");
   private static final LocalDate TODAY = LocalDate.of(2026, 10, 11);
 
+  // 확인 통화 문은 기본으로 열려 있고 방금 공부한 것은 없습니다. (문 규칙은 CheckCallServiceTest 가 확인합니다)
+  private final CheckCallService checkCallService = mock(CheckCallService.class);
+
   private final CallService callService =
       new CallService(
           currentUserProvider,
@@ -109,7 +112,8 @@ class CallServiceTest {
           Clock.fixed(NOW, ZoneOffset.UTC),
           safetyService,
           riskService,
-          callContextLoader);
+          callContextLoader,
+          checkCallService);
 
   private static final CallSessionRequest REQUEST =
       new CallSessionRequest(
@@ -127,6 +131,7 @@ class CallServiceTest {
     given(callKeyClient.isEnabled()).willReturn(true);
     given(callKeyClient.createKey(any(), any())).willReturn(Optional.of(KEY));
     given(riskService.levelOn(any(), any())).willReturn(RiskLevel.NONE);
+    given(checkCallService.gateOf(any(), any())).willReturn(new CheckCall.Gate(true, null, null));
     // 오늘 한도는 남아 있어서, 이번 통화는 최대 300초까지 해도 됩니다.
     given(gptUsageGuard.allowedCallSeconds(any())).willReturn(300);
     // 지난 통화는 없고, 저장하면 12번 기록이 됩니다.
@@ -761,5 +766,47 @@ class CallServiceTest {
     callService.startSession(new CallSessionRequest(0, 3, REQUEST.card(), null, null));
 
     assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[오늘 예측]");
+  }
+
+  // ---- 확인 통화 (2026-10-18) ----
+
+  private static final CheckCall.Studied STUDIED =
+      new CheckCall.Studied("미적분 3단원", List.of("개념 정리", "예제 10문제"), 40, NOW.minusSeconds(600));
+
+  @Test
+  @DisplayName("확인 통화: 오늘 끝낸 공부가 없으면 403 CALL_LOCKED 이고, 임시 키도 기록도 만들지 않는다")
+  void lockedWithoutStudy() {
+    given(checkCallService.gateOf(USER_ID, TODAY)).willReturn(CheckCall.Gate.locked());
+
+    assertError(
+        () -> callService.startSession(REQUEST), ErrorCode.CALL_LOCKED, "오늘 공부 하나를 끝내면 확인 통화가 열려요");
+    verify(callKeyClient, never()).createKey(any(), any());
+    verify(callRecordRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("확인 통화: 오늘 끝낸 공부가 있으면 대본 끝에 [방금 공부한 것] 과 설명 · 질문 순서를 붙인다")
+  void studiedSectionInScript() {
+    given(checkCallService.gateOf(USER_ID, TODAY)).willReturn(CheckCall.Gate.open(STUDIED));
+
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions())
+        .contains("[방금 공부한 것]")
+        .contains("- 카드: 미적분 3단원")
+        .contains("- 할 일: 개념 정리 / 예제 10문제")
+        .contains("- 실제로 공부한 시간: 40분")
+        .contains("1분 동안 너한테 설명해 달라고 해");
+  }
+
+  @Test
+  @DisplayName("확인 통화: 위로하는 통화(보호 조치 중)면 공부를 했어도 [방금 공부한 것] 을 붙이지 않는다")
+  void noStudiedSectionWhenSupportive() {
+    given(checkCallService.gateOf(USER_ID, TODAY)).willReturn(CheckCall.Gate.open(STUDIED));
+    given(safetyService.isActive(USER_ID)).willReturn(true);
+
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions()).doesNotContain("[방금 공부한 것]");
   }
 }
