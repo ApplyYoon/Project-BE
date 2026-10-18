@@ -22,6 +22,9 @@ import com.ithopeschool.projectbe.domain.ai.dto.FailCauseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.LongPlanRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.LongPlanResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.LongPlanReviseRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.ProfileLinesResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
@@ -67,6 +70,7 @@ public class AiController {
   private final DayPlanService dayPlanService;
   private final DailyMissionsService dailyMissionsService;
   private final DayPlanReviseService dayPlanReviseService;
+  private final LongPlanService longPlanService;
   private final StudyQuizService studyQuizService;
 
   @Operation(
@@ -193,6 +197,22 @@ public class AiController {
   @PostMapping("/day-plan/revise")
   public DayPlanReviseResponse reviseDayPlan(@Valid @RequestBody DayPlanReviseRequest request) {
     return dayPlanReviseService.revise(request);
+  }
+
+  @Operation(
+      summary =
+          "긴 계획(30일): 목표 한 줄(과 교과서 · 목차 · 시험 범위 사진)로 AI 가 할 일 목록을 쓰고, 날짜 · 시각은 서버 코드가 나눔 (사진 · 계획 저장 안 함 · 못 만들면 plan: null · 토큰 필요)")
+  @PostMapping("/long-plan")
+  public LongPlanResponse longPlan(@Valid @RequestBody LongPlanRequest request) {
+    return longPlanService.make(request);
+  }
+
+  @Operation(
+      summary =
+          "긴 계획 고치기: 지금 계획의 뼈대와 학생의 요청 한 줄로 AI 가 바꿀 칸(하루 시간 · 시작 시각 · 쉬는 요일 · 시험 날 · 할 일)만 정하고 서버 코드가 다시 나눔 (저장 안 함 · 못 고치면 plan: null · 토큰 필요)")
+  @PostMapping("/long-plan/revise")
+  public LongPlanResponse reviseLongPlan(@Valid @RequestBody LongPlanReviseRequest request) {
+    return longPlanService.revise(request);
   }
 
   @Operation(

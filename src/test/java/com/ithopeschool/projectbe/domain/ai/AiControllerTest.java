@@ -26,6 +26,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.LongPlanOutline;
+import com.ithopeschool.projectbe.domain.ai.dto.LongPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ProfileLinesResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
@@ -69,6 +71,7 @@ class AiControllerTest {
   @MockitoBean private DayPlanService dayPlanService;
   @MockitoBean private DailyMissionsService dailyMissionsService;
   @MockitoBean private DayPlanReviseService dayPlanReviseService;
+  @MockitoBean private LongPlanService longPlanService;
   @MockitoBean private StudyQuizService studyQuizService;
 
   private ResultActions checklist(String body) throws Exception {
@@ -916,5 +919,100 @@ class AiControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("자료 글은 2000자 이하로 보내 주세요"));
     verifyNoInteractions(studyQuizService);
+  }
+
+  // ---- 긴 계획(30일) ----
+
+  @Test
+  @DisplayName("긴 계획: 200 과 뼈대 · 날짜별 카드, 목표가 없거나 모든 요일을 쉬면 400")
+  void longPlan() throws Exception {
+    LongPlanOutline plan =
+        new LongPlanOutline(
+            "중간고사 미적분",
+            java.time.LocalDate.parse("2026-10-19"),
+            java.time.LocalDate.parse("2026-11-02"),
+            60,
+            "19:00",
+            List.of("SUN"),
+            List.of(new LongPlanOutline.Topic("미적분 1단원 개념", 90, List.of("교과서 읽기"))));
+    given(longPlanService.make(any()))
+        .willReturn(
+            LongPlanResponse.of(
+                "개념부터 나눴어.",
+                plan,
+                List.of(
+                    new DayPlanRevise.Card(
+                        java.time.LocalDate.parse("2026-10-19"),
+                        "19:00",
+                        60,
+                        "미적분 1단원 개념 (1/2)",
+                        List.of("교과서 읽기"))),
+                false));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/long-plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"goal\":\"중간고사 미적분\",\"endDate\":\"2026-11-02\",\"restDays\":[\"SUN\"]}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.reply").value("개념부터 나눴어."))
+        .andExpect(jsonPath("$.plan.restDays[0]").value("SUN"))
+        .andExpect(jsonPath("$.plan.topics[0].minutes").value(90))
+        .andExpect(jsonPath("$.drafts[0].title").value("미적분 1단원 개념 (1/2)"))
+        .andExpect(jsonPath("$.overflow").value(false));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/long-plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"endDate\":\"2026-11-02\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("무엇을 준비하는지 적어 주세요"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/long-plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"goal\":\"중간고사\",\"endDate\":\"2026-11-02\","
+                        + "\"restDays\":[\"MON\",\"TUE\",\"WED\",\"THU\",\"FRI\",\"SAT\",\"SUN\"]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("모든 요일을 쉴 수는 없어요"));
+  }
+
+  @Test
+  @DisplayName("긴 계획 고치기: 200 과 고친 뼈대, 요청이 없거나 할 일 시간이 틀리면 400")
+  void reviseLongPlan() throws Exception {
+    given(longPlanService.revise(any())).willReturn(LongPlanResponse.notMade());
+    String plan =
+        "\"plan\":{\"goal\":\"중간고사\",\"startDate\":\"2026-10-19\",\"endDate\":\"2026-11-02\","
+            + "\"dailyMinutes\":60,\"startTime\":\"19:00\",\"restDays\":[],"
+            + "\"topics\":[{\"title\":\"미적분 1단원\",\"minutes\":90,\"checklist\":[]}]}";
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/long-plan/revise")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{" + plan + ",\"request\":\"주말은 빼 줘\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.plan").doesNotExist())
+        .andExpect(jsonPath("$.showHelp").value(false));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/long-plan/revise")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{" + plan + "}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("어떻게 고칠지 적어 주세요"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/long-plan/revise")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{" + plan.replace("90", "500") + ",\"request\":\"줄여 줘\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("할 일 시간은 20 ~ 240분이에요"));
   }
 }

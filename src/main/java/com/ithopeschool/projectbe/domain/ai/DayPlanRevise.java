@@ -163,11 +163,16 @@ public final class DayPlanRevise {
 
   // AI 의 한 줄 검사
   private static String replyOf(String raw) {
+    return replyOf(raw, DEFAULT_REPLY);
+  }
+
+  // AI 의 한 줄 검사. 비었거나 100자를 넘거나 깎아내리는 말이 있으면 fallback. (긴 계획 StudyPlan 도 씀)
+  static String replyOf(String raw, String fallback) {
     String reply = raw == null ? "" : raw.trim();
     if (reply.isEmpty()
         || reply.length() > MAX_REPLY_LENGTH
         || ToneGuide.hasBannedExpression(reply)) {
-      return DEFAULT_REPLY;
+      return fallback;
     }
     return reply;
   }
