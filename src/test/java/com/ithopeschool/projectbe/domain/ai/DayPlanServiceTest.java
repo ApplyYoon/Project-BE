@@ -145,7 +145,7 @@ class DayPlanServiceTest {
 
     DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
 
-    // 총량 120분(기본) − 그날 카드 60분 = 60분 → 50분 칸 하나 (남은 10분은 15분보다 짧아서 버림)
+    // 총량 120분(기본) − 그날 카드 60분 = 60분 → 50분 칸 하나 (남은 10분은 30분보다 짧아서 버림)
     assertThat(response.totalMinutes()).isEqualTo(60);
     assertThat(response.drafts())
         .containsExactly(
@@ -156,7 +156,7 @@ class DayPlanServiceTest {
             "그날 이미 있는 카드 1장의 앞뒤 10분을 비웠어요",
             "그날 이미 있는 카드 60분을 뺐어요",
             "취침 23:00 · 기상 07:00 이라 수면 시간(최소 6시간)과 일어난 뒤 1시간을 빼고 08:00 ~ 23:00 사이에 짰어요",
-            "남은 10분은 15분보다 짧아서 칸을 만들지 않았어요",
+            "남은 10분은 30분보다 짧아서 칸을 만들지 않았어요",
             "D-day 가 가까운 목표를 더 많이 넣었어요");
 
     ArgumentCaptor<AiQuestion> question = ArgumentCaptor.forClass(AiQuestion.class);
@@ -182,10 +182,10 @@ class DayPlanServiceTest {
 
     DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
 
-    // 총량 120분 → 50 · 50 · 20분
+    // 총량 120분 → 50 · 50분 (남은 20분은 30분보다 짧아서 칸을 만들지 않음 — 20분짜리 카드는 없음)
     assertThat(response.drafts())
         .extracting(DayPlanResponse.Draft::durationMinutes)
-        .containsExactly(50, 50, 20);
+        .containsExactly(50, 50);
     assertThat(response.drafts().get(0))
         .isEqualTo(
             new DayPlanResponse.Draft(MONDAY, "16:40", 50, "영단어장 1회독", List.of("30쪽 하기"), "4"));
@@ -203,7 +203,7 @@ class DayPlanServiceTest {
 
     assertThat(response.drafts())
         .extracting(DayPlanResponse.Draft::startTime)
-        .containsExactly("20:40", "21:10", "22:10");
+        .containsExactly("21:10", "22:10");
     assertThat(response.evidence()).contains("저녁형이라고 해서 늦은 시간부터 채웠어요");
   }
 

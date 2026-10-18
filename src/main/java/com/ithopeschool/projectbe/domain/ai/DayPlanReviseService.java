@@ -56,7 +56,7 @@ public class DayPlanReviseService {
         .map(
             answer ->
                 DayPlanReviseResponse.of(
-                    DayPlanRevise.from(answer, DayRule.dateOf(clock.instant()))))
+                    DayPlanRevise.from(answer, DayRule.dateOf(clock.instant()), request.drafts())))
         .orElse(DayPlanReviseResponse.notMade());
   }
 }
