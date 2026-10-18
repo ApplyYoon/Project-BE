@@ -41,7 +41,8 @@ cron-job.org (알람 시계)                         Render 의 BE 서버
 | `domain/push/CallRingJob.java` | `call-ring` 작업. 정해 둔 AI 전화 시간에 전화 알림 (아래 6-5) |
 | `domain/risk/RiskConfirmJob.java` | `risk-confirm` 작업. 그날이 지난 위험 예측에 실제 달성률과 맞았는지를 채움 (아래 6-6) |
 | `domain/school/SchoolEventsJob.java` | `school-events` 작업. 우리 학생이 고른 학교의 학사일정을 NEIS 에서 새로 받음 (아래 6-7) |
-| `domain/school/SchoolDailyJob.java` | `school-daily` 작업. 학교마다 NEIS 학사일정 · 급식을 미리 받고, 학교 홈페이지의 가정통신문 · 공지 제목을 읽어 둠 (아래 6-8) |
+| `domain/goal/WeekGoalJudgeJob.java` | `weekly-goals` 작업. 끝난 주의 "이번 주 목표" 를 기록으로 달성 · 미달 판정해 적음 (아래 6-8) |
+| `domain/school/SchoolDailyJob.java` | `school-daily` 작업. 학교마다 NEIS 학사일정 · 급식을 미리 받고, 학교 홈페이지의 가정통신문 · 공지 제목을 읽어 둠 (아래 6-10) |
 | `domain/job/JobResultStore.java` | 결과를 "작업 이름 + 날짜" 한 칸에 **덮어써서** 저장 (연습용 메모리 저장소) |
 | `global/time/DayRule.java` | **하루의 기준(새벽 4시, 한국 시간)** 계산기. 날짜별로 세는 곳은 모두 이걸 씀 |
 | `global/config/ClockConfig.java` | 시계. 테스트에서 시간을 고정하려고 따로 둠 |
@@ -132,6 +133,29 @@ public class DailySummaryJob implements ScheduledJob {
 ## 6. 배포 서버에 연결하기 (사람이 합니다)
 
 > 선행: **#8 배포가 끝나서** 서버 주소가 있어야 합니다. (`docs/DEPLOY.md`) 그 전에는 로컬 시험(4번)까지만 됩니다.
+
+### 6-0. 한눈에 보기: cron-job.org 에 만들 알람 목록
+
+cron-job.org 에는 **작업 하나에 알람 하나**를 만듭니다. 아래 표가 전부입니다. (2026-10-18 기준)
+모든 알람은 **요청 방법 POST**, 헤더 **`X-Job-Key`** = Render 의 `JOB_SECRET_KEY` 와 같은 값, 시간대 **`Asia/Seoul`**, 실패 알림 이메일 켜기로 같습니다.
+URL 은 `https://project-be-mxxc.onrender.com/api/v1/jobs/<작업 이름>` 입니다.
+
+| 작업 이름 | 실행 주기 (한국 시간) | 언제 만드나 | 하는 일 | Render Logs 에 남는 줄 | 자세히 |
+| --- | --- | --- | --- | --- | --- |
+| `practice` | 10분마다 | 연결을 처음 확인할 때만, **확인 뒤 끄기** | 연습 (아무 일도 안 함) | `[연습 작업] 실행됐어요` | 6-2 · 6-3 |
+| `call-ring` | **5분마다** | 지금 | 정해 둔 시각에 전화 알림 | `[전화 알림] 울림 n명` | 6-5 |
+| `habit-nudge` | 매일 19:00 | 지금 | "오늘의 작전" 알림 | `[오늘의 작전] 보냄 n명 · 건너뜀 n명` | 6-4 |
+| `risk-confirm` | 매일 05:00 | 지금 | 지난 위험 예측이 맞았는지 채우기 | `[위험 예측 확인] 맞았는지 채움 n개` | 6-6 |
+| `school-events` | 매일 05:00 | 지금 (이슈 #289) | 학교 학사일정 새로 받기 | `[학사일정] 학교 n곳 중 n곳의 일정이 최신이에요.` | 6-7 |
+| `weekly-goals` | **매주 월요일** 05:00 | **PR #328 이 main 에 배포된 뒤** | 지난주 "이번 주 목표" 판정 | `[주 목표 판정] n개` | 6-8 (#328) |
+| `care-stages` | 매일 04:10 | **PR #331 이 main 에 배포된 뒤** | 모든 학생의 오늘 관리 단계 정하기 | `[관리 단계] 판정 n명` | 6-9 (#331) |
+| `school-daily` | 매일 05:00 (학교가 많아지면 05:00 ~ 06:00 10분마다) | **feat/school-daily-crawl 이 main 에 배포된 뒤** | 학교마다 학사일정 · 급식 미리 받기 + 홈페이지 가정통신문 · 공지 제목 읽기 (`school-events` 일도 같이 함) | `[학교 하루 작업] 학교 n곳 중 n곳을 처리했어요. …` | 6-10 |
+
+- **배포되기 전의 작업을 부르면 404 "그런 작업이 없어요"** 입니다. 실패가 계속 쌓이면 cron-job.org 가 알람을 꺼 버리므로(연속 25회), 표의 "언제 만드나" 가 지난 뒤에 만듭니다.
+- 하루가 바뀌는 때가 **새벽 4시**라서, "어제" 를 보는 작업은 4시 뒤(04:10 · 05:00)에 둡니다.
+- `call-ring` 이 5분마다 서버를 깨우므로, 이것 하나만 켜 두어도 서버가 잠들지 않습니다. (무료 시간 이야기는 7번)
+- **누가 · 언제 무엇을 만들었는지는 이 문서로 알 수 없습니다.** (Claude 는 cron-job.org 를 볼 수 없습니다) 만든 사람은 이슈 #289 같은 등록 이슈에 남겨 주세요.
+- 만든 뒤 확인: cron-job.org 실행 기록의 응답이 `200` 인지, Render **Logs** 에 위 표의 줄이 그 시각에 찍히는지 봅니다. 키가 틀리면 `401` 입니다.
 
 ### 6-1. Render 에 키 넣기
 
@@ -289,7 +313,55 @@ curl -i -X POST http://localhost:8080/api/v1/jobs/risk-confirm -H "X-Job-Key: lo
 curl -i -X POST http://localhost:8080/api/v1/jobs/school-events -H "X-Job-Key: local-job-key"
 ```
 
-### 6-8. 학교 정보 하루 한 번 모으기 (`school-daily`)
+### 6-8. 이번 주 목표 판정 (`weekly-goals`)
+
+주가 끝난 **이번 주 목표**를 그 주의 기록(계획 · 타이머)으로 달성 · 미달 · 알 수 없음으로 판정해 적습니다. (이슈 #88, `domain/goal/WeekGoalJudgeJob.java`, 규칙은 `WeeklyGoal`)
+"지켰어?" 를 묻지 않고 타이머 기록으로 정해야 스스로 좋게 기억할 틈이 없습니다.
+
+| 칸 | 값 |
+| -- | -- |
+| URL | `https://<받은 주소>/api/v1/jobs/weekly-goals` |
+| 실행 주기 | **매주 월요일 새벽 5시** (한 주가 끝나는 월요일 새벽 4시 뒤) |
+| 요청 방법 | **POST** |
+| 헤더 | 이름 `X-Job-Key`, 값 = Render 에 넣은 **같은 키** |
+
+- **모든 학생**의 목표 중, **지난 일요일까지 끝난 주**이고 아직 판정하지 않은 것을 판정합니다.
+- **이미 판정한 목표는 건드리지 않습니다.** 그래서 같은 작업이 두 번 돌아도 결과가 같습니다. (두 번째는 판정할 것이 없어서 0개)
+- 작업이 한 주 늦게 돌아도 빠지는 목표가 없습니다. 끝난 주라면 몇 주 전 것이든 판정 전이면 채웁니다.
+- 작업이 돌기 전에도 목록(`GET /api/v1/weekly-goals`)은 그 주 기록으로 계산한 상태를 보여 줍니다. (`judged: false`)
+- 로그에는 `[주 목표 판정] n개` 처럼 **숫자만** 남깁니다.
+
+**내 컴퓨터에서 시험**
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/jobs/weekly-goals -H "X-Job-Key: local-job-key"
+```
+
+### 6-9. 오늘의 관리 단계 정하기 (`care-stages`)
+
+온보딩을 마친 **모든 학생**의 오늘 관리 단계(0 ~ 4)와 이유 한 줄을 정해 `daily_care_stages` 에 남깁니다. (이슈 #62, `domain/care/CareStageJob.java`, 규칙은 [API.md](./API.md) 「관리 단계」)
+앱을 열지 않은 날도 단계가 남아야 "당근 주 vs 채찍 주" 비교(#47)를 할 수 있습니다.
+
+| 칸 | 값 |
+| -- | -- |
+| URL | `https://<받은 주소>/api/v1/jobs/care-stages` |
+| 실행 주기 | **하루 한 번, 새벽 4시 10분** (하루가 바뀌는 새벽 4시 뒤. 어제 카드가 다 판정된 뒤여야 합니다) |
+| 요청 방법 | **POST** |
+| 헤더 | 이름 `X-Job-Key`, 값 = Render 에 넣은 **같은 키** |
+
+- **이미 오늘 단계가 있는 학생은 건너뜁니다.** 그래서 같은 작업이 두 번 돌아도 결과가 같습니다. (두 번째는 0명)
+- 학생마다 따로 저장해서, 중간에 실패해도 앞의 학생 것은 남고 다시 돌리면 나머지만 합니다.
+- 이 작업이 쉬어도 학생이 앱에서 오늘 단계를 처음 물을 때(`POST /care-stages/today`) 정해집니다. 다만 앱을 안 연 날은 비어 있게 됩니다.
+- 로그에는 `[관리 단계] 판정 n명` 처럼 **숫자만** 남깁니다. 이유 문장이나 학생의 기록은 남기지 않습니다.
+- 한 번에 모든 학생을 처리합니다. 학생이 아주 많아지면 cron-job.org 의 30초 제한에 걸릴 수 있어서, 그때 나눠서 돌리도록 고칩니다.
+
+**내 컴퓨터에서 시험**
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/jobs/care-stages -H "X-Job-Key: local-job-key"
+```
+
+### 6-10. 학교 정보 하루 한 번 모으기 (`school-daily`)
 
 우리 학생이 고른 학교마다 **NEIS + 학교 홈페이지**에서 오늘 필요한 것을 미리 받아 둡니다. (2026-10-18 멘토 요청 "NEIS + 직접 크롤링", `domain/school/SchoolDailyJob.java`)
 

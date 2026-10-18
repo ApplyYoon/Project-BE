@@ -235,6 +235,8 @@ public class CallService {
     if (!CallScript.isSupportive(careLevel, card)) {
       instructions += CallContext.section(callContextLoader.load(userId, today));
       instructions += CallScript.studiedSection(studied);
+      // 기기에서 잰 집중도 · 폰 든 횟수 · 확인 문제 결과 (서버에 없는 값이라 늘 FE 값, 2026-10-18)
+      instructions += CallScript.studySignalsSection(request.studySignals());
     }
     return new Script(instructions, biasQuestion);
   }

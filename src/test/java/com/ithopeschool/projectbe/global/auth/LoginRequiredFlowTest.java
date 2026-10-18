@@ -179,8 +179,27 @@ class LoginRequiredFlowTest {
               "/api/v1/cards/results?from=2026-10-01&to=2026-10-07",
               null),
           new Api("GET", "/api/v1/cards/plan-pattern", "/api/v1/cards/plan-pattern?goalId=1", null),
+          // 이번 주 목표 (내 계획 · 기록 · 목표를 봅니다. 이슈 #88)
+          new Api("GET", "/api/v1/weekly-goals/proposal", "/api/v1/weekly-goals/proposal", null),
+          new Api(
+              "PUT",
+              "/api/v1/weekly-goals/{weekStart}",
+              "/api/v1/weekly-goals/2026-10-19",
+              "{\"kind\":\"keep\",\"target\":50,\"baseline\":50}"),
+          new Api(
+              "GET",
+              "/api/v1/weekly-goals",
+              "/api/v1/weekly-goals?from=2026-10-01&to=2026-10-31",
+              null),
           // 달력 (내 카드 결과 · 체크인을 봅니다. 이슈 #235)
           new Api("GET", "/api/v1/calendar", "/api/v1/calendar?month=2026-10", null),
+          // 관리 단계 (내 카드 결과 · 체크인으로 판정해 저장합니다. 이슈 #62)
+          new Api("POST", "/api/v1/care-stages/today", "/api/v1/care-stages/today", null),
+          new Api(
+              "GET",
+              "/api/v1/care-stages",
+              "/api/v1/care-stages?from=2026-10-01&to=2026-10-18",
+              null),
           // 잠금 해제 기록
           new Api(
               "POST",
