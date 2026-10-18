@@ -123,4 +123,87 @@ class CallContextTest {
     assertThat(lines.get(1)).contains("탓하지 말고");
     assertThat(CallContext.causeLines(List.of(new CallContext.CauseCount("막힘", 1)))).isEmpty();
   }
+
+  // ---- 최근 기록 (규칙 7 ~ 10) ----
+
+  private static Facts recentOnly(CallContext.Recent recent) {
+    return new Facts(null, null, List.of(), null, List.of(), recent);
+  }
+
+  @Test
+  @DisplayName("최근 기록은 시험 · 목표보다 앞에, 약속 · 수면 · 감정 · 실행률 순서로 적는다")
+  void recentFirst() {
+    CallContext.Recent recent =
+        new CallContext.Recent(
+            new CallContext.Promise("폰을 보고 싶으면", "물 한 잔 마신다", 1),
+            List.of(new CallContext.EmotionCount("피곤함", 4)),
+            new CallContext.RunRate(8, 0.5, 16, 0.8),
+            new CallContext.Sleep(310, 0));
+    String section =
+        CallContext.section(
+            new Facts(new NextExam("11월 학평", 33), null, List.of(), null, List.of(), recent));
+
+    assertThat(section)
+        .containsSubsequence(
+            "- 어제 체크인에서 스스로 정한 약속: 「폰을 보고 싶으면」 → 「물 한 잔 마신다」",
+            "- 오늘 날짜의 수면 기록: 5시간 10분 (휴대폰 기록)",
+            "- 최근 7일 체크인에서 고른 감정: 피곤함 4번",
+            "- 카드 실행률: 최근 7일 50% (카드 8번), 그 앞 2주 80% (카드 16번)",
+            "- 다음 시험: 11월 학평 (D-33)");
+  }
+
+  @Test
+  @DisplayName("약속: 오늘 것이면 떠올리게, 어제 것이면 해 봤는지 묻게 한다")
+  void promiseGuide() {
+    assertThat(CallContext.promiseLines(new CallContext.Promise("졸리면", "스트레칭한다", 0)))
+        .containsExactly(
+            "- 오늘 체크인에서 스스로 정한 약속: 「졸리면」 → 「스트레칭한다」", "  - 그 상황이 오면 이 약속을 떠올리게 해 줘. 약속을 대신 바꾸지 마.");
+    assertThat(CallContext.promiseLines(new CallContext.Promise("졸리면", "스트레칭한다", 1)).get(1))
+        .contains("해 봤는지 가볍게 물어봐", "탓하지 말고");
+    assertThat(CallContext.promiseLines(null)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("수면: 6시간보다 적을 때만 적고, 딱 맞는 시간이면 '분' 을 뺀다")
+  void sleep() {
+    assertThat(CallContext.sleepLines(new CallContext.Sleep(300, 1)).get(0))
+        .isEqualTo("- 어제 날짜의 수면 기록: 5시간 (휴대폰 기록)");
+    assertThat(CallContext.sleepLines(new CallContext.Sleep(360, 0))).isEmpty();
+    assertThat(CallContext.sleepLines(null)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("감정: 2번 이상 고른 것만, 많은 것부터 3개까지")
+  void emotions() {
+    List<CallContext.EmotionCount> emotions =
+        List.of(
+            new CallContext.EmotionCount("피곤함", 4),
+            new CallContext.EmotionCount("불안함", 3),
+            new CallContext.EmotionCount("막막함", 2),
+            new CallContext.EmotionCount("짜증남", 2),
+            new CallContext.EmotionCount("평온함", 1));
+
+    assertThat(CallContext.emotionLines(emotions).get(0))
+        .isEqualTo("- 최근 7일 체크인에서 고른 감정: 피곤함 4번, 불안함 3번, 막막함 2번");
+    assertThat(CallContext.emotionLines(List.of(new CallContext.EmotionCount("평온함", 1)))).isEmpty();
+  }
+
+  @Test
+  @DisplayName("실행률: 두 기간 모두 카드가 3번 이상이고 15%p 이상 차이 날 때만, 오르면 칭찬 · 내리면 탓하지 않고 묻는다")
+  void runRate() {
+    assertThat(CallContext.runRateLines(new CallContext.RunRate(8, 0.5, 16, 0.8)).get(1))
+        .contains("탓하지 말고", "무엇이 달라졌는지");
+    assertThat(CallContext.runRateLines(new CallContext.RunRate(8, 0.9, 16, 0.6)).get(1))
+        .contains("칭찬해", "다른 사람과 비교하지 마");
+    // 차이가 작음 (80% vs 70%)
+    assertThat(CallContext.runRateLines(new CallContext.RunRate(8, 0.8, 16, 0.7))).isEmpty();
+    // 카드가 적음
+    assertThat(CallContext.runRateLines(new CallContext.RunRate(2, 0.0, 16, 0.8))).isEmpty();
+  }
+
+  @Test
+  @DisplayName("최근 기록이 없으면(Recent.NONE) 아무 줄도 더하지 않는다")
+  void noRecent() {
+    assertThat(CallContext.section(recentOnly(CallContext.Recent.NONE))).isEmpty();
+  }
 }

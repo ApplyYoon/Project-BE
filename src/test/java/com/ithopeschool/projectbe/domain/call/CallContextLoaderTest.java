@@ -14,6 +14,12 @@ import com.ithopeschool.projectbe.domain.cardresult.CardResult;
 import com.ithopeschool.projectbe.domain.cardresult.CardResultService;
 import com.ithopeschool.projectbe.domain.cardresult.JudgedCardDay;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.checkin.CheckIn;
+import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
+import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
+import com.ithopeschool.projectbe.domain.checkin.EmotionTag;
+import com.ithopeschool.projectbe.domain.dailysignal.DailySignal;
+import com.ithopeschool.projectbe.domain.dailysignal.DailySignalRepository;
 import com.ithopeschool.projectbe.domain.exam.Exam;
 import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamScore;
@@ -58,6 +64,8 @@ class CallContextLoaderTest {
   private final CardRepository cardRepository = mock(CardRepository.class);
   private final CardResultService cardResultService = mock(CardResultService.class);
   private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
+  private final CheckInRepository checkInRepository = mock(CheckInRepository.class);
+  private final DailySignalRepository dailySignalRepository = mock(DailySignalRepository.class);
 
   private final CallContextLoader loader =
       new CallContextLoader(
@@ -68,7 +76,9 @@ class CallContextLoaderTest {
           onboardingAnswerRepository,
           cardRepository,
           cardResultService,
-          studySessionRepository);
+          studySessionRepository,
+          checkInRepository,
+          dailySignalRepository);
 
   private static Exam exam(long id, String name, LocalDate date) {
     Exam exam = new Exam(USER_ID, name, ExamType.MOCK, date);
@@ -188,6 +198,9 @@ class CallContextLoaderTest {
 
     verify(examRepository).findByUserIdOrderByExamDateDescIdDesc(USER_ID);
     verify(goalRepository).findByUserIdOrderById(USER_ID);
+    verify(checkInRepository).findWithEmotionsBetween(USER_ID, TODAY.minusDays(6), TODAY);
+    verify(dailySignalRepository)
+        .findByUserIdAndSignalDateBetweenOrderBySignalDateAsc(USER_ID, TODAY.minusDays(1), TODAY);
   }
 
   // ---- 아침형/저녁형 · 못 채운 이유 ----
@@ -232,7 +245,7 @@ class CallContextLoaderTest {
       "최근 2주(어제까지) 판정된 카드를 시작 시각으로 아침 · 저녁으로 나눠, 체크리스트까지 다 채운 날을 센다. 휴식한 날과 낮 카드는 빼고, 미실행 · 덜 채운 날은 '다 채운 날' 이 아니다")
   void rhythmGap() {
     givenSaid(Chronotype.NIGHT);
-    given(cardResultService.getJudgedDays(USER_ID, TODAY.minusDays(14), TODAY.minusDays(1)))
+    given(cardResultService.getJudgedDays(USER_ID, TODAY.minusDays(21), TODAY.minusDays(1)))
         .willReturn(
             List.of(
                 day(1, CardResult.DONE, null, 1.0),
@@ -287,5 +300,124 @@ class CallContextLoaderTest {
             new CallContext.CauseCount("피곤·수면", 2),
             new CallContext.CauseCount("폰·SNS", 1),
             new CallContext.CauseCount("막힘", 1));
+  }
+
+  // ---- 약속 · 감정 · 실행률 · 수면 (최근 기록) ----
+
+  // daysAgo 일 전 체크인. 약속과 감정 태그만 채웁니다.
+  private static CheckIn checkIn(
+      int daysAgo, String promiseIf, String promiseThen, EmotionTag... emotions) {
+    CheckIn checkIn =
+        new CheckIn(
+            USER_ID,
+            TODAY.minusDays(daysAgo),
+            CheckInSource.QUICK,
+            3,
+            3,
+            null,
+            null,
+            null,
+            promiseIf,
+            promiseThen,
+            null);
+    checkIn.replaceEmotions(Set.of(emotions));
+    return checkIn;
+  }
+
+  // daysAgo 일 전 카드 하루치. runRate: 실행률 (실행 1, 미실행 0)
+  private static JudgedCardDay rateDay(int daysAgo, CardResult result, double runRate) {
+    return new JudgedCardDay(
+        1L,
+        TODAY.minusDays(daysAgo),
+        false,
+        CardPriority.FLEXIBLE,
+        result,
+        runRate,
+        null,
+        null,
+        null);
+  }
+
+  @Test
+  @DisplayName("약속은 오늘 체크인의 것이 먼저고, 없으면 어제 것을 쓴다. 한쪽만 적었으면 쓰지 않는다")
+  void promise() {
+    CheckIn yesterday = checkIn(1, "폰을 보고 싶으면", "물 한 잔 마신다");
+    CheckIn today = checkIn(0, "졸리면", "5분 스트레칭한다");
+    assertThat(CallContextLoader.promiseOf(List.of(yesterday, today), TODAY))
+        .isEqualTo(new CallContext.Promise("졸리면", "5분 스트레칭한다", 0));
+
+    CheckIn todayHalf = checkIn(0, "졸리면", null);
+    assertThat(CallContextLoader.promiseOf(List.of(yesterday, todayHalf), TODAY))
+        .isEqualTo(new CallContext.Promise("폰을 보고 싶으면", "물 한 잔 마신다", 1));
+
+    // 이틀 전 약속은 쓰지 않습니다.
+    assertThat(CallContextLoader.promiseOf(List.of(checkIn(2, "a", "b")), TODAY)).isNull();
+  }
+
+  @Test
+  @DisplayName("약속 글에 위기 표현이 있으면 대본에 넣지 않는다")
+  void promiseWithCrisisText() {
+    CheckIn crisis = checkIn(0, "너무 힘들면", "죽고 싶다");
+
+    assertThat(CallContextLoader.promiseOf(List.of(crisis), TODAY)).isNull();
+  }
+
+  @Test
+  @DisplayName("감정 태그는 최근 체크인에서 고른 횟수를 세어 많은 것부터 돌려준다")
+  void emotions() {
+    given(checkInRepository.findWithEmotionsBetween(USER_ID, TODAY.minusDays(6), TODAY))
+        .willReturn(
+            List.of(
+                checkIn(3, null, null, EmotionTag.TIRED, EmotionTag.ANXIOUS),
+                checkIn(2, null, null, EmotionTag.TIRED),
+                checkIn(1, null, null, EmotionTag.TIRED, EmotionTag.CALM)));
+
+    assertThat(loader.load(USER_ID, TODAY).recent().emotions())
+        .containsExactly(
+            new CallContext.EmotionCount("피곤함", 3),
+            new CallContext.EmotionCount("불안함", 1),
+            new CallContext.EmotionCount("평온함", 1));
+  }
+
+  @Test
+  @DisplayName("실행률은 최근 7일(어제까지)과 그 앞 2주로 나눠 평균을 내고, 휴식한 날은 뺀다")
+  void runRate() {
+    List<JudgedCardDay> days =
+        List.of(
+            rateDay(1, CardResult.DONE, 1),
+            rateDay(7, CardResult.FAILED, 0),
+            rateDay(5, CardResult.REST, 0),
+            rateDay(8, CardResult.DONE, 1),
+            rateDay(21, CardResult.DONE, 1));
+
+    assertThat(CallContextLoader.runRateOf(days, TODAY))
+        .isEqualTo(new CallContext.RunRate(2, 0.5, 2, 1.0));
+    // 한쪽 기간에 카드가 없으면 비교하지 않습니다.
+    assertThat(CallContextLoader.runRateOf(List.of(rateDay(1, CardResult.DONE, 1)), TODAY))
+        .isNull();
+  }
+
+  @Test
+  @DisplayName("수면은 오늘 날짜의 기록이 먼저고, 없으면 어제 것을 쓴다")
+  void sleep() {
+    given(
+            dailySignalRepository.findByUserIdAndSignalDateBetweenOrderBySignalDateAsc(
+                USER_ID, TODAY.minusDays(1), TODAY))
+        .willReturn(
+            List.of(
+                new DailySignal(USER_ID, TODAY.minusDays(1), 420, null, null, null, null),
+                new DailySignal(USER_ID, TODAY, 310, null, null, null, null)));
+    assertThat(loader.load(USER_ID, TODAY).recent().sleep())
+        .isEqualTo(new CallContext.Sleep(310, 0));
+
+    given(
+            dailySignalRepository.findByUserIdAndSignalDateBetweenOrderBySignalDateAsc(
+                USER_ID, TODAY.minusDays(1), TODAY))
+        .willReturn(
+            List.of(
+                new DailySignal(USER_ID, TODAY.minusDays(1), 300, null, null, null, null),
+                new DailySignal(USER_ID, TODAY, null, null, null, 4000, null)));
+    assertThat(loader.load(USER_ID, TODAY).recent().sleep())
+        .isEqualTo(new CallContext.Sleep(300, 1));
   }
 }
