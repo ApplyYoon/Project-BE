@@ -193,7 +193,7 @@ class DayPlanServiceTest {
   }
 
   @Test
-  @DisplayName("밤형이면 늦은 시간부터 채운다")
+  @DisplayName("저녁형이면 늦은 시간부터 채운다")
   void nightTypeFillsLate() {
     given(onboarding.findFirstByUserIdOrderByAnsweredAtDescIdDesc(USER_ID))
         .willReturn(Optional.of(answer(LocalTime.of(23, 0), LocalTime.of(7, 0), Chronotype.NIGHT)));
@@ -204,7 +204,7 @@ class DayPlanServiceTest {
     assertThat(response.drafts())
         .extracting(DayPlanResponse.Draft::startTime)
         .containsExactly("20:40", "21:10", "22:10");
-    assertThat(response.evidence()).contains("밤형이라고 해서 늦은 시간부터 채웠어요");
+    assertThat(response.evidence()).contains("저녁형이라고 해서 늦은 시간부터 채웠어요");
   }
 
   @Test

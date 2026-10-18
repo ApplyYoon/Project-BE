@@ -61,7 +61,7 @@ class FirstHypothesisTest {
   }
 
   @Test
-  @DisplayName("답 하나에 가설 하나, 순서는 무너졌던 때 → 아침형/밤형 → 집중 시간 → 방해 요소")
+  @DisplayName("답 하나에 가설 하나, 순서는 무너졌던 때 → 아침형/저녁형 → 집중 시간 → 방해 요소")
   void oneHypothesisPerAnswerInOrder() {
     OnboardingAnswer.Values values = requiredOnly();
     values.pastFailureCauses = EnumSet.of(FailureCause.TOO_MUCH_PLAN, FailureCause.AFTER_EXAM);

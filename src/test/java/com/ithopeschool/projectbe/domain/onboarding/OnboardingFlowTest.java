@@ -95,7 +95,7 @@ class OnboardingFlowTest {
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.subjectLevels[0].subjectId").value(subjectId));
 
-      // 4. 생각이 바뀌어서 밤형으로 고침 → 지금은 밤형, 처음 자기 인식은 아침형
+      // 4. 생각이 바뀌어서 저녁형으로 고침 → 지금은 저녁형, 처음 자기 인식은 아침형
       send(patch("/api/v1/onboarding"), tokenA, "{\"chronotype\":\"night\"}")
           .andExpect(status().isOk());
       ResultActions mine = send(get("/api/v1/onboarding"), tokenA, null);

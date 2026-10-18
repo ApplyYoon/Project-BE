@@ -43,7 +43,7 @@ import org.springframework.stereotype.Service;
 // 순서
 //   1. 날짜는 오늘부터 14일 안이어야 합니다. (아니면 400)
 //   2. 서버 DB 에서 재료를 모읍니다. (FE 가 보낸 값은 쓰지 않음)
-//      - 처음 설문: 기상 · 취침 시각, 아침형 / 밤형, 하루 공부 가능 시간
+//      - 처음 설문: 기상 · 취침 시각, 아침형 / 저녁형, 하루 공부 가능 시간
 //      - 고정 일정(학교 · 학원) 중 그날 요일에 있는 것, 그날 이미 있는 카드
 //      - 최근 14일 공부 기록(하루 총량), 내 한 칸 길이(BlockLengthService), 심리검사의 계획 낙관
 //      - 진행 중인 목표(D-day · 완주형 하루 분량)와 최근 카드 제목
@@ -166,7 +166,7 @@ public class DayPlanService {
     List<DayPlanRule.Placed> placed =
         DayPlanRule.placeBlocks(free, block.minutes(), total.minutes(), night);
     if (night) {
-      evidence.add("밤형이라고 해서 늦은 시간부터 채웠어요");
+      evidence.add("저녁형이라고 해서 늦은 시간부터 채웠어요");
     }
     if (placed.isEmpty()) {
       evidence.add("그날은 카드를 넣을 빈 시간이 없어요");

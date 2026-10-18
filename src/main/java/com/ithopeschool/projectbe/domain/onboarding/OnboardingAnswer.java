@@ -97,7 +97,7 @@ public class OnboardingAnswer {
   @Column(length = 20)
   private StudyPlace studyPlace;
 
-  // [자기 인식] 아침형 / 밤형
+  // [자기 인식] 아침형 / 저녁형
   @Enumerated(EnumType.STRING)
   @Column(length = 10)
   private Chronotype chronotype;
