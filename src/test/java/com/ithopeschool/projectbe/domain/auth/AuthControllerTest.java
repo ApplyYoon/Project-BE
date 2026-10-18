@@ -33,6 +33,8 @@ class AuthControllerTest {
   @Autowired private MockMvc mockMvc;
 
   @MockitoBean private AuthService authService;
+  // 시연 코드 로그인(2026-10-18)도 같은 Controller 에 있어서 함께 가짜로 둡니다.
+  @MockitoBean private DemoLoginService demoLoginService;
 
   // 규칙에 맞는 가입 요청입니다. 테스트마다 한 군데만 바꿔서 보냅니다.
   private static final String VALID_SIGNUP =
@@ -298,5 +300,37 @@ class AuthControllerTest {
   void brokenJson() throws Exception {
     login("{\"email\":").andExpect(status().isBadRequest());
     signup("이건 JSON 이 아님").andExpect(status().isBadRequest());
+  }
+
+  // ---- 시연 코드 로그인 ----
+
+  @Test
+  @DisplayName("시연 코드 로그인은 X-Forwarded-For 의 첫 주소를 '요청한 곳' 으로 넘기고 토큰을 돌려준다")
+  void demoLoginPassesFirstForwardedAddress() throws Exception {
+    given(demoLoginService.login(any(), any()))
+        .willReturn(new LoginResponse("demo-token", new UserResponse("9", "시연 학생", false)));
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/demo-login")
+                .header("X-Forwarded-For", "1.2.3.4, 10.0.0.1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"demo-code-2026\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.token").value("demo-token"));
+    verify(demoLoginService).login("demo-code-2026", "1.2.3.4");
+  }
+
+  @Test
+  @DisplayName("시연 코드를 비워 보내면 400 이고 로직까지 가지 않는다")
+  void demoLoginBlankCodeIs400() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/auth/demo-login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("시연 코드를 입력해 주세요"));
+    verifyNoInteractions(demoLoginService);
   }
 }

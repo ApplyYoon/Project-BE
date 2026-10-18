@@ -204,7 +204,8 @@ public class AuthService {
   }
 
   // 새 로그인 토큰을 만들어 해시만 저장하고, 토큰 원문은 FE 에게 돌려줍니다. (이메일 로그인 · 구글 로그인 · 구글 가입)
-  private LoginResponse issueToken(User user) {
+  // 시연 코드 로그인(DemoLoginService)도 같은 토큰을 쓰려고, private 이 아니라 같은 폴더에서만 부를 수 있게 열어 두었습니다.
+  LoginResponse issueToken(User user) {
     String token = tokenHasher.newToken();
     Instant now = Instant.now(clock);
     Instant expiresAt = now.plus(Duration.ofDays(TOKEN_VALID_DAYS));

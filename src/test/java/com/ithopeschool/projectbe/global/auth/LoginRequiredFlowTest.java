@@ -545,7 +545,9 @@ class LoginRequiredFlowTest {
           "POST /api/v1/auth/signup",
           "POST /api/v1/auth/login",
           "POST /api/v1/auth/google",
-          "POST /api/v1/auth/google/signup");
+          "POST /api/v1/auth/google/signup",
+          // 시연 코드 로그인(2026-10-18). 코드가 맞아야 토큰을 주고, 서버에 코드가 없으면 404 입니다.
+          "POST /api/v1/auth/demo-login");
 
   // 로그인 토큰이 아니라 "작업 키"(X-Job-Key)로 지키는 API 입니다. 사람이 아니라 예약 작업이 부릅니다.
   // 키가 없으면 401 인 것은 JobFlowTest 가 확인합니다.
