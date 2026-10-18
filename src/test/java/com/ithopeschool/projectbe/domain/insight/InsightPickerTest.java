@@ -168,13 +168,13 @@ class InsightPickerTest {
   // ---- 예시 사용자 (PR 에 붙인 결과) ----
 
   @Test
-  @DisplayName("예시 사용자: 밤형이라고 답한 학생의 후보 5개 중 '오전이 더 잘 됨' 과 'SNS 많이 쓴 날' 을 고른다")
+  @DisplayName("예시 사용자: 저녁형이라고 답한 학생의 후보 5개 중 '오전이 더 잘 됨' 과 'SNS 많이 쓴 날' 을 고른다")
   void exampleStudent() {
     // 온보딩 때 "나는 밤에 집중이 잘 된다" 고 답한 학생
     Candidate morning =
         new Candidate(
             "morning-vs-night",
-            "스스로 밤형이라고 했지만, 오전에 공부한 날의 순공이 40% 더 길었어요",
+            "스스로 저녁형이라고 했지만, 오전에 공부한 날의 순공이 40% 더 길었어요",
             List.of(LocalDate.of(2026, 10, 3), LocalDate.of(2026, 10, 10)),
             List.of(9, 6),
             40,

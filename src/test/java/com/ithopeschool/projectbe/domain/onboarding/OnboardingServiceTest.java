@@ -127,7 +127,7 @@ class OnboardingServiceTest {
   }
 
   @Test
-  @DisplayName("새 온보딩처럼 목표 시험 · 시험 날짜 없이 학년 · 하루 공부 시간 · 취침/기상 · 아침형/밤형만 보내도 저장된다")
+  @DisplayName("새 온보딩처럼 목표 시험 · 시험 날짜 없이 학년 · 하루 공부 시간 · 취침/기상 · 아침형/저녁형만 보내도 저장된다")
   void savesNewOnboardingWithoutExam() {
     OnboardingResponse response =
         service.save(
@@ -193,7 +193,7 @@ class OnboardingServiceTest {
     assertError(
         () -> service.save(put("\"chronotype\":\"MORNING\"")),
         ErrorCode.VALIDATION_ERROR,
-        "아침형/밤형은 morning, night 중에서 골라 주세요");
+        "아침형/저녁형은 morning, night 중에서 골라 주세요");
     assertError(
         () -> service.save(put("\"biggestDistraction\":\"게임\"")),
         ErrorCode.VALIDATION_ERROR,
@@ -371,7 +371,7 @@ class OnboardingServiceTest {
     service.update(
         patch(
             "{\"chronotype\":\"morning\",\"maxFocusMinutes\":50,\"biggestDistraction\":\"폰·SNS\"}"));
-    // 3번째: 생각이 바뀌어서 밤형 · 하루 120분으로 고침
+    // 3번째: 생각이 바뀌어서 저녁형 · 하루 120분으로 고침
     service.update(patch("{\"chronotype\":\"night\",\"dailyAvailableMinutes\":120}"));
 
     OnboardingResponse response = service.get();

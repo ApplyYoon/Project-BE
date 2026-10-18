@@ -190,7 +190,7 @@ class CallContextLoaderTest {
     verify(goalRepository).findByUserIdOrderById(USER_ID);
   }
 
-  // ---- 아침형/밤형 · 못 채운 이유 ----
+  // ---- 아침형/저녁형 · 못 채운 이유 ----
 
   private static Card card(long id, LocalTime start) {
     Card card = mock(Card.class);
@@ -229,7 +229,7 @@ class CallContextLoaderTest {
 
   @Test
   @DisplayName(
-      "최근 2주(어제까지) 판정된 카드를 시작 시각으로 아침 · 밤으로 나눠, 체크리스트까지 다 채운 날을 센다. 휴식한 날과 낮 카드는 빼고, 미실행 · 덜 채운 날은 '다 채운 날' 이 아니다")
+      "최근 2주(어제까지) 판정된 카드를 시작 시각으로 아침 · 저녁으로 나눠, 체크리스트까지 다 채운 날을 센다. 휴식한 날과 낮 카드는 빼고, 미실행 · 덜 채운 날은 '다 채운 날' 이 아니다")
   void rhythmGap() {
     givenSaid(Chronotype.NIGHT);
     given(cardResultService.getJudgedDays(USER_ID, TODAY.minusDays(14), TODAY.minusDays(1)))
@@ -258,7 +258,7 @@ class CallContextLoaderTest {
   }
 
   @Test
-  @DisplayName("설문에 아침형/밤형 답이 없으면 비교하지 않는다")
+  @DisplayName("설문에 아침형/저녁형 답이 없으면 비교하지 않는다")
   void noRhythmWithoutAnswer() {
     given(cardResultService.getJudgedDays(any(), any(), any()))
         .willReturn(List.of(day(1, CardResult.DONE, null, 1.0)));

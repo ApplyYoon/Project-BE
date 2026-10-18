@@ -7,8 +7,8 @@ import java.util.List;
 //     "serverFacts": [ { "key": "callHabit1", "group": "distortion", "label": "통화에서 자주 보인 생각 습관",
 //                        "value": "계획 오류 · 최근 14일 중 3일", "basis": "AI 통화 정리" } ],
 //     "analysis": {
-//       "summary": "아침에 더 잘 되는데 스스로는 밤형이라고 믿는 편이야",
-//       "sections": [ { "group": "distortion", "headline": "밤형이라고 했지만 아침 카드가 더 잘 돼",
+//       "summary": "아침에 더 잘 되는데 스스로는 저녁형이라고 믿는 편이야",
+//       "sections": [ { "group": "distortion", "headline": "저녁형이라고 했지만 아침 카드가 더 잘 돼",
 //                       "body": "아침 카드 실행률은 95%, 밤 카드는 63%야. 밤에 하는 게 익숙해서 그렇게 느꼈을 수 있어.",
 //                       "evidenceKeys": ["hypothesisChronotype"] }, … ],
 //       "nextExperiment": { "ifText": "만약 학원에서 돌아오면", "thenText": "폰을 다른 방에 두고 오답부터 편다",

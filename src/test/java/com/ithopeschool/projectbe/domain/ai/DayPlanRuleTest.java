@@ -89,7 +89,7 @@ class DayPlanRuleTest {
   }
 
   @Test
-  @DisplayName("밤형은 늦은 빈 시간의 끝에서부터 채우고, 결과는 시각 순이다")
+  @DisplayName("저녁형은 늦은 빈 시간의 끝에서부터 채우고, 결과는 시각 순이다")
   void placeLateFirst() {
     List<DayPlanRule.Placed> placed =
         DayPlanRule.placeBlocks(List.of(span(7, 0, 7, 50), span(16, 40, 23, 0)), 50, 120, true);
