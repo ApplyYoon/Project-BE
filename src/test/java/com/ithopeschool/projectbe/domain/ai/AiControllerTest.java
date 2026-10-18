@@ -19,6 +19,7 @@ import com.ithopeschool.projectbe.domain.ai.dto.CardParseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CardPhotoResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.DailyMissionsResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.FailCauseResponse;
@@ -63,6 +64,7 @@ class AiControllerTest {
   @MockitoBean private CardDefaultsService cardDefaultsService;
   @MockitoBean private SelfAnalysisService selfAnalysisService;
   @MockitoBean private DayPlanService dayPlanService;
+  @MockitoBean private DailyMissionsService dailyMissionsService;
 
   private ResultActions checklist(String body) throws Exception {
     return mockMvc.perform(
@@ -780,5 +782,44 @@ class AiControllerTest {
         .perform(post("/api/v1/ai/day-plan").contentType(MediaType.APPLICATION_JSON).content("{}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("계획을 짤 날짜를 보내 주세요"));
+  }
+
+  // ---- AI 오늘의 미션 ----
+
+  @Test
+  @DisplayName("AI 오늘의 미션: 200 과 미션 목록, 날짜가 없거나 준비하는 것의 종류가 틀리면 400")
+  void dailyMissions() throws Exception {
+    given(dailyMissionsService.suggest(any()))
+        .willReturn(
+            DailyMissionsResponse.of(
+                List.of(new DailyMissions.Mission("수능 기출 미적분 3문제", 15, "미적분Ⅰ"))));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/daily-missions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"date\":\"2026-10-19\",\"focus\":{\"kind\":\"SUNEUNG\"},"
+                        + "\"subjects\":[\"미적분Ⅰ\"],\"exam\":{\"name\":\"정기시험\",\"dDay\":14},\"condition\":3}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.showHelp").value(false))
+        .andExpect(jsonPath("$.missions[0].title").value("수능 기출 미적분 3문제"))
+        .andExpect(jsonPath("$.missions[0].minutes").value(15))
+        .andExpect(jsonPath("$.missions[0].subject").value("미적분Ⅰ"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/daily-missions").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("날짜를 보내 주세요"));
+    mockMvc
+        .perform(
+            post("/api/v1/ai/daily-missions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"date\":\"2026-10-19\",\"focus\":{\"kind\":\"GAME\"}}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(
+            jsonPath("$.error.message")
+                .value("준비하는 것은 SCHOOL_EXAM · SUNEUNG · CONTEST · OTHER 중 하나예요"));
   }
 }

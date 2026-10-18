@@ -5,19 +5,30 @@ import java.util.ArrayList;
 import java.util.List;
 
 // AI 통화 · 상담 채팅 대본 끝에 붙이는 "[기록에서 꺼낸 것]" 칸을 만듭니다. (2026-10-18 "AI 채팅이 데이터를 최대한 쓰게")
-// 학생 카드(CallCard)에는 없던 기록 — 시험 · 목표 — 을 AI 가 대화에서 꺼낼 수 있게 합니다.
+// 학생 카드(CallCard)에는 없던 기록 — 시험 · 목표 · "스스로 말한 것과 다른 기록" · 실제로 못 채운 이유 — 을
+// AI 가 대화에서 꺼낼 수 있게 합니다.
 // 값만 계산하는 도구라서 객체를 만들 일이 없습니다. DB 에서 꺼내는 일은 CallContextLoader 가 합니다.
 // (가입 성향 검사는 상담 채팅의 [학생 성향] 칸이 따로 넣습니다. CallScript.psychSection)
 //
 // 정해 둔 규칙
-//   1. 숫자(남은 날, 점수)는 코드가 정리하고, AI 는 적힌 것만 말합니다. (CallScript 와 같은 원칙)
+//   1. 숫자(남은 날, 점수, 몇 번 중 몇 번)는 코드가 정리하고, AI 는 적힌 것만 말합니다. (CallScript 와 같은 원칙)
 //   2. 꺼낼 것이 하나도 없으면 빈 글자입니다. 대본이 그대로입니다.
 //   3. 학생이 직접 쓴 글은 목표 제목 · 걸림돌 · 방법만, 앞 40자까지만 넣습니다. (줄바꿈은 띄어쓰기로)
 //   4. 위로하는 통화에서는 이 칸을 붙이지 않습니다. 부르는 쪽(CallService)이 정합니다.
+//   5. 아침형/밤형 답과 기록은 "답과 반대 시간대가 20%p 이상 높을 때" 만 넣습니다. 두 시간대 모두 카드가 4번 이상이어야 합니다.
+//      (기획서의 "인지 왜곡 교정": 스스로 말한 것과 실제가 다를 때 학생이 알아차리게 묻습니다)
+//   6. 못 채운 이유는 2번 이상 나온 것만, 많은 것부터 2개까지 넣습니다.
 public final class CallContext {
 
   // 학생이 쓴 글을 넣을 때의 최대 글자 수 (규칙 3)
   static final int MAX_TEXT_LENGTH = 40;
+  // 시간대 하나에 있어야 하는 카드 수 (규칙 5). 적으면 우연일 수 있어서 말하지 않습니다.
+  static final int MIN_BAND_CARDS = 4;
+  // 아침과 밤의 실행률이 이만큼(%p) 이상 차이 나야 말합니다. (규칙 5)
+  static final int MIN_GAP_POINTS = 20;
+  // 못 채운 이유를 넣으려면 나와야 하는 횟수와, 넣는 최대 개수 (규칙 6)
+  static final int MIN_CAUSE_COUNT = 2;
+  static final int MAX_CAUSES = 2;
 
   // 다음 시험. name: 시험 이름 / daysUntil: 남은 날 (오늘이면 0)
   public record NextExam(String name, int daysUntil) {}
@@ -32,10 +43,31 @@ public final class CallContext {
   // obstacle · plan: 목표를 만들 때 스스로 적은 걸림돌과 방법. 없으면 null
   public record GoalLine(String title, int daysUntil, String level, String obstacle, String plan) {}
 
+  // 가입 때 답한 아침형/밤형과 최근 2주 카드 기록. (규칙 5)
+  // saidNight: 밤형이라고 답했으면 true, 아침형이면 false
+  // morningDone / morningTotal: 아침(04:00 ~ 11:59 시작) 카드 중 체크리스트까지 다 채운 날 / 있던 날 (휴식한 날은 뺌)
+  // nightDone / nightTotal: 밤(18:00 ~ 03:59 시작) 카드 중 체크리스트까지 다 채운 날 / 있던 날
+  // ("했다" 만 보면 끝까지 못 한 날도 한 날이 되어서, 기획서 5.1 의 계획 축(체크리스트 달성률)으로 셉니다)
+  public record RhythmGap(
+      boolean saidNight, int morningDone, int morningTotal, int nightDone, int nightTotal) {}
+
+  // 못 채운 이유 하나와 최근 2주에 나온 횟수 (예: "피곤·수면", 6)
+  public record CauseCount(String label, int count) {}
+
   // 대본에 넣을 기록 전부. 없는 것은 null 이나 빈 목록입니다.
-  public record Facts(NextExam nextExam, PastExam pastExam, List<GoalLine> goals) {
+  public record Facts(
+      NextExam nextExam,
+      PastExam pastExam,
+      List<GoalLine> goals,
+      RhythmGap rhythmGap,
+      List<CauseCount> causes) {
 
     public static final Facts NONE = new Facts(null, null, List.of());
+
+    // 시험 · 목표만 있을 때
+    public Facts(NextExam nextExam, PastExam pastExam, List<GoalLine> goals) {
+      this(nextExam, pastExam, goals, null, List.of());
+    }
   }
 
   private CallContext() {}
@@ -46,6 +78,8 @@ public final class CallContext {
     List<String> body = new ArrayList<>();
     body.addAll(examLines(facts.nextExam(), facts.pastExam()));
     body.addAll(goalLines(facts.goals()));
+    body.addAll(rhythmLines(facts.rhythmGap()));
+    body.addAll(causeLines(facts.causes()));
     if (body.isEmpty()) {
       return "";
     }
@@ -101,6 +135,64 @@ public final class CallContext {
       lines.add("- 목표는 오늘 할 일과 이어 줘. 걸림돌이 오늘 또 나오면, 스스로 정한 방법을 떠올리게 해.");
     }
     return lines;
+  }
+
+  // 아침형/밤형 답과 다른 기록 줄 (규칙 5). 답과 같거나, 차이가 작거나, 카드가 적으면 빈 목록입니다.
+  //   밤형이라고 답함 · 아침 10번 중 9번(90%) · 밤 12번 중 6번(50%) → 두 줄
+  //   밤형이라고 답함 · 아침 50% · 밤 60%                         → 없음 (답과 같은 쪽이 높음)
+  static List<String> rhythmLines(RhythmGap gap) {
+    if (gap == null || gap.morningTotal() < MIN_BAND_CARDS || gap.nightTotal() < MIN_BAND_CARDS) {
+      return List.of();
+    }
+    int morningRate = Math.round(gap.morningDone() * 100f / gap.morningTotal());
+    int nightRate = Math.round(gap.nightDone() * 100f / gap.nightTotal());
+    // 답과 반대 시간대가 얼마나 더 높은지
+    int against = gap.saidNight() ? morningRate - nightRate : nightRate - morningRate;
+    if (against < MIN_GAP_POINTS) {
+      return List.of();
+    }
+    String said = gap.saidNight() ? "밤형" : "아침형";
+    String better = gap.saidNight() ? "아침" : "밤";
+    String worse = gap.saidNight() ? "밤" : "아침";
+    return List.of(
+        "- 가입 때 스스로 '"
+            + said
+            + "' 이라고 답했어. 그런데 최근 2주 기록에서 체크리스트까지 다 채운 날은 아침 카드 "
+            + gap.morningTotal()
+            + "번 중 "
+            + gap.morningDone()
+            + "번("
+            + morningRate
+            + "%), 밤 카드 "
+            + gap.nightTotal()
+            + "번 중 "
+            + gap.nightDone()
+            + "번("
+            + nightRate
+            + "%)이야.",
+        "  - 단정하지 말고 \"기록을 보니 "
+            + better
+            + "이 더 잘 되는 것 같은데, 어때?\" 처럼 학생이 스스로 알아차리게 물어. 맞다고 하면 "
+            + worse
+            + "에 하던 카드 하나를 "
+            + better
+            + "으로 옮겨 보자고 제안해.");
+  }
+
+  // 실제로 못 채운 이유 줄 (규칙 6). 2번 이상 나온 것만, 많은 것부터 2개까지
+  static List<String> causeLines(List<CauseCount> causes) {
+    List<String> picked = new ArrayList<>();
+    for (CauseCount cause : causes) {
+      if (cause.count() >= MIN_CAUSE_COUNT && picked.size() < MAX_CAUSES) {
+        picked.add(cause.label() + " " + cause.count() + "번");
+      }
+    }
+    if (picked.isEmpty()) {
+      return List.of();
+    }
+    return List.of(
+        "- 최근 2주 카드를 못 채웠을 때 고른 이유: " + String.join(", ", picked),
+        "  - 탓하지 말고, 이 이유가 오늘 또 나오면 할 수 있는 작은 대안 하나를 같이 정해.");
   }
 
   // 학생이 쓴 글을 대본에 넣을 모양으로 다듬습니다. 줄바꿈은 띄어쓰기로, 40자가 넘으면 자르고 "…" 를 붙입니다. (규칙 3)

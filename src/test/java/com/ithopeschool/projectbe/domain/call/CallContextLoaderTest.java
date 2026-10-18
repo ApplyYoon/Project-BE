@@ -1,11 +1,19 @@
 package com.ithopeschool.projectbe.domain.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+import com.ithopeschool.projectbe.domain.card.Card;
+import com.ithopeschool.projectbe.domain.card.CardPriority;
+import com.ithopeschool.projectbe.domain.card.CardRepository;
+import com.ithopeschool.projectbe.domain.cardresult.CardResult;
+import com.ithopeschool.projectbe.domain.cardresult.CardResultService;
+import com.ithopeschool.projectbe.domain.cardresult.JudgedCardDay;
+import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.domain.exam.Exam;
 import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamScore;
@@ -14,12 +22,23 @@ import com.ithopeschool.projectbe.domain.exam.ExamType;
 import com.ithopeschool.projectbe.domain.goal.Goal;
 import com.ithopeschool.projectbe.domain.goal.GoalKind;
 import com.ithopeschool.projectbe.domain.goal.GoalRepository;
+import com.ithopeschool.projectbe.domain.onboarding.Chronotype;
+import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
+import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
+import com.ithopeschool.projectbe.domain.session.SessionTags.ShortfallReason;
+import com.ithopeschool.projectbe.domain.session.StudySession;
+import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
 import com.ithopeschool.projectbe.domain.subject.Subject;
 import com.ithopeschool.projectbe.domain.subject.SubjectColor;
 import com.ithopeschool.projectbe.domain.subject.SubjectRepository;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -34,9 +53,22 @@ class CallContextLoaderTest {
   private final ExamScoreRepository examScoreRepository = mock(ExamScoreRepository.class);
   private final SubjectRepository subjectRepository = mock(SubjectRepository.class);
   private final GoalRepository goalRepository = mock(GoalRepository.class);
+  private final OnboardingAnswerRepository onboardingAnswerRepository =
+      mock(OnboardingAnswerRepository.class);
+  private final CardRepository cardRepository = mock(CardRepository.class);
+  private final CardResultService cardResultService = mock(CardResultService.class);
+  private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
 
   private final CallContextLoader loader =
-      new CallContextLoader(examRepository, examScoreRepository, subjectRepository, goalRepository);
+      new CallContextLoader(
+          examRepository,
+          examScoreRepository,
+          subjectRepository,
+          goalRepository,
+          onboardingAnswerRepository,
+          cardRepository,
+          cardResultService,
+          studySessionRepository);
 
   private static Exam exam(long id, String name, LocalDate date) {
     Exam exam = new Exam(USER_ID, name, ExamType.MOCK, date);
@@ -156,5 +188,104 @@ class CallContextLoaderTest {
 
     verify(examRepository).findByUserIdOrderByExamDateDescIdDesc(USER_ID);
     verify(goalRepository).findByUserIdOrderById(USER_ID);
+  }
+
+  // ---- 아침형/밤형 · 못 채운 이유 ----
+
+  private static Card card(long id, LocalTime start) {
+    Card card = mock(Card.class);
+    given(card.getId()).willReturn(id);
+    given(card.getStartTime()).willReturn(start);
+    return card;
+  }
+
+  // checklistRate: 체크리스트 달성률. 미실행이면 null
+  private static JudgedCardDay day(
+      long cardId, CardResult result, MissReason reason, Double checklistRate) {
+    return new JudgedCardDay(
+        cardId,
+        TODAY.minusDays(1),
+        true,
+        CardPriority.FLEXIBLE,
+        result,
+        0,
+        reason,
+        null,
+        checklistRate);
+  }
+
+  // daysAgo 일 전 정오(UTC)에 시작한 10분짜리 공부 기록
+  private static StudySession session(int daysAgo) {
+    Instant start = TODAY.minusDays(daysAgo).atTime(12, 0).toInstant(ZoneOffset.UTC);
+    return new StudySession(USER_ID, null, start, start.plusSeconds(600), 0);
+  }
+
+  private void givenSaid(Chronotype chronotype) {
+    OnboardingAnswer answer = mock(OnboardingAnswer.class);
+    given(answer.getChronotype()).willReturn(chronotype);
+    given(onboardingAnswerRepository.findFirstByUserIdOrderByAnsweredAtDescIdDesc(USER_ID))
+        .willReturn(Optional.of(answer));
+  }
+
+  @Test
+  @DisplayName(
+      "최근 2주(어제까지) 판정된 카드를 시작 시각으로 아침 · 밤으로 나눠, 체크리스트까지 다 채운 날을 센다. 휴식한 날과 낮 카드는 빼고, 미실행 · 덜 채운 날은 '다 채운 날' 이 아니다")
+  void rhythmGap() {
+    givenSaid(Chronotype.NIGHT);
+    given(cardResultService.getJudgedDays(USER_ID, TODAY.minusDays(14), TODAY.minusDays(1)))
+        .willReturn(
+            List.of(
+                day(1, CardResult.DONE, null, 1.0),
+                day(1, CardResult.LATE, null, 1.0),
+                day(1, CardResult.ENDED_EARLY, null, 0.5),
+                day(1, CardResult.REST, null, null),
+                day(2, CardResult.FAILED, MissReason.TIRED, null),
+                day(2, CardResult.DONE, null, 1.0),
+                day(2, CardResult.DONE, null, 0.34),
+                day(3, CardResult.UNHANDLED, null, null),
+                day(4, CardResult.DONE, null, 1.0)));
+    // 가짜 카드는 given(...) 밖에서 먼저 만듭니다. (given 안에서 다른 가짜를 만들면 Mockito 가 거부합니다)
+    List<Card> cards =
+        List.of(
+            card(1, LocalTime.of(6, 40)),
+            card(2, LocalTime.of(21, 40)),
+            card(3, LocalTime.of(1, 0)),
+            card(4, LocalTime.of(15, 0)));
+    given(cardRepository.findByUserIdAndIdIn(any(), any())).willReturn(cards);
+
+    assertThat(loader.load(USER_ID, TODAY).rhythmGap())
+        .isEqualTo(new CallContext.RhythmGap(true, 2, 3, 1, 4));
+  }
+
+  @Test
+  @DisplayName("설문에 아침형/밤형 답이 없으면 비교하지 않는다")
+  void noRhythmWithoutAnswer() {
+    given(cardResultService.getJudgedDays(any(), any(), any()))
+        .willReturn(List.of(day(1, CardResult.DONE, null, 1.0)));
+
+    assertThat(loader.load(USER_ID, TODAY).rhythmGap()).isNull();
+  }
+
+  @Test
+  @DisplayName("못 채운 이유는 미실행 카드의 원인과 타이머를 일찍 끝내며 고른 이유를 같은 글자로 합쳐 많은 순으로 센다 ('기타' 는 뺌)")
+  void causes() {
+    given(cardResultService.getJudgedDays(any(), any(), any()))
+        .willReturn(
+            List.of(
+                day(1, CardResult.FAILED, MissReason.TIRED, null),
+                day(1, CardResult.FAILED, MissReason.ETC, null),
+                day(2, CardResult.POSTPONED, MissReason.PHONE, null)));
+    StudySession tired = session(2);
+    tired.recordEndReport(Map.of(), ShortfallReason.TIRED, null, null, null, Set.of());
+    StudySession stuck = session(3);
+    stuck.recordEndReport(Map.of(), ShortfallReason.STUCK, null, null, null, Set.of());
+    given(studySessionRepository.findStartedBetween(any(), any(), any()))
+        .willReturn(List.of(tired, stuck));
+
+    assertThat(loader.load(USER_ID, TODAY).causes())
+        .containsExactly(
+            new CallContext.CauseCount("피곤·수면", 2),
+            new CallContext.CauseCount("폰·SNS", 1),
+            new CallContext.CauseCount("막힘", 1));
   }
 }
