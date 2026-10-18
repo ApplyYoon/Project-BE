@@ -152,6 +152,17 @@ class ChatAiClientTest {
   }
 
   @Test
+  @DisplayName("긴 계획 버튼(make_plan)은 마감 날(date)까지 읽는다")
+  void parseTurnReadsPlanDate() {
+    String text =
+        "{\"reply\":\"계획 짜 볼까?\",\"quickReplies\":[],\"action\":{\"type\":\"make_plan\","
+            + "\"minutes\":null,\"title\":\"중간고사 미적분\",\"date\":\"2026-11-02\"}}";
+
+    assertThat(ChatAiClient.parseTurn(text).action())
+        .isEqualTo(new ChatReplyResponse.Action("make_plan", null, "중간고사 미적분", "2026-11-02"));
+  }
+
+  @Test
   @DisplayName("받은 글이 JSON 이 아니면 그 글을 그대로 말로 쓰고 버튼은 없다")
   void parseTurnFallsBackToText() {
     assertThat(ChatAiClient.parseTurn("그냥 글이야"))

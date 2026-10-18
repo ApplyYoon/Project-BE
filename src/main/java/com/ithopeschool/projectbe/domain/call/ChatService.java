@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.call;
 
+import com.ithopeschool.projectbe.domain.ai.LongPlan;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
@@ -20,6 +21,7 @@ import com.ithopeschool.projectbe.global.time.DayRule;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -69,6 +71,8 @@ public class ChatService {
   // 빠른 답 버튼은 이만큼까지, 한 버튼은 이 글자 수까지
   static final int MAX_QUICK_REPLIES = 3;
   static final int MAX_QUICK_REPLY_LENGTH = 20;
+  // 행동 버튼 make_plan 의 목표 · start_quiz 의 주제는 이 글자 수까지
+  static final int MAX_ACTION_TOPIC_LENGTH = 30;
 
   private final CurrentUserProvider currentUserProvider;
   private final ChatAiClient chatAiClient;
@@ -206,14 +210,14 @@ public class ChatService {
     if (turn.isEmpty()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
     }
-    return cleanTurn(turn.get());
+    return cleanTurn(turn.get(), DayRule.dateOf(clock.instant()));
   }
 
   // AI 가 준 답을 검사합니다. (2026-10-18 빠른 답 · 행동 버튼)
   //   - 말에 깎아내리는 말이 섞였으면 정해 둔 말로 바꾸고 버튼은 모두 뺍니다.
   //   - 빠른 답: 비었거나 20자가 넘거나 깎아내리는 말이 있으면 빼고, 같은 것은 하나만, 3개까지.
-  //   - 행동: cleanAction 의 규칙에 맞을 때만 넣습니다.
-  static ChatAiClient.ChatTurn cleanTurn(ChatAiClient.ChatTurn turn) {
+  //   - 행동: cleanAction 의 규칙에 맞을 때만 넣습니다. (today 는 make_plan 의 마감 날을 검사하는 기준)
+  static ChatAiClient.ChatTurn cleanTurn(ChatAiClient.ChatTurn turn, LocalDate today) {
     if (ToneGuide.hasBannedExpression(turn.reply())) {
       return ChatAiClient.ChatTurn.textOnly(SAFE_REPLY);
     }
@@ -232,14 +236,22 @@ public class ChatService {
         break;
       }
     }
-    return new ChatAiClient.ChatTurn(turn.reply(), quickReplies, cleanAction(turn.action()));
+    return new ChatAiClient.ChatTurn(turn.reply(), quickReplies, cleanAction(turn.action(), today));
   }
 
   // 행동 버튼 검사. 맞지 않으면 null(버튼 없음)입니다.
   //   start_timer  : 숫자 · 제목 없이
   //   shrink_today : 5 ~ 60 분
   //   create_card  : 제목 1 ~ 20자(깎아내리는 말 없음), 분은 5 ~ 120 (없거나 벗어나면 25분)
-  static ChatReplyResponse.Action cleanAction(ChatReplyResponse.Action action) {
+  //   make_plan    : 목표 1 ~ 30자(깎아내리는 말 없음). 마감 날은 내일 ~ 30일 뒤만 (긴 계획 /ai/long-plan 의 범위).
+  //                  모양이 틀리거나 범위 밖이면 버튼은 두고 date 만 null (FE 가 날짜를 다시 물음)
+  //   start_quiz   : 주제 1 ~ 30자(깎아내리는 말 없음)
+  //
+  //   today = 2026-10-18
+  //   make_plan "중간고사 미적분", "2026-11-02"  →  그대로
+  //   make_plan "중간고사 미적분", "2026-12-25"  →  date 만 null (30일 넘음)
+  //   start_quiz "  "                           →  null
+  static ChatReplyResponse.Action cleanAction(ChatReplyResponse.Action action, LocalDate today) {
     if (action == null || action.type() == null) {
       return null;
     }
@@ -260,8 +272,42 @@ public class ChatService {
         int safeMinutes =
             cardMinutes != null && cardMinutes >= 5 && cardMinutes <= 120 ? cardMinutes : 25;
         return new ChatReplyResponse.Action("create_card", safeMinutes, title);
+      case "make_plan":
+        String goal = topicOf(action.title());
+        return goal == null
+            ? null
+            : new ChatReplyResponse.Action(
+                "make_plan", null, goal, deadlineOf(action.date(), today));
+      case "start_quiz":
+        String topic = topicOf(action.title());
+        return topic == null ? null : new ChatReplyResponse.Action("start_quiz", null, topic);
       default:
         return null;
+    }
+  }
+
+  // 목표 · 주제 한 줄. 비었거나 30자를 넘거나 깎아내리는 말이 있으면 null
+  private static String topicOf(String raw) {
+    String text = raw == null ? "" : raw.trim();
+    if (text.isEmpty()
+        || text.length() > MAX_ACTION_TOPIC_LENGTH
+        || ToneGuide.hasBannedExpression(text)) {
+      return null;
+    }
+    return text;
+  }
+
+  // 마감 날 "YYYY-MM-DD". 내일 ~ 30일 뒤(LongPlan.MAX_DAYS)가 아니거나 모양이 틀리면 null
+  private static String deadlineOf(String raw, LocalDate today) {
+    if (raw == null) {
+      return null;
+    }
+    try {
+      LocalDate date = LocalDate.parse(raw.trim());
+      boolean inRange = date.isAfter(today) && !date.isAfter(today.plusDays(LongPlan.MAX_DAYS));
+      return inRange ? date.toString() : null;
+    } catch (DateTimeParseException e) {
+      return null;
     }
   }
 
