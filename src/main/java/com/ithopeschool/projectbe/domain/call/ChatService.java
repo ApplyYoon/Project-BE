@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.call;
 
+import com.ithopeschool.projectbe.domain.ai.CardPhotoService;
 import com.ithopeschool.projectbe.domain.ai.LongPlan;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishResponse;
@@ -45,6 +46,9 @@ import org.springframework.stereotype.Service;
 //
 // 방 3개 (2026-10-18 "코치 · 목표 메이트 · 과목 쌤"): 열 때 request.room 으로 방을 고릅니다. 없으면 코치입니다.
 // 방은 대본 끝에 [이번 방] 칸을 붙여 바꾸고(ChatRoom.section), 과목 쌤은 학생 성향 칸을 붙이지 않습니다.
+//
+// 사진 질문 (2026-10-18): 말 보내기에 사진(request.image)이 붙으면 그 한 번의 답에만 사진을 AI 에 같이 보내고,
+// 대본 끝에 방마다 다른 [이번 말에 붙은 사진] 칸(ChatRoom.imageRule)을 잠깐 붙입니다. 사진은 저장 · 로그 안 함.
 //
 // AI 의 답은 한 번마다 GPT 글 호출 하루 한도(GptUsageGuard, 이슈 #33)를 하나씩 씁니다.
 // 모든 메서드는 로그인한 사람의 번호(CurrentUserProvider)로 시작하고, 내 채팅만 찾습니다. 남의 채팅 번호는 404 입니다.
@@ -214,8 +218,20 @@ public class ChatService {
             .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "채팅이 오래되어 끝났어요. 새로 시작해 주세요"));
     // 주제 없이 연 채팅이면 null 이고, 그러면 tags 는 빈 목록입니다.
     ChatTopic topic = chatScriptStore.findTopic(chatId, userId).orElse(null);
+    // 사진은 모양 · 크기부터 봅니다(틀리면 400). AI 한도를 쓰기 전에 거릅니다.
+    String image = request.image();
+    if (image != null) {
+      CardPhotoService.checkImage(image);
+    }
     checkAiReady(userId);
-    ChatAiClient.ChatTurn next = askAi(instructions, lines, topic);
+    ChatAiClient.ChatTurn next;
+    if (image == null) {
+      next = askAi(instructions, lines, topic);
+    } else {
+      // 방을 잊었으면 코치로 봅니다. 사진 규칙은 이번 한 번의 답에만 붙이고 기억해 둔 대본에는 남기지 않습니다.
+      ChatRoom room = chatScriptStore.findRoom(chatId, userId).orElse(ChatRoom.COACH);
+      next = askAiWithImage(instructions + room.imageRule(), lines, topic, image);
+    }
     return ChatReplyResponse.withButtons(
         chatId, next.reply(), next.quickReplies(), next.action(), next.tags());
   }
@@ -260,6 +276,16 @@ public class ChatService {
   private ChatAiClient.ChatTurn askAi(
       String instructions, List<CallFinishRequest.Line> lines, ChatTopic topic) {
     Optional<ChatAiClient.ChatTurn> turn = chatAiClient.turn(instructions, lines);
+    if (turn.isEmpty()) {
+      throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
+    }
+    return cleanTurn(turn.get(), DayRule.dateOf(clock.instant()), topic);
+  }
+
+  // askAi 와 같고, 학생의 마지막 말에 붙은 사진 한 장을 함께 보냅니다.
+  private ChatAiClient.ChatTurn askAiWithImage(
+      String instructions, List<CallFinishRequest.Line> lines, ChatTopic topic, String image) {
+    Optional<ChatAiClient.ChatTurn> turn = chatAiClient.turnWithImage(instructions, lines, image);
     if (turn.isEmpty()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
     }

@@ -44,6 +44,8 @@ public class ChatAiClient {
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
   // 답을 기다리는 최대 시간. 채팅은 학생이 답을 기다리는 화면이라 15초가 지나면 포기하고 다시 보내게 합니다.
   private static final Duration READ_TIMEOUT = Duration.ofSeconds(15);
+  // 사진이 붙은 말은 사진을 읽느라 오래 걸려서 25초까지 기다립니다. (AiClient.askWithImage 와 같음)
+  private static final Duration IMAGE_READ_TIMEOUT = Duration.ofSeconds(25);
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -120,19 +122,31 @@ public class ChatAiClient {
   private final String apiKey;
   private final String model;
   private final RestClient restClient;
+  // 사진이 붙은 말을 보낼 때 쓰는 연결 (더 오래 기다림)
+  private final RestClient imageRestClient;
 
   // Spring 이 쓰는 생성자입니다. 설정에서 키와 모델 이름을 받습니다. 둘 중 하나라도 비어 있으면 꺼진 상태입니다.
   @Autowired
   public ChatAiClient(
       @Value("${app.ai.openai-api-key:}") String apiKey, @Value("${app.ai.model:}") String model) {
-    this(apiKey, model, RestClient.builder().requestFactory(requestFactoryWithTimeouts()));
+    this(
+        apiKey,
+        model,
+        RestClient.builder().requestFactory(requestFactoryWithTimeouts(READ_TIMEOUT)),
+        RestClient.builder().requestFactory(requestFactoryWithTimeouts(IMAGE_READ_TIMEOUT)));
   }
 
-  // 테스트에서 가짜 OpenAI 를 끼워 넣을 때 쓰는 생성자입니다. (ChatAiClientTest)
+  // 테스트에서 가짜 OpenAI 를 끼워 넣을 때 쓰는 생성자입니다. (ChatAiClientTest) 사진도 같은 가짜로 보냅니다.
   ChatAiClient(String apiKey, String model, RestClient.Builder builder) {
+    this(apiKey, model, builder, builder);
+  }
+
+  private ChatAiClient(
+      String apiKey, String model, RestClient.Builder builder, RestClient.Builder imageBuilder) {
     this.apiKey = apiKey == null ? "" : apiKey.trim();
     this.model = model == null ? "" : model.trim();
     this.restClient = builder.baseUrl(OPENAI_BASE_URL).build();
+    this.imageRestClient = imageBuilder.baseUrl(OPENAI_BASE_URL).build();
   }
 
   // GPT 를 부를 수 있는 서버인지 알려줍니다. 키와 모델 이름이 둘 다 있어야 true 입니다.
@@ -183,6 +197,31 @@ public class ChatAiClient {
   // 대본과 대화를 주고, AI 코치의 다음 말과 버튼을 정해진 모양(TURN_SCHEMA)으로 받습니다. 꺼져 있거나 실패하면 빈 값입니다.
   // reply() 와 같은 방법으로 부르고, 대본 끝에 [답 모양] 규칙과 칸 모양을 더할 뿐입니다.
   public Optional<ChatTurn> turn(String instructions, List<CallFinishRequest.Line> lines) {
+    return sendTurn(restClient, instructions, inputOf(lines));
+  }
+
+  // turn 과 같고, 학생의 마지막 말에 붙은 사진 한 장을 함께 보냅니다. (2026-10-18 사진 질문)
+  //   imageDataUrl : "data:image/jpeg;base64,..." 모양의 사진 (OpenAI 문서 Images and vision 의
+  // input_image)
+  // 보내는 모양: [ { "role": "user", "content": [ { "type": "input_text", "text": "코치: … 학생: …" },
+  //                 { "type": "input_image", "image_url": "data:...", "detail": "auto" } ] } ]
+  // ⚠️ 사진은 여기서 OpenAI 로 보내고 끝입니다. 저장하거나 로그에 찍지 않습니다. (store=false 로 OpenAI 에도 남기지 않음)
+  public Optional<ChatTurn> turnWithImage(
+      String instructions, List<CallFinishRequest.Line> lines, String imageDataUrl) {
+    List<Map<String, Object>> input =
+        List.of(
+            Map.of(
+                "role",
+                "user",
+                "content",
+                List.of(
+                    Map.of("type", "input_text", "text", inputOf(lines)),
+                    Map.of("type", "input_image", "image_url", imageDataUrl, "detail", "auto"))));
+    return sendTurn(imageRestClient, instructions, input);
+  }
+
+  // turn · turnWithImage 가 같이 쓰는 보내기. input 은 글 하나이거나, 사진이 섞인 메시지 목록입니다.
+  private Optional<ChatTurn> sendTurn(RestClient client, String instructions, Object input) {
     if (!isEnabled()) {
       return Optional.empty();
     }
@@ -191,11 +230,11 @@ public class ChatAiClient {
           new TurnRequest(
               model,
               instructions + TURN_RULES,
-              inputOf(lines),
+              input,
               false,
               new TextOption(new Format("json_schema", "coach_turn", true, TURN_SCHEMA)));
       OpenAiResponse response =
-          restClient
+          client
               .post()
               .uri("/responses")
               .header("Authorization", "Bearer " + apiKey)
@@ -272,10 +311,10 @@ public class ChatAiClient {
   }
 
   // 기다리는 시간을 정한 연결 도구를 만듭니다. 정하지 않으면 GPT 가 멈췄을 때 끝없이 기다립니다.
-  private static JdkClientHttpRequestFactory requestFactoryWithTimeouts() {
+  private static JdkClientHttpRequestFactory requestFactoryWithTimeouts(Duration readTimeout) {
     HttpClient httpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
     JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-    factory.setReadTimeout(READ_TIMEOUT);
+    factory.setReadTimeout(readTimeout);
     return factory;
   }
 
@@ -285,8 +324,9 @@ public class ChatAiClient {
   record OpenAiRequest(String model, String instructions, String input, boolean store) {}
 
   // 정해진 모양으로 받을 때 보내는 모양: 위에 text.format(json_schema)을 더합니다. (AiClient 와 같은 방법)
+  // input 은 글 하나(String)이거나, 사진이 섞인 메시지 목록(turnWithImage)입니다.
   record TurnRequest(
-      String model, String instructions, String input, boolean store, TextOption text) {}
+      String model, String instructions, Object input, boolean store, TextOption text) {}
 
   record TextOption(Format format) {}
 

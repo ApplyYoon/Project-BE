@@ -138,4 +138,22 @@ class ChatControllerTest {
     postJson("/api/v1/chats", "{\"careLevel\":2,\"maxHarshness\":3,\"room\":\"FRIEND\"}")
         .andExpect(status().isBadRequest());
   }
+
+  @Test
+  @DisplayName("말 보내기에 사진(image)을 붙일 수 있고, 5,600,000자를 넘으면 400 이다")
+  void sendsImage() throws Exception {
+    given(chatService.send(eq(12L), any())).willReturn(ChatReplyResponse.of(12L, "어디까지 풀었어?"));
+
+    postJson(
+            "/api/v1/chats/12/messages",
+            "{\"lines\":[{\"speaker\":\"me\",\"text\":\"이 문제\"}],"
+                + "\"image\":\"data:image/jpeg;base64,AAAA\"}")
+        .andExpect(status().isOk());
+    String tooBig = "a".repeat(5_600_001);
+    postJson(
+            "/api/v1/chats/12/messages",
+            "{\"lines\":[{\"speaker\":\"me\",\"text\":\"이 문제\"}],\"image\":\"" + tooBig + "\"}")
+        .andExpect(status().isBadRequest());
+    verify(chatService).send(eq(12L), any());
+  }
 }

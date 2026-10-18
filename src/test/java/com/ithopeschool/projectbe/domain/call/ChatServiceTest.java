@@ -30,11 +30,13 @@ import com.ithopeschool.projectbe.domain.school.SchoolTodayService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -626,5 +628,70 @@ class ChatServiceTest {
 
     assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(script);
     assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.COACH);
+  }
+
+  // ---- 사진 질문 (2026-10-18) ----
+
+  // 진짜로 읽을 수 있는 아주 작은 사진 글자 (내용은 상관없고, base64 로 풀리기만 하면 됩니다)
+  private static final String IMAGE =
+      "data:image/jpeg;base64,"
+          + Base64.getEncoder().encodeToString("사진".getBytes(StandardCharsets.UTF_8));
+
+  @Test
+  @DisplayName("사진이 붙은 말은 그 한 번만 사진과 함께 보내고, 과목 쌤 방의 사진 규칙을 잠깐 붙인다 (기억한 대본은 그대로)")
+  void sendWithImageInTutorRoom() {
+    givenOpenChat();
+    chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, null, ChatRoom.TUTOR);
+    ChatMessageRequest request = new ChatMessageRequest(said("이 문제 어디서 틀렸어?").lines(), IMAGE);
+    given(chatAiClient.turnWithImage(SCRIPT + ChatRoom.TUTOR.imageRule(), request.lines(), IMAGE))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("3번 문제 맞지? 어디까지 풀었어?")));
+
+    ChatReplyResponse response = service.send(CHAT_ID, request);
+
+    assertThat(response.reply()).isEqualTo("3번 문제 맞지? 어디까지 풀었어?");
+    verify(chatAiClient, never()).turn(any(), anyList());
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(SCRIPT);
+  }
+
+  @Test
+  @DisplayName("방을 잊은 채팅에 사진이 오면 코치 방의 사진 규칙을 쓴다")
+  void sendWithImageWhenRoomIsLost() {
+    givenOpenChat();
+    ChatMessageRequest request = new ChatMessageRequest(said("이거 내 계획표야").lines(), IMAGE);
+    given(chatAiClient.turnWithImage(SCRIPT + ChatRoom.COACH.imageRule(), request.lines(), IMAGE))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("계획표 봤어!")));
+
+    assertThat(service.send(CHAT_ID, request).reply()).isEqualTo("계획표 봤어!");
+  }
+
+  @Test
+  @DisplayName("사진이 없으면 사진 없이 보낸다")
+  void sendWithoutImage() {
+    givenOpenChat();
+    ChatMessageRequest request = said("폰 봤어");
+    given(chatAiClient.turn(SCRIPT, request.lines()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("그랬구나")));
+
+    service.send(CHAT_ID, request);
+
+    verify(chatAiClient, never()).turnWithImage(any(), anyList(), any());
+  }
+
+  @Test
+  @DisplayName("사진 모양이 틀리면 400 이고 AI 한도를 쓰지 않는다")
+  void rejectsBadImage() {
+    givenOpenChat();
+    ChatMessageRequest gif =
+        new ChatMessageRequest(said("이거 봐").lines(), "data:image/gif;base64,R0lGOD");
+    ChatMessageRequest broken =
+        new ChatMessageRequest(said("이거 봐").lines(), "data:image/jpeg;base64,@@@");
+
+    assertError(
+        () -> service.send(CHAT_ID, gif),
+        ErrorCode.VALIDATION_ERROR,
+        "사진은 jpeg · png · webp 의 data URL 로 보내 주세요");
+    assertError(
+        () -> service.send(CHAT_ID, broken), ErrorCode.VALIDATION_ERROR, "사진을 읽을 수 없어요. 다시 찍어 주세요");
+    verify(gptUsageGuard, never()).tryUseText(any(), any());
   }
 }

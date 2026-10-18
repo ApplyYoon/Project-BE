@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.client.ExpectedCount.never;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.anything;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
@@ -187,5 +188,58 @@ class ChatAiClientTest {
   void schemaRequiresTags() {
     assertThat(ChatAiClient.TURN_SCHEMA.get("required"))
         .isEqualTo(List.of("reply", "quickReplies", "action", "tags"));
+  }
+
+  @Test
+  @DisplayName("사진이 붙은 말은 입력을 메시지 목록으로 바꿔 글과 사진(input_image)을 같이 보낸다")
+  void turnWithImageSendsImage() {
+    String image = "data:image/jpeg;base64,AAAA";
+    ChatAiClient client = clientWith(KEY, MODEL);
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.store").value(false))
+        .andExpect(jsonPath("$.input[0].role").value("user"))
+        .andExpect(jsonPath("$.input[0].content[0].type").value("input_text"))
+        .andExpect(jsonPath("$.input[0].content[0].text").value(containsString("학생: 이 문제 봐 줘")))
+        .andExpect(jsonPath("$.input[0].content[1].type").value("input_image"))
+        .andExpect(jsonPath("$.input[0].content[1].image_url").value(image))
+        .andRespond(
+            withSuccess(
+                answerOf(
+                    "{\\\"reply\\\":\\\"어디까지 풀었어?\\\",\\\"quickReplies\\\":[],\\\"action\\\":null,\\\"tags\\\":[]}"),
+                MediaType.APPLICATION_JSON));
+
+    Optional<ChatAiClient.ChatTurn> turn =
+        client.turnWithImage("대본", List.of(new Line("me", "이 문제 봐 줘")), image);
+
+    assertThat(turn.map(ChatAiClient.ChatTurn::reply)).contains("어디까지 풀었어?");
+    openAi.verify();
+  }
+
+  @Test
+  @DisplayName("사진이 없는 말은 지금처럼 입력을 글 하나로 보낸다")
+  void turnWithoutImageSendsText() {
+    ChatAiClient client = clientWith(KEY, MODEL);
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.input").isString())
+        .andRespond(
+            withSuccess(
+                answerOf(
+                    "{\\\"reply\\\":\\\"응\\\",\\\"quickReplies\\\":[],\\\"action\\\":null,\\\"tags\\\":[]}"),
+                MediaType.APPLICATION_JSON));
+
+    assertThat(client.turn("대본", List.of(new Line("me", "안녕")))).isPresent();
+    openAi.verify();
+  }
+
+  @Test
+  @DisplayName("AI 가 꺼져 있으면 사진이 있어도 부르지 않는다")
+  void turnWithImageWhenDisabled() {
+    openAi.expect(never(), anything());
+
+    assertThat(clientWith("", MODEL).turnWithImage("대본", List.of(), "data:image/jpeg;base64,AAAA"))
+        .isEmpty();
+    openAi.verify();
   }
 }
