@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.ithopeschool.projectbe.domain.exam.dto.ExamActualScoreRequest;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamCreateRequest;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamExpectedScoreRequest;
+import com.ithopeschool.projectbe.domain.exam.dto.ExamGoalRequest;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamResponse;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamResultRequest;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamSubjectScoreResponse;
@@ -85,7 +86,7 @@ class ExamControllerTest {
   // ---- 목록 ----
 
   @Test
-  @DisplayName("목록은 200 이고, 시험마다 FE Exam 의 다섯 칸이 있다")
+  @DisplayName("목록은 200 이고, 시험마다 FE Exam 의 다섯 칸과 이어진 목표 번호(goalId) 가 있다")
   void getExams() throws Exception {
     given(examService.getExams()).willReturn(List.of(BEFORE_EXAM));
 
@@ -103,7 +104,9 @@ class ExamControllerTest {
         // 실제 점수는 시험 후에 적어서, 아직이면 빼지 않고 null 로 보냅니다. (docs/API.md 4장)
         .andExpect(jsonPath("$[0].subjectScores[0].actualScore").isEmpty())
         .andExpect(jsonPath("$[0].subjectScores[0].length()").value(3))
-        .andExpect(jsonPath("$[0].length()").value(5))
+        // 목표에 잇지 않은 시험이면 goalId 는 빼지 않고 null 로 보냅니다. (이슈 #228)
+        .andExpect(jsonPath("$[0].goalId").isEmpty())
+        .andExpect(jsonPath("$[0].length()").value(6))
         .andExpect(jsonPath("$[0].userId").doesNotExist());
   }
 
@@ -359,5 +362,44 @@ class ExamControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].subjectScores").isArray())
         .andExpect(jsonPath("$[0].subjectScores.length()").value(0));
+  }
+
+  // ---- 시험을 목표에 잇기 (이슈 #228) ----
+
+  @Test
+  @DisplayName("goalId 로 목록을 부르면 그 목표의 시험 목록을 Service 에 묻는다")
+  void examsOfGoal() throws Exception {
+    given(examService.getExams(4L)).willReturn(List.of(BEFORE_EXAM));
+
+    mockMvc
+        .perform(get("/api/v1/exams").param("goalId", "4"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].id").value("7"));
+    verify(examService).getExams(4L);
+  }
+
+  @Test
+  @DisplayName("목표 잇기는 200 이고 바뀐 시험을 돌려준다. goalId: null 이면 떼기로 넘긴다")
+  void linkGoal() throws Exception {
+    ExamResponse linked =
+        new ExamResponse("7", "mock", "10월 모의고사", OCT_20, Collections.emptyList(), "4");
+    given(examService.linkGoal(any(), any())).willReturn(linked);
+
+    send(patch("/api/v1/exams/7/goal"), "{\"goalId\":\"4\"}")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.goalId").value("4"));
+    verify(examService).linkGoal(7L, new ExamGoalRequest("4"));
+
+    send(patch("/api/v1/exams/7/goal"), "{\"goalId\":null}").andExpect(status().isOk());
+    verify(examService).linkGoal(7L, new ExamGoalRequest(null));
+  }
+
+  @Test
+  @DisplayName("목표 번호가 숫자가 아니면 400 이고, Service 는 부르지 않는다")
+  void linkGoalRejectsBadId() throws Exception {
+    send(patch("/api/v1/exams/7/goal"), "{\"goalId\":\"abc\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("목표 번호가 올바르지 않아요"));
+    verifyNoInteractions(examService);
   }
 }

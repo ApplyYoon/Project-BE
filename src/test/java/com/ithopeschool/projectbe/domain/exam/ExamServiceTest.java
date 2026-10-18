@@ -14,9 +14,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamActualScoreRequest;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamCreateRequest;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamExpectedScoreRequest;
+import com.ithopeschool.projectbe.domain.exam.dto.ExamGoalRequest;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamResponse;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamResultRequest;
 import com.ithopeschool.projectbe.domain.exam.dto.ExamSubjectScoreResponse;
+import com.ithopeschool.projectbe.domain.goal.Goal;
+import com.ithopeschool.projectbe.domain.goal.GoalKind;
+import com.ithopeschool.projectbe.domain.goal.GoalRepository;
 import com.ithopeschool.projectbe.domain.subject.Subject;
 import com.ithopeschool.projectbe.domain.subject.SubjectColor;
 import com.ithopeschool.projectbe.domain.subject.SubjectRepository;
@@ -58,6 +62,7 @@ class ExamServiceTest {
   private ExamRepository examRepository;
   private ExamScoreRepository examScoreRepository;
   private SubjectRepository subjectRepository;
+  private GoalRepository goalRepository;
   private ExamService examService;
 
   @BeforeEach
@@ -66,6 +71,7 @@ class ExamServiceTest {
     examRepository = mock(ExamRepository.class);
     examScoreRepository = mock(ExamScoreRepository.class);
     subjectRepository = mock(SubjectRepository.class);
+    goalRepository = mock(GoalRepository.class);
     examService = serviceAt(NOW);
     given(currentUserProvider.getCurrentUserId()).willReturn(ME);
     // 3번(수학)과 4번(영어)은 내 과목이고, 그 밖의 번호는 없는 과목이거나 남의 과목입니다.
@@ -88,6 +94,7 @@ class ExamServiceTest {
         examRepository,
         examScoreRepository,
         subjectRepository,
+        goalRepository,
         Clock.fixed(now, ZoneOffset.UTC));
   }
 
@@ -442,5 +449,104 @@ class ExamServiceTest {
     verify(examScoreRepository).findByUserIdAndExamIdOrderById(ME, 7L);
     // 다른 사람의 번호로는 묻지 않습니다.
     verify(examRepository, never()).findByIdAndUserId(7L, OTHER);
+  }
+
+  // ---- 시험을 목표에 잇기 (이슈 #228) ----
+
+  // DB 에 이미 있는 내 목표. 4번은 점수형, 5번은 완주형입니다.
+  private void givenMyGoals() {
+    Goal score =
+        new Goal(
+            ME,
+            GoalKind.SCORE,
+            new Goal.Target("11월 학평 수학 3등급", LocalDate.of(2026, 11, 20), "5등급", null, null),
+            new Goal.Woop("좋은 점", "대가", "걸림돌", "방법"),
+            NOW);
+    ReflectionTestUtils.setField(score, "id", 4L);
+    Goal completion =
+        new Goal(
+            ME,
+            GoalKind.COMPLETION,
+            new Goal.Target("영단어장 1회독", LocalDate.of(2026, 11, 7), null, 300, "쪽"),
+            new Goal.Woop("좋은 점", "대가", "걸림돌", "방법"),
+            NOW);
+    ReflectionTestUtils.setField(completion, "id", 5L);
+    given(goalRepository.findByIdAndUserId(any(), any())).willReturn(Optional.empty());
+    given(goalRepository.findByIdAndUserId(4L, ME)).willReturn(Optional.of(score));
+    given(goalRepository.findByIdAndUserId(5L, ME)).willReturn(Optional.of(completion));
+  }
+
+  @Test
+  @DisplayName("시험을 등록할 때 내 점수형 목표 번호를 보내면 그 목표에 이어서 저장하고, 응답에 goalId 가 있다")
+  void createLinksTheGoal() {
+    givenMyGoals();
+
+    ExamResponse response =
+        examService.create(
+            new ExamCreateRequest(
+                "mock",
+                "11월 학평",
+                OCT_20,
+                List.of(new ExamExpectedScoreRequest("3", new BigDecimal(60))),
+                "4"));
+
+    assertThat(response.goalId()).isEqualTo("4");
+    ArgumentCaptor<Exam> saved = ArgumentCaptor.forClass(Exam.class);
+    verify(examRepository).save(saved.capture());
+    assertThat(saved.getValue().getGoalId()).isEqualTo(4L);
+  }
+
+  @Test
+  @DisplayName("완주형 목표에는 이을 수 없어 400, 남의 목표 · 없는 목표는 404 이고 시험을 저장하지 않는다")
+  void createRejectsBadGoals() {
+    givenMyGoals();
+    ExamExpectedScoreRequest math = new ExamExpectedScoreRequest("3", new BigDecimal(60));
+
+    assertThatThrownBy(
+            () ->
+                examService.create(
+                    new ExamCreateRequest("mock", "11월 학평", OCT_20, List.of(math), "5")))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("시험은 점수형 목표에만 이을 수 있어요");
+    assertThatThrownBy(
+            () ->
+                examService.create(
+                    new ExamCreateRequest("mock", "11월 학평", OCT_20, List.of(math), "99")))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("목표를 찾을 수 없어요")
+        .extracting(e -> ((ApiException) e).getErrorCode())
+        .isEqualTo(ErrorCode.NOT_FOUND);
+    verify(examRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("이미 있는 시험을 목표에 잇고(goalId), 다시 떼어 낸다(null)")
+  void linkAndUnlink() {
+    givenMyGoals();
+    Exam exam = exam(7, "11월 학평", ExamType.MOCK, OCT_20);
+    given(examRepository.findByIdAndUserId(7L, ME)).willReturn(Optional.of(exam));
+
+    assertThat(examService.linkGoal(7L, new ExamGoalRequest("4")).goalId()).isEqualTo("4");
+    assertThat(exam.getGoalId()).isEqualTo(4L);
+
+    assertThat(examService.linkGoal(7L, new ExamGoalRequest(null)).goalId()).isNull();
+    assertThat(exam.getGoalId()).isNull();
+  }
+
+  @Test
+  @DisplayName("goalId 로 목록을 부르면 그 목표에 이어진 내 시험만 찾고, 남의 목표면 404 이다")
+  void examsOfGoal() {
+    givenMyGoals();
+    Exam linked = exam(7, "11월 학평", ExamType.MOCK, OCT_20);
+    linked.linkGoal(4L);
+    given(examRepository.findByUserIdAndGoalIdOrderByExamDateDescIdDesc(ME, 4L))
+        .willReturn(List.of(linked));
+
+    assertThat(examService.getExams(4L))
+        .extracting(ExamResponse::id, ExamResponse::goalId)
+        .containsExactly(tuple("7", "4"));
+    assertThatThrownBy(() -> examService.getExams(99L))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("목표를 찾을 수 없어요");
   }
 }
