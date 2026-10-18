@@ -90,6 +90,32 @@ class SchoolTodayServiceTest {
   }
 
   @Test
+  @DisplayName("예약 작업용 급식 미리 받기: 학교 번호만으로 오늘 · 내일 급식을 받아 두고, 6시간 안에는 다시 부르지 않는다")
+  void prefetchesMeals() {
+    hasSavedOfficeCode();
+    given(neisClient.fetchMeals("J10", SCHOOL, TODAY))
+        .willReturn(Optional.of(List.of(lunch(TODAY, "나주곰탕"))));
+    given(neisClient.fetchMeals("J10", SCHOOL, TOMORROW)).willReturn(Optional.of(List.of()));
+
+    service.prefetchMeals(SCHOOL);
+    service.prefetchMeals(SCHOOL);
+
+    verify(neisClient, times(1)).fetchMeals("J10", SCHOOL, TODAY);
+    verify(neisClient, times(1)).fetchMeals("J10", SCHOOL, TOMORROW);
+  }
+
+  @Test
+  @DisplayName("교육청 코드를 못 찾는 학교는 급식을 미리 받지 않는다")
+  void prefetchWithoutOfficeCode() {
+    given(fetchRepository.findById(SCHOOL)).willReturn(Optional.empty());
+    given(neisClient.findOfficeCode(SCHOOL)).willReturn(Optional.empty());
+
+    service.prefetchMeals(SCHOOL);
+
+    verify(neisClient, never()).fetchMeals(anyString(), anyString(), any());
+  }
+
+  @Test
   @DisplayName("오늘 · 내일 급식과 30일 안의 학사일정을 남은 날(dDay) · 시험 표시와 함께 돌려준다")
   void mealsAndEvents() {
     hasSchool(SCHOOL);

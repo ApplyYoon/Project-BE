@@ -121,6 +121,20 @@ public class SchoolTodayService {
         events);
   }
 
+  // 예약 작업 school-daily 가 쓰는 "오늘 · 내일 급식 미리 받기"입니다. 로그인한 학생 없이 학교 번호로만 부릅니다.
+  // 받아 둔 지 6시간이 안 된 날은 NEIS 를 부르지 않습니다. (아침에 처음 여는 학생이 기다리지 않게)
+  public void prefetchMeals(String schoolCode) {
+    Instant now = clock.instant();
+    LocalDate today = DayRule.dateOf(now);
+    Optional<String> officeCode = findOfficeCode(schoolCode);
+    if (officeCode.isEmpty()) {
+      return;
+    }
+    savedMeals.values().removeIf(saved -> saved.day().isBefore(today));
+    mealsOf(officeCode.get(), schoolCode, today, now);
+    mealsOf(officeCode.get(), schoolCode, today.plusDays(1), now);
+  }
+
   // AI 코치 채팅의 대본에 넣을 "오늘 학교" 줄들입니다. 학교를 안 골랐거나 아무것도 없으면 빈 목록입니다. (ChatService)
   // - 학교 이름은 넣지 않습니다. (외부 AI 에 개인정보를 보내지 않는 규칙, AiQuestion)
   // - 학년 · 반이 이상하면 채팅을 막지 않고 시간표만 뺍니다.
