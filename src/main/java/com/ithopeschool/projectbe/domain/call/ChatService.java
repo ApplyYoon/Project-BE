@@ -104,10 +104,15 @@ public class ChatService {
 
     // 통화와 같은 대본 끝에 "학생 성향" · "오늘 학교" 칸을 붙입니다. 없으면 붙이지 않습니다.
     // 성향은 학생마다 말 거는 방법을 다르게 하려고 넣습니다. (시작을 미루는 학생에게는 '5분만' 처럼)
+    // 답이 거의 다 같아서 믿기 어려운 검사면 점수 대신 "대화로 하나만 확인해" 칸을 붙입니다. (2026-10-18)
     String psychPart =
         psychTestRepository
             .findFirstByUserIdOrderByIdDesc(userId)
-            .map(test -> CallScript.psychSection(PsychScore.scoresOf(test.getAnswers())))
+            .map(
+                test ->
+                    test.isReliable()
+                        ? CallScript.psychSection(PsychScore.scoresOf(test.getAnswers()))
+                        : CallScript.unsurePsychSection())
             .orElse("");
     String instructions =
         script.instructions()

@@ -87,6 +87,29 @@ class ProfileLinesServiceTest {
   }
 
   @Test
+  @DisplayName("심리검사 답이 거의 다 같아서 믿기 어려우면 AI 를 부르지 않고 정해 둔 3줄이다")
+  void unsureTest() {
+    Map<PsychItem, Integer> answers = new EnumMap<>(PsychItem.class);
+    for (PsychItem item : PsychItem.values()) {
+      answers.put(item, 7);
+    }
+    given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(
+            Optional.of(new PsychTest(USER_ID, Instant.parse("2026-10-17T09:00:00Z"), answers)));
+
+    assertThat(service.suggest()).isEqualTo(new ProfileLinesResponse(ProfileLines.UNSURE_LINES));
+    verifyNoInteractions(aiClient);
+    // 정해 둔 줄도 AI 의 줄과 같은 규칙(60자 · 숫자 없음)을 지킵니다.
+    assertThat(ProfileLines.UNSURE_LINES)
+        .hasSize(3)
+        .allSatisfy(
+            line ->
+                assertThat(line)
+                    .hasSizeLessThanOrEqualTo(ProfileLines.MAX_LINE_LENGTH)
+                    .doesNotContainPattern("\\d"));
+  }
+
+  @Test
   @DisplayName("AI 가 못 만들었거나 쓸 수 없는 답이면 lines: null 이다")
   void aiUnusable() {
     latestTest();

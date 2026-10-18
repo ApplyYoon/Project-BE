@@ -13,6 +13,10 @@ import com.ithopeschool.projectbe.domain.card.dto.CardCreateRequest;
 import com.ithopeschool.projectbe.domain.card.dto.CardResponse;
 import com.ithopeschool.projectbe.domain.card.dto.CardUpdateRequest;
 import com.ithopeschool.projectbe.domain.card.dto.ChecklistItemRequest;
+import com.ithopeschool.projectbe.domain.fixedblock.FixedBlock;
+import com.ithopeschool.projectbe.domain.fixedblock.FixedBlockRepository;
+import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
+import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -40,14 +44,24 @@ class CardServiceTest {
 
   private CurrentUserProvider currentUserProvider;
   private CardRepository cardRepository;
+  private OnboardingAnswerRepository onboardingAnswerRepository;
+  private FixedBlockRepository fixedBlockRepository;
   private CardService cardService;
 
   @BeforeEach
   void setUp() {
     currentUserProvider = mock(CurrentUserProvider.class);
     cardRepository = mock(CardRepository.class);
+    // 설문(취침 · 기상)과 고정 일정은 기본으로 없습니다. 그러면 수면 보호는 00:00 ~ 06:00 입니다. (이슈 #223)
+    onboardingAnswerRepository = mock(OnboardingAnswerRepository.class);
+    fixedBlockRepository = mock(FixedBlockRepository.class);
     cardService =
-        new CardService(currentUserProvider, cardRepository, Clock.fixed(NOW, ZoneId.of("UTC")));
+        new CardService(
+            currentUserProvider,
+            cardRepository,
+            Clock.fixed(NOW, ZoneId.of("UTC")),
+            onboardingAnswerRepository,
+            fixedBlockRepository);
     given(currentUserProvider.getCurrentUserId()).willReturn(ME);
     // 저장하면 DB 가 번호를 매겨 준 것처럼 돌려줍니다.
     given(cardRepository.save(any()))
@@ -512,5 +526,93 @@ class CardServiceTest {
     cardService.delete(7L);
 
     verify(cardRepository).delete(card);
+  }
+
+  // ---- 수면 보호 · 10분 버퍼 (이슈 #223) ----
+
+  // 시작 시각 · 길이만 정한 만들기 요청
+  private static CardCreateRequest createAt(String startTime, int minutes) {
+    return new CardCreateRequest(
+        "수학 문제집",
+        MON_OCT_12,
+        null,
+        startTime,
+        minutes,
+        List.of(new ChecklistItemRequest(null, "42쪽")),
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
+  }
+
+  private void givenSleep(String sleep, String wake) {
+    OnboardingAnswer answer = mock(OnboardingAnswer.class);
+    given(answer.getSleepTime()).willReturn(LocalTime.parse(sleep));
+    given(answer.getWakeUpTime()).willReturn(LocalTime.parse(wake));
+    given(onboardingAnswerRepository.findFirstByUserIdOrderByAnsweredAtDescIdDesc(ME))
+        .willReturn(Optional.of(answer));
+  }
+
+  @Test
+  @DisplayName("설문에 취침 · 기상이 없으면 수면 보호는 00:00~06:00 이라, 05:30 카드는 400 이고 저장하지 않는다")
+  void defaultSleepWindowBlocks() {
+    assertThatThrownBy(() -> cardService.create(createAt("05:30", 60)))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("수면 보호 시간(00:00~06:00)과 겹쳐요");
+    verify(cardRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("설문의 23:00~07:00 과 겹치는 22:30 · 60분은 400, 딱 붙은 22:00 · 60분과 시작 시각 없는 카드는 저장된다")
+  void sleepFromSurvey() {
+    givenSleep("23:00", "07:00");
+
+    assertThatThrownBy(() -> cardService.create(createAt("22:30", 60)))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("수면 보호 시간(23:00~07:00)과 겹쳐요");
+    assertThat(cardService.create(createAt("22:00", 60)).startTime()).isEqualTo("22:00");
+    assertThat(cardService.create(createAt("", 60)).startTime()).isNull();
+  }
+
+  @Test
+  @DisplayName("고칠 때는 시각이나 길이를 바꿀 때만 수면 보호를 본다 (제목만 고치면 예전 카드도 그대로 저장)")
+  void sleepOnUpdateOnlyWhenTimeChanges() {
+    givenSleep("23:00", "07:00");
+    Card old = myCard(7, "예전 카드", MON_OCT_12, List.of());
+    old.changeStartTime(LocalTime.of(23, 30));
+    given(cardRepository.findByIdAndUserId(7L, ME)).willReturn(Optional.of(old));
+
+    CardUpdateRequest titleOnly =
+        new CardUpdateRequest(
+            "새 제목", null, null, null, null, null, null, null, null, null, null, null, null, null);
+    assertThat(cardService.update(7L, titleOnly).title()).isEqualTo("새 제목");
+
+    CardUpdateRequest longer =
+        new CardUpdateRequest(
+            null, null, null, null, 90, null, null, null, null, null, null, null, null, null);
+    assertThatThrownBy(() -> cardService.update(7L, longer))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("수면 보호 시간(23:00~07:00)과 겹쳐요");
+  }
+
+  @Test
+  @DisplayName("앞뒤 고정 일정과 10분 여유가 없으면 응답에 bufferWarning 을 붙이고 저장은 한다, 넉넉하면 null")
+  void bufferWarning() {
+    // 2026-10-12 는 월요일(1). 월요일마다 학원 18:00~21:00
+    given(fixedBlockRepository.findByUserIdOrderById(ME))
+        .willReturn(
+            List.of(
+                new FixedBlock(
+                    ME, "학원", List.of(1), LocalTime.of(18, 0), LocalTime.of(21, 0), NOW)));
+
+    CardResponse tight = cardService.create(createAt("21:05", 60));
+    assertThat(tight.bufferWarning()).isEqualTo("학원 18:00~21:00 과 사이가 5분뿐이에요. 10분 여유를 두면 좋아요.");
+    verify(cardRepository).save(any());
+
+    assertThat(cardService.create(createAt("16:50", 60)).bufferWarning()).isNull();
   }
 }

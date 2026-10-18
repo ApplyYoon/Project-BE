@@ -179,6 +179,8 @@ class LoginRequiredFlowTest {
               "/api/v1/cards/results?from=2026-10-01&to=2026-10-07",
               null),
           new Api("GET", "/api/v1/cards/plan-pattern", "/api/v1/cards/plan-pattern?goalId=1", null),
+          // 달력 (내 카드 결과 · 체크인을 봅니다. 이슈 #235)
+          new Api("GET", "/api/v1/calendar", "/api/v1/calendar?month=2026-10", null),
           // 잠금 해제 기록
           new Api(
               "POST",
@@ -494,7 +496,22 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/day-plan/revise",
               "/api/v1/ai/day-plan/revise",
               "{\"drafts\":[{\"date\":\"2099-01-01\",\"startTime\":\"19:00\",\"durationMinutes\":30,"
-                  + "\"title\":\"수학\"}],\"request\":\"줄여 줘\"}"));
+                  + "\"title\":\"수학\"}],\"request\":\"줄여 줘\"}"),
+          new Api("POST", "/api/v1/ai/quiz", "/api/v1/ai/quiz", "{\"topic\":\"수열의 극한\"}"),
+          // 긴 계획(30일) (목표 한 줄로 할 일을 쓰고 날짜별로 나눕니다. 2026-10-18)
+          new Api(
+              "POST",
+              "/api/v1/ai/long-plan",
+              "/api/v1/ai/long-plan",
+              "{\"goal\":\"중간고사\",\"endDate\":\"2099-01-01\"}"),
+          // 긴 계획 고치기 (학생의 요청으로 뼈대를 고치고 다시 나눕니다. 2026-10-18)
+          new Api(
+              "POST",
+              "/api/v1/ai/long-plan/revise",
+              "/api/v1/ai/long-plan/revise",
+              "{\"plan\":{\"goal\":\"중간고사\",\"startDate\":\"2099-01-01\",\"endDate\":\"2099-01-05\","
+                  + "\"dailyMinutes\":60,\"startTime\":\"19:00\","
+                  + "\"topics\":[{\"title\":\"수학\",\"minutes\":60}]},\"request\":\"줄여 줘\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

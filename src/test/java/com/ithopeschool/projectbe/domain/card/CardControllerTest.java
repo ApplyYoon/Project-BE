@@ -65,7 +65,8 @@ class CardControllerTest {
           null,
           null,
           null,
-          1790000000000L);
+          1790000000000L,
+          null);
 
   // 카드 만들기 요청의 꼭 있어야 하는 칸. 바꾸고 싶은 칸만 뒤에 덧붙여 씁니다.
   private static final String VALID_CARD =
@@ -87,7 +88,7 @@ class CardControllerTest {
   // ---- 목록 ----
 
   @Test
-  @DisplayName("목록은 200 이고, 카드마다 FE Card 의 열여섯 칸이 있다")
+  @DisplayName("목록은 200 이고, 카드마다 FE Card 의 열여섯 칸과 bufferWarning(목록에서는 null) 이 있다")
   void getCards() throws Exception {
     given(cardService.getCards(OCT_12)).willReturn(List.of(MATH));
 
@@ -109,7 +110,9 @@ class CardControllerTest {
         // 값이 없는 칸은 빼지 않고 null 로 보냅니다. (docs/API.md 4장)
         .andExpect(jsonPath("$[0].goalId").isEmpty())
         .andExpect(jsonPath("$[0].alert").isEmpty())
-        .andExpect(jsonPath("$[0].length()").value(16))
+        // 버퍼 경고는 만들기 · 바꾸기 응답에만 있어서, 목록에서는 빼지 않고 null 로 보냅니다. (이슈 #223)
+        .andExpect(jsonPath("$[0].bufferWarning").isEmpty())
+        .andExpect(jsonPath("$[0].length()").value(17))
         .andExpect(jsonPath("$[0].userId").doesNotExist());
   }
 

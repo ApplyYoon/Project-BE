@@ -5,6 +5,9 @@ import com.ithopeschool.projectbe.domain.card.dto.CardCreateRequest;
 import com.ithopeschool.projectbe.domain.card.dto.CardResponse;
 import com.ithopeschool.projectbe.domain.card.dto.CardUpdateRequest;
 import com.ithopeschool.projectbe.domain.card.dto.ChecklistItemRequest;
+import com.ithopeschool.projectbe.domain.fixedblock.FixedBlockRepository;
+import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
+import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -15,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -40,6 +44,9 @@ public class CardService {
   private final CardRepository cardRepository;
   // "지금 몇 시인지" 는 시계에게 묻습니다. 테스트에서 시각을 고정할 수 있습니다. (global/config/ClockConfig)
   private final Clock clock;
+  // 수면 보호 시간(설문의 취침 · 기상)과 10분 버퍼(고정 일정)를 볼 때 씁니다. (이슈 #223)
+  private final OnboardingAnswerRepository onboardingAnswerRepository;
+  private final FixedBlockRepository fixedBlockRepository;
 
   // 내 카드 목록.
   // - date 를 보내면: 그날 하는 카드만, 시작 시각 순서로 (1회성은 그 날짜, 반복은 시작한 날부터 그 요일)
@@ -110,7 +117,9 @@ public class CardService {
     card.changePlanningMs(request.planningMs());
 
     checkExpectedDone(card);
-    return CardResponse.from(cardRepository.save(card));
+    checkSleep(userId, card);
+    Card saved = cardRepository.save(card);
+    return CardResponse.from(saved, bufferWarningOf(userId, saved));
   }
 
   // 카드 바꾸기: 보낸 것만 바꿉니다. 목록(반복 요일 · 체크리스트 · 예상 실패 원인)은 보낸 목록으로 통째로 바꿉니다.
@@ -178,8 +187,47 @@ public class CardService {
     // 바뀐 뒤의 모습으로 한 번 더 봅니다. (체크리스트만 줄여도 예상 달성 개수가 넘칠 수 있음)
     // 여기서 400 이 나면 @Transactional 이 위에서 바꾼 값을 모두 되돌립니다.
     checkExpectedDone(card);
+    // 시각이나 길이를 바꿀 때만 수면 보호를 봅니다. (제목만 고치는데 예전 카드라 막히지 않게)
+    if (request.startTime() != null || request.durationMinutes() != null) {
+      checkSleep(userId, card);
+    }
     // 엔티티의 값을 바꾸기만 하면 이 메서드가 끝날 때 JPA 가 DB 에 반영합니다.
-    return CardResponse.from(card);
+    return CardResponse.from(card, bufferWarningOf(userId, card));
+  }
+
+  // 카드 시간이 수면 보호 시간과 겹치면 400 입니다. 시작 시각이 없으면 보지 않습니다. (이슈 #223, ScheduleCheck)
+  // 수면 보호 시간은 가장 최근 설문의 취침 · 기상 시각이고, 없으면 00:00 ~ 06:00 입니다. 6시간보다 짧으면 6시간으로 늘립니다.
+  private void checkSleep(Long userId, Card card) {
+    if (card.getStartTime() == null) {
+      return;
+    }
+    Optional<OnboardingAnswer> answer =
+        onboardingAnswerRepository.findFirstByUserIdOrderByAnsweredAtDescIdDesc(userId);
+    ScheduleCheck.SleepWindow window =
+        ScheduleCheck.sleepWindow(
+            answer.map(OnboardingAnswer::getSleepTime).orElse(null),
+            answer.map(OnboardingAnswer::getWakeUpTime).orElse(null));
+    if (ScheduleCheck.isOverlappingSleep(card.getStartTime(), card.getDurationMinutes(), window)) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "수면 보호 시간(" + window.label() + ")과 겹쳐요");
+    }
+  }
+
+  // 앞뒤 카드 · 고정 일정과 10분 여유가 없으면 경고 문장, 넉넉하면 null 입니다. (이슈 #223, 막지 않음)
+  // 반복 카드는 시작 날짜부터 일주일을 보므로, 그 기간의 카드를 한 번에 꺼냅니다.
+  private String bufferWarningOf(Long userId, Card card) {
+    if (card.getStartTime() == null) {
+      return null;
+    }
+    LocalDate from = card.getCardDate();
+    LocalDate to = card.isOneOff() ? from : from.plusDays(6);
+    return ScheduleCheck.bufferWarning(
+        from,
+        card.repeatDayList(),
+        card.getStartTime(),
+        card.getDurationMinutes(),
+        cardRepository.findCandidatesBetween(userId, from, to),
+        fixedBlockRepository.findByUserIdOrderById(userId),
+        card.getId());
   }
 
   // 카드 지우기. 없는 번호이거나 남의 카드면 404 입니다.

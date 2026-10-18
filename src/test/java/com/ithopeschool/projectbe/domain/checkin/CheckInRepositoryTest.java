@@ -160,4 +160,25 @@ class CheckInRepositoryTest {
         .singleElement()
         .satisfies(checkIn -> assertThat(checkIn.getEmotions()).containsExactly(EmotionTag.CALM));
   }
+
+  @Test
+  @DisplayName("감정까지 한 번에 가져오기: 감정이 여러 개여도 체크인은 한 번만, 날짜 순, 내 기간 안의 것만 (달력, 이슈 #235)")
+  void findsWithEmotionsOnce() {
+    CheckIn twoTags = save(1L, "2026-10-16", 3);
+    twoTags.replaceEmotions(EnumSet.of(EmotionTag.STUCK, EmotionTag.TIRED));
+    checkInRepository.saveAndFlush(twoTags);
+    save(1L, "2026-10-02", 4);
+    save(1L, "2026-09-30", 4);
+    save(2L, "2026-10-10", 4);
+
+    List<CheckIn> found =
+        checkInRepository.findWithEmotionsBetween(
+            1L, LocalDate.parse("2026-10-01"), LocalDate.parse("2026-10-31"));
+
+    assertThat(found)
+        .extracting(CheckIn::getCheckInDate)
+        .containsExactly(LocalDate.parse("2026-10-02"), LocalDate.parse("2026-10-16"));
+    assertThat(found.get(1).getEmotions())
+        .containsExactlyInAnyOrder(EmotionTag.STUCK, EmotionTag.TIRED);
+  }
 }

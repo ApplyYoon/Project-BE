@@ -52,6 +52,11 @@ public enum PsychItem {
     return scale;
   }
 
+  // 척도 안에서 몇 번째 문장인지 (1 ~ 5).   S1 -> 1, C5 -> 5
+  public int number() {
+    return name().charAt(1) - '0';
+  }
+
   // FE 가 보낸 코드를 문항으로 바꿉니다. 없는 코드면 null 입니다.   "S1" -> S1
   public static PsychItem fromCode(String code) {
     for (PsychItem item : values()) {

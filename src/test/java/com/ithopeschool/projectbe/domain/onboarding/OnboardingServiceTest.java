@@ -18,6 +18,7 @@ import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -428,5 +429,40 @@ class OnboardingServiceTest {
         "로그인이 필요해요");
     assertError(service::get, ErrorCode.UNAUTHORIZED, "로그인이 필요해요");
     assertThat(rows).isEmpty();
+  }
+
+  // ---- 수면 보호 최소 6시간 (이슈 #223) ----
+
+  @Test
+  @DisplayName("취침 ~ 기상이 6시간보다 짧으면 400 이고 저장하지 않는다 (01:00 → 06:00 은 5시간), 6시간이면 저장된다")
+  void sleepShorterThanSixHoursIsRejected() {
+    assertError(
+        () -> service.save(put("\"sleepTime\":\"01:00\",\"wakeUpTime\":\"06:00\"")),
+        ErrorCode.VALIDATION_ERROR,
+        "수면 보호 시간은 6시간 이상이어야 해요");
+    assertThat(rows).isEmpty();
+
+    assertThat(service.save(put("\"sleepTime\":\"00:00\",\"wakeUpTime\":\"06:00\"")).sleepTime())
+        .isEqualTo("00:00");
+  }
+
+  @Test
+  @DisplayName("PATCH 로 기상만 당겨서 6시간보다 짧아지면 400, 예전에 짧게 적어 둔 사람이 다른 답만 고치는 것은 된다")
+  void sleepLengthOnPatch() {
+    OnboardingAnswer.Values old = new OnboardingAnswer.Values();
+    old.grade = Grade.HIGH_2;
+    old.dailyAvailableMinutes = 180;
+    old.sleepTime = LocalTime.of(0, 30);
+    old.wakeUpTime = LocalTime.of(6, 20);
+    rows.add(new OnboardingAnswer(USER_ID, Instant.parse("2026-10-01T00:00:00Z"), old));
+
+    // 다른 답만 고치면 예전 수면 시간(5시간 50분)이 그대로여도 저장됩니다.
+    assertThat(service.update(patch("{\"chronotype\":\"night\"}")).chronotype()).isEqualTo("night");
+    // 기상 시각을 보냈는데 여전히 6시간이 안 되면 막습니다.
+    assertError(
+        () -> service.update(patch("{\"wakeUpTime\":\"06:10\"}")),
+        ErrorCode.VALIDATION_ERROR,
+        "수면 보호 시간은 6시간 이상이어야 해요");
+    assertThat(service.update(patch("{\"wakeUpTime\":\"07:00\"}")).wakeUpTime()).isEqualTo("07:00");
   }
 }

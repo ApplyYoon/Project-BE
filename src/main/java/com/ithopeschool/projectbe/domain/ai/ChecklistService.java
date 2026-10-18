@@ -141,9 +141,10 @@ public class ChecklistService {
   //   1. 가장 최근 온보딩 심리검사(#219)의 "계획 낙관"(P1 ~ P5)이 높음(5 이상)인지
   //   2. 심리검사를 아직 안 했으면, 예전의 생각 습관 테스트(#35)에서 "계획할 때" 축이 낙관인지
   //      (생각 습관 테스트는 2026-10-17 에 받지 않기로 했지만, 이미 쌓인 결과는 버리지 않고 씁니다)
-  //   둘 다 없으면 false 입니다.
+  //   둘 다 없으면 false 입니다. 답이 거의 다 같아서 믿기 어려운 심리검사는 없는 것으로 봅니다. (PsychTest.isReliable)
   private boolean isPlanOptimistic(Long userId) {
-    Optional<PsychTest> psychTest = psychTestRepository.findFirstByUserIdOrderByIdDesc(userId);
+    Optional<PsychTest> psychTest =
+        psychTestRepository.findFirstByUserIdOrderByIdDesc(userId).filter(PsychTest::isReliable);
     if (psychTest.isPresent()) {
       double score =
           PsychScore.scoresOf(psychTest.get().getAnswers()).get(PsychScale.PLAN_OPTIMISM);

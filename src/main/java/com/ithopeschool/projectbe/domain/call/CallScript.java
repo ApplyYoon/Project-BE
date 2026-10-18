@@ -300,6 +300,20 @@ public final class CallScript {
     return String.join("\n", lines);
   }
 
+  // 성향 검사의 답이 믿기 어려울 때(거의 다 같은 답 · 1-2-1-2 되풀이) psychSection 대신 붙이는 칸입니다. (2026-10-18)
+  // 점수로 성향을 단정하지 않고, 대화 중에 자연스럽게 하나만 확인하게 합니다. 판정은 코드가 합니다. (PsychAnswerCheck)
+  public static String unsurePsychSection() {
+    List<String> lines = new ArrayList<>();
+    lines.add("");
+    lines.add("");
+    lines.add("[학생 성향]");
+    lines.add("- 가입 때 한 성향 검사의 답이 거의 다 같아서 믿기 어려워. 점수로 성향을 단정하지 마.");
+    lines.add("- 대화 중에 자연스럽게 하나만 물어봐. (예: 공부를 시작하기까지 오래 걸리는 편인지)");
+    lines.add("- 답을 대충 했다고 따지거나 혼내지 마. 검사를 다시 하라고 조르지도 마.");
+    lines.add("- 위로하는 날이면 위로가 먼저야. 이 칸보다 [말투] · [꼭 지킬 것] 이 먼저야.");
+    return String.join("\n", lines);
+  }
+
   // ---- 오늘 학교 (상담 채팅만) ----
 
   // 상담 채팅 대본 끝에 붙이는 "오늘 학교" 칸입니다. 줄이 없으면 빈 글자입니다. (2026-10-18 "AI 코치 채팅 중심")

@@ -161,6 +161,26 @@ class ChatServiceTest {
   }
 
   @Test
+  @DisplayName("성향 검사 답이 거의 다 같으면 점수 대신 '대화로 하나만 물어봐' 칸을 붙인다")
+  void startAddsUnsurePsychSection() {
+    Map<PsychItem, Integer> answers = new EnumMap<>(PsychItem.class);
+    for (PsychItem item : PsychItem.values()) {
+      // 시작 저항이 7 이어도, 35개가 모두 7 이면 믿기 어렵습니다.
+      answers.put(item, 7);
+    }
+    given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(Optional.of(new PsychTest(USER_ID, NOW, answers)));
+    String withUnsure = SCRIPT + CallScript.unsurePsychSection();
+    given(chatAiClient.turn(withUnsure, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("요즘 시작하기 어때?")));
+
+    ChatReplyResponse response = service.start(START);
+
+    assertThat(response.reply()).isEqualTo("요즘 시작하기 어때?");
+    assertThat(withUnsure).contains("[학생 성향]").contains("믿기 어려워").doesNotContain("5분만");
+  }
+
+  @Test
   @DisplayName("채팅을 열면 통화와 같은 대본(채팅 버전)으로 AI 의 첫 인사를 받고, 채팅 기록을 만든다")
   void startsAChat() {
     given(chatAiClient.turn(SCRIPT, List.of()))

@@ -35,7 +35,8 @@ class PsychTestControllerTest {
           Instant.parse("2026-10-17T09:00:00Z"),
           Map.of("S1", 6),
           Map.of("startResistance", 5.5),
-          Map.of("startResistance", "high"));
+          Map.of("startResistance", "high"),
+          true);
 
   @Test
   @DisplayName("저장하면 201 과 척도 점수 · 높낮이다")
@@ -50,7 +51,8 @@ class PsychTestControllerTest {
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.id").value("3"))
         .andExpect(jsonPath("$.scores.startResistance").value(5.5))
-        .andExpect(jsonPath("$.levels.startResistance").value("high"));
+        .andExpect(jsonPath("$.levels.startResistance").value("high"))
+        .andExpect(jsonPath("$.reliable").value(true));
   }
 
   @Test
