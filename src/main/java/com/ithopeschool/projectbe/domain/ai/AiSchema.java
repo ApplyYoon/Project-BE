@@ -62,4 +62,9 @@ public final class AiSchema {
   public static Map<String, Object> list(Map<String, Object> item) {
     return Map.of("type", "array", "items", item);
   }
+
+  // 같은 모양 여러 개, 없으면 null.   →  { "type": ["array", "null"], "items": { … } }
+  public static Map<String, Object> nullableList(Map<String, Object> item) {
+    return Map.of("type", List.of("array", "null"), "items", item);
+  }
 }

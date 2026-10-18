@@ -53,5 +53,7 @@ class AiSchemaTest {
   void list() {
     assertThat(AiSchema.list(AiSchema.string()))
         .isEqualTo(Map.of("type", "array", "items", Map.of("type", "string")));
+    assertThat(AiSchema.nullableList(AiSchema.string()))
+        .isEqualTo(Map.of("type", List.of("array", "null"), "items", Map.of("type", "string")));
   }
 }
