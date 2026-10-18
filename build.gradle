@@ -34,6 +34,9 @@ dependencies {
 	}
 	// 암호화 계산(타원 곡선)을 하는 라이브러리. 웹 푸시가 씁니다.
 	implementation 'org.bouncycastle:bcprov-jdk18on:1.80'
+	// HTML 읽기: 학교 홈페이지의 가정통신문 · 공지사항 목록에서 제목 · 날짜만 골라냅니다. (2026-10-18 멘토 허락, domain/school/SchoolHomepageCrawler)
+	// 'a.nttInfoBtn' 처럼 CSS 선택자로 골라서, 정규식보다 읽기 쉽고 홈페이지가 조금 바뀌어도 덜 깨집니다.
+	implementation 'org.jsoup:jsoup:1.23.2'
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'com.h2database:h2'
 	runtimeOnly 'org.postgresql:postgresql'
