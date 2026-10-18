@@ -77,6 +77,18 @@ public class NeisClient {
     return officeCode.isBlank() ? Optional.empty() : Optional.of(officeCode);
   }
 
+  // 학교 번호로 학교 홈페이지 주소를 찾습니다. (학교기본정보의 HMPG_ADRES, 예: 'https://bundang-h.goesn.kr/')
+  // 홈페이지가 적혀 있지 않거나 NEIS 가 멈추면 빈 값입니다. (SchoolNoticeService 가 가정통신문을 읽을 때 씀)
+  public Optional<String> findHomepage(String schoolCode) {
+    Optional<JsonNode> rows =
+        rowsOf(get("schoolInfo", "SD_SCHUL_CODE=" + schoolCode, 1), "schoolInfo");
+    if (rows.isEmpty() || rows.get().isEmpty()) {
+      return Optional.empty();
+    }
+    String homepage = rows.get().get(0).path("HMPG_ADRES").asString("").trim();
+    return homepage.isBlank() ? Optional.empty() : Optional.of(homepage);
+  }
+
   // from ~ to 의 학사일정을 받습니다. 한 번이라도 실패하면 빈 값입니다. (일부만 받은 일정으로 덮어쓰지 않게)
   public Optional<List<NeisEvent>> fetchSchedule(
       String officeCode, String schoolCode, LocalDate from, LocalDate to) {

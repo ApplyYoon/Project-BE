@@ -58,6 +58,31 @@ class NeisClientTest {
   }
 
   @Test
+  @DisplayName("학교 번호로 홈페이지 주소를 찾고, 비어 있으면 빈 값 (학교기본정보 HMPG_ADRES)")
+  void findsHomepage() {
+    NeisClient client = new NeisClient("", builder);
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/schoolInfo")))
+        .andExpect(queryParam("SD_SCHUL_CODE", "7530075"))
+        .andRespond(
+            withSuccess(
+                """
+                {"schoolInfo":[{"head":[{"list_total_count":1}]},{"row":[{"ATPT_OFCDC_SC_CODE":"J10","HMPG_ADRES":"https://test-h.example.kr/"}]}]}
+                """,
+                MediaType.APPLICATION_JSON));
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/schoolInfo")))
+        .andRespond(
+            withSuccess(
+                """
+                {"schoolInfo":[{"head":[{"list_total_count":1}]},{"row":[{"ATPT_OFCDC_SC_CODE":"J10","HMPG_ADRES":" "}]}]}
+                """,
+                MediaType.APPLICATION_JSON));
+
+    assertThat(client.findHomepage("7530075")).contains("https://test-h.example.kr/");
+    assertThat(client.findHomepage("7530076")).isEmpty();
+    neis.verify();
+  }
+
+  @Test
   @DisplayName("키가 있으면 한 번에 1000건으로 받고, 날짜 · 이름 · 내용 · 학년을 꺼낸다 (날짜 없는 줄은 버림)")
   void fetchesWithKey() {
     NeisClient client = new NeisClient("secret-key", builder);
