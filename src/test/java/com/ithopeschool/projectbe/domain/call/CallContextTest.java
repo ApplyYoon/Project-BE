@@ -7,9 +7,7 @@ import com.ithopeschool.projectbe.domain.call.CallContext.GoalLine;
 import com.ithopeschool.projectbe.domain.call.CallContext.NextExam;
 import com.ithopeschool.projectbe.domain.call.CallContext.PastExam;
 import com.ithopeschool.projectbe.domain.call.CallContext.ScoreLine;
-import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -28,8 +26,7 @@ class CallContextTest {
   @Test
   @DisplayName("기록이 있으면 빈 줄 두 개 뒤에 [기록에서 꺼낸 것] 칸을 만들고, 지어내지 말라는 줄을 먼저 넣는다")
   void sectionHeader() {
-    String section =
-        CallContext.section(new Facts(new NextExam("11월 학평", 33), null, List.of(), Map.of()));
+    String section = CallContext.section(new Facts(new NextExam("11월 학평", 33), null, List.of()));
 
     assertThat(section).startsWith("\n\n[기록에서 꺼낸 것]\n");
     assertThat(section).contains("숫자를 지어내지 마", "- 다음 시험: 11월 학평 (D-33)");
@@ -82,30 +79,5 @@ class CallContextTest {
     assertThat(CallContext.cut("학원\n다녀오면  피곤")).isEqualTo("학원 다녀오면 피곤");
     assertThat(CallContext.cut("가".repeat(41))).isEqualTo("가".repeat(40) + "…");
     assertThat(CallContext.cut("가".repeat(40))).isEqualTo("가".repeat(40));
-  }
-
-  @Test
-  @DisplayName("심리검사는 높음(5 이상)인 성향만 돕는 방법과 함께 적고, 관리 선호는 높아도 넣지 않는다")
-  void onlyHighScales() {
-    List<String> lines =
-        CallContext.psychLines(
-            Map.of(
-                PsychScale.START_RESISTANCE, 5.6,
-                PsychScale.FAIL_SENSITIVITY, 5.0,
-                PsychScale.PLAN_OPTIMISM, 4.8,
-                PsychScale.CARE_PREFERENCE, 6.0));
-
-    assertThat(lines).hasSize(3);
-    assertThat(lines.get(0)).contains("성격이 아니라 지금의 공부 습관");
-    assertThat(lines.get(1)).startsWith("  - 시작 저항: ").contains("5분만");
-    assertThat(lines.get(2)).startsWith("  - 실패 민감도: ").contains("다음 한 걸음");
-    assertThat(String.join("\n", lines)).doesNotContain("계획 낙관", "관리 선호");
-  }
-
-  @Test
-  @DisplayName("검사를 안 했거나 높은 성향이 없으면 심리검사 줄이 없다")
-  void noPsychLines() {
-    assertThat(CallContext.psychLines(Map.of())).isEmpty();
-    assertThat(CallContext.psychLines(Map.of(PsychScale.DISTRACTION, 4.0))).isEmpty();
   }
 }

@@ -14,19 +14,12 @@ import com.ithopeschool.projectbe.domain.exam.ExamType;
 import com.ithopeschool.projectbe.domain.goal.Goal;
 import com.ithopeschool.projectbe.domain.goal.GoalKind;
 import com.ithopeschool.projectbe.domain.goal.GoalRepository;
-import com.ithopeschool.projectbe.domain.psychtest.PsychItem;
-import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
-import com.ithopeschool.projectbe.domain.psychtest.PsychTest;
-import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
 import com.ithopeschool.projectbe.domain.subject.Subject;
 import com.ithopeschool.projectbe.domain.subject.SubjectColor;
 import com.ithopeschool.projectbe.domain.subject.SubjectRepository;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -41,15 +34,9 @@ class CallContextLoaderTest {
   private final ExamScoreRepository examScoreRepository = mock(ExamScoreRepository.class);
   private final SubjectRepository subjectRepository = mock(SubjectRepository.class);
   private final GoalRepository goalRepository = mock(GoalRepository.class);
-  private final PsychTestRepository psychTestRepository = mock(PsychTestRepository.class);
 
   private final CallContextLoader loader =
-      new CallContextLoader(
-          examRepository,
-          examScoreRepository,
-          subjectRepository,
-          goalRepository,
-          psychTestRepository);
+      new CallContextLoader(examRepository, examScoreRepository, subjectRepository, goalRepository);
 
   private static Exam exam(long id, String name, LocalDate date) {
     Exam exam = new Exam(USER_ID, name, ExamType.MOCK, date);
@@ -161,20 +148,6 @@ class CallContextLoaderTest {
   }
 
   @Test
-  @DisplayName("심리검사는 가장 최근 검사의 척도별 점수를 꺼낸다")
-  void psychScores() {
-    Map<PsychItem, Integer> answers = new EnumMap<>(PsychItem.class);
-    answers.put(PsychItem.S1, 6);
-    answers.put(PsychItem.S2, 5);
-    given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
-        .willReturn(Optional.of(new PsychTest(USER_ID, Instant.now(), answers)));
-
-    Map<PsychScale, Double> scores = loader.load(USER_ID, TODAY).psychScores();
-
-    assertThat(scores.get(PsychScale.START_RESISTANCE)).isEqualTo(5.5);
-  }
-
-  @Test
   @DisplayName("모든 조회는 넘겨받은 내 번호로만 한다")
   void onlyMine() {
     given(examRepository.findByUserIdOrderByExamDateDescIdDesc(anyLong())).willReturn(List.of());
@@ -183,6 +156,5 @@ class CallContextLoaderTest {
 
     verify(examRepository).findByUserIdOrderByExamDateDescIdDesc(USER_ID);
     verify(goalRepository).findByUserIdOrderById(USER_ID);
-    verify(psychTestRepository).findFirstByUserIdOrderByIdDesc(USER_ID);
   }
 }

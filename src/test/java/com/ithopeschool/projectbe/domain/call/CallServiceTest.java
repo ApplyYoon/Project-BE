@@ -29,7 +29,6 @@ import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
-import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
 import com.ithopeschool.projectbe.domain.risk.RiskLevel;
 import com.ithopeschool.projectbe.domain.risk.RiskService;
 import com.ithopeschool.projectbe.domain.safety.SafetyService;
@@ -47,7 +46,6 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -79,14 +77,13 @@ class CallServiceTest {
   private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
   // 오늘이 위험한 날인지는 가짜로 둡니다. 진짜 계산은 RiskRuleTest · RiskServiceTest 가 확인합니다. (기본은 위험 없음)
   private final RiskService riskService = mock(RiskService.class);
-  // 대본 끝 "[기록에서 꺼낸 것]" 의 재료(시험 점수 · 과목 · 목표 · 심리검사)도 기본으로 없습니다. (CallContextLoader)
+  // 대본 끝 "[기록에서 꺼낸 것]" 의 재료(시험 점수 · 과목 · 목표)도 기본으로 없습니다. (CallContextLoader)
   private final CallContextLoader callContextLoader =
       new CallContextLoader(
           examRepository,
           mock(ExamScoreRepository.class),
           mock(SubjectRepository.class),
-          mock(GoalRepository.class),
-          mock(PsychTestRepository.class));
+          mock(GoalRepository.class));
   // 지금은 2026-10-11 오후 3시(한국 시간)입니다. 오늘 날짜는 2026-10-11 입니다.
   private static final Instant NOW = Instant.parse("2026-10-11T06:00:00Z");
   private static final LocalDate TODAY = LocalDate.of(2026, 10, 11);
@@ -522,8 +519,7 @@ class CallServiceTest {
         .startsWith(CallScript.instructions(2, 3, REQUEST.card()))
         .endsWith(
             CallContext.section(
-                new CallContext.Facts(
-                    new CallContext.NextExam("11월 학평", 40), null, List.of(), Map.of())));
+                new CallContext.Facts(new CallContext.NextExam("11월 학평", 40), null, List.of())));
   }
 
   @Test

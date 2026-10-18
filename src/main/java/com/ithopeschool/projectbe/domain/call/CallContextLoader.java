@@ -9,9 +9,6 @@ import com.ithopeschool.projectbe.domain.goal.Goal;
 import com.ithopeschool.projectbe.domain.goal.GoalKind;
 import com.ithopeschool.projectbe.domain.goal.GoalRepository;
 import com.ithopeschool.projectbe.domain.goal.GoalStatus;
-import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
-import com.ithopeschool.projectbe.domain.psychtest.PsychScore;
-import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
 import com.ithopeschool.projectbe.domain.subject.Subject;
 import com.ithopeschool.projectbe.domain.subject.SubjectRepository;
 import java.time.LocalDate;
@@ -33,7 +30,6 @@ import org.springframework.stereotype.Component;
 //   - 다음 시험: 오늘 포함 가장 가까운 시험 하나
 //   - 지난 시험: 어제 이전 시험 중 가장 최근 것 하나. 실제 점수를 적은 과목만 (하나도 없으면 넣지 않음)
 //   - 목표: 진행 중이고 D-day 가 지나지 않은 것, 가까운 순으로 최대 2개
-//   - 심리검사: 가장 최근 검사의 척도별 점수
 @Component
 @RequiredArgsConstructor
 public class CallContextLoader {
@@ -45,16 +41,12 @@ public class CallContextLoader {
   private final ExamScoreRepository examScoreRepository;
   private final SubjectRepository subjectRepository;
   private final GoalRepository goalRepository;
-  private final PsychTestRepository psychTestRepository;
 
   // 그 사람의 기록. today: 오늘 (새벽 4시 기준, DayRule)
   public CallContext.Facts load(Long userId, LocalDate today) {
     List<Exam> exams = examRepository.findByUserIdOrderByExamDateDescIdDesc(userId);
     return new CallContext.Facts(
-        nextExamOf(exams, today),
-        pastExamOf(userId, exams, today),
-        goalsOf(userId, today),
-        psychScoresOf(userId));
+        nextExamOf(exams, today), pastExamOf(userId, exams, today), goalsOf(userId, today));
   }
 
   // 오늘 포함 가장 가까운 시험. 없으면 null
@@ -132,14 +124,6 @@ public class CallContextLoader {
     }
     String currentScore = blankToNull(goal.getCurrentScore());
     return currentScore == null ? null : "지금 " + currentScore;
-  }
-
-  // 가장 최근 심리검사의 척도별 점수. 검사를 안 했으면 빈 맵
-  private Map<PsychScale, Double> psychScoresOf(Long userId) {
-    return psychTestRepository
-        .findFirstByUserIdOrderByIdDesc(userId)
-        .map(test -> PsychScore.scoresOf(test.getAnswers()))
-        .orElse(Map.of());
   }
 
   private static String blankToNull(String text) {
