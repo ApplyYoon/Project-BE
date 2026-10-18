@@ -56,6 +56,8 @@ public class SchoolTodayService {
   private final SchoolEventFetchRepository schoolEventFetchRepository;
   private final NeisClient neisClient;
   private final Clock clock;
+  // 홈페이지 가정통신문 제목을 대본에 넣을 때 씁니다. (받아 둔 것만 읽음, SchoolNoticeService)
+  private final SchoolNoticeService schoolNoticeService;
 
   // 메모리에 잠깐 둔 급식. 열쇠는 '학교번호|날짜' (예: '7530560|2026-10-19')
   private final Map<String, SavedMeals> savedMeals = new ConcurrentHashMap<>();
@@ -136,6 +138,7 @@ public class SchoolTodayService {
   }
 
   // AI 코치 채팅의 대본에 넣을 "오늘 학교" 줄들입니다. 학교를 안 골랐거나 아무것도 없으면 빈 목록입니다. (ChatService)
+  // 시간표 · 급식 · 학사일정에 더해, 받아 둔 홈페이지 가정통신문 제목(최근 7일, 3개까지)도 붙입니다. (2026-10-18)
   // - 학교 이름은 넣지 않습니다. (외부 AI 에 개인정보를 보내지 않는 규칙, AiQuestion)
   // - 학년 · 반이 이상하면 채팅을 막지 않고 시간표만 뺍니다.
   public List<String> scriptLines(Integer grade, Integer classNo) {
@@ -147,7 +150,12 @@ public class SchoolTodayService {
             && classNo >= 1
             && classNo <= MAX_CLASS_NO;
     SchoolTodayResponse today = hasClass ? getMyToday(grade, classNo) : getMyToday(null, null);
-    return linesOf(today, hasClass ? grade : null);
+    List<String> lines = linesOf(today, hasClass ? grade : null);
+    // 학교 홈페이지의 최근 가정통신문 제목 (예약 작업이 받아 둔 것만. 대본을 만들 때 홈페이지에 가지 않음)
+    if (today.school() != null) {
+      lines.addAll(schoolNoticeService.scriptLines(today.school().code(), today.date()));
+    }
+    return lines;
   }
 
   // 오늘 학교 정보 → 대본 줄. 예:
