@@ -11,7 +11,9 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest.Line;
+import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -119,5 +121,42 @@ class ChatAiClientTest {
         .andRespond(withSuccess("{ \"output\": [] }", MediaType.APPLICATION_JSON));
 
     assertThat(clientWith(KEY, MODEL).reply("채팅 대본", TALK)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("turn 은 대본 끝에 [답 모양] 을 붙이고 json_schema 로 불러, 받은 JSON 을 말 · 빠른 답 · 행동으로 나눈다")
+  void turnAsksForJsonAndParsesIt() {
+    ChatAiClient client = new ChatAiClient(KEY, MODEL, builder);
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.text.format.type").value("json_schema"))
+        .andExpect(jsonPath("$.text.format.strict").value(true))
+        .andExpect(jsonPath("$.store").value(false))
+        .andRespond(
+            withSuccess(
+                """
+                {"output":[{"type":"message","content":[{"type":"output_text","text":
+                "{\\"reply\\":\\"10분만 해 볼까?\\",\\"quickReplies\\":[\\"좋아\\",\\"오늘은 쉴래\\"],\\"action\\":{\\"type\\":\\"shrink_today\\",\\"minutes\\":10,\\"title\\":null}}"}]}]}
+                """,
+                MediaType.APPLICATION_JSON));
+
+    Optional<ChatAiClient.ChatTurn> turn = client.turn("채팅 대본", List.of());
+
+    assertThat(turn)
+        .contains(
+            new ChatAiClient.ChatTurn(
+                "10분만 해 볼까?",
+                List.of("좋아", "오늘은 쉴래"),
+                new ChatReplyResponse.Action("shrink_today", 10, null)));
+    openAi.verify();
+  }
+
+  @Test
+  @DisplayName("받은 글이 JSON 이 아니면 그 글을 그대로 말로 쓰고 버튼은 없다")
+  void parseTurnFallsBackToText() {
+    assertThat(ChatAiClient.parseTurn("그냥 글이야"))
+        .isEqualTo(ChatAiClient.ChatTurn.textOnly("그냥 글이야"));
+    assertThat(ChatAiClient.parseTurn("{\"reply\":\"\"}"))
+        .isEqualTo(ChatAiClient.ChatTurn.textOnly("{\"reply\":\"\"}"));
   }
 }

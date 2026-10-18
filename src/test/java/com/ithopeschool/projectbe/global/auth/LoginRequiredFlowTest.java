@@ -378,6 +378,7 @@ class LoginRequiredFlowTest {
           // 내 학교 학사일정 (가입 정보의 학교 번호로 찾습니다. 이슈 #282)
           new Api("GET", "/api/v1/school/events", "/api/v1/school/events", null),
           new Api("POST", "/api/v1/school/events/refresh", "/api/v1/school/events/refresh", null),
+          new Api("GET", "/api/v1/school/today", "/api/v1/school/today", null),
           // 카드 체크리스트 추천 (내 지난 기록을 보고 AI 를 부릅니다. 이슈 #236)
           new Api("POST", "/api/v1/ai/checklist", "/api/v1/ai/checklist", "{\"title\":\"수학 문제집\"}"),
           // 첫 준비 행동 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #236)

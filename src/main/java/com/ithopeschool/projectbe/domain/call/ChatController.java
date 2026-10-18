@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 // 상담 채팅 API 의 입구입니다. 로그인이 필요합니다. (이슈 #238, docs/API.md "상담 채팅")
@@ -26,10 +27,14 @@ public class ChatController {
   private final ChatService chatService;
 
   // 채팅 기록을 하나 만들기는 하지만, 응답의 중심이 "AI 의 첫 말" 이라 말 보내기와 같이 200 으로 답합니다.
-  @Operation(summary = "상담 채팅 열기 (통화와 같은 대본 · 숫자는 서버 기록 · AI 의 첫 인사 · 배포 서버에서만 켜짐)")
+  // grade · classNo 를 주면 그 반의 오늘 시간표도 대본에 넣습니다. (반은 서버에 저장하지 않고 FE 가 보냅니다)
+  @Operation(summary = "상담 채팅 열기 (통화와 같은 대본 + 오늘 학교 정보 · 숫자는 서버 기록 · AI 의 첫 인사 · 배포 서버에서만 켜짐)")
   @PostMapping
-  public ChatReplyResponse start(@Valid @RequestBody CallSessionRequest request) {
-    return chatService.start(request);
+  public ChatReplyResponse start(
+      @Valid @RequestBody CallSessionRequest request,
+      @RequestParam(required = false) Integer grade,
+      @RequestParam(required = false) Integer classNo) {
+    return chatService.start(request, grade, classNo);
   }
 
   @Operation(summary = "상담 채팅에 말 보내기 (지금까지의 대화 전체를 보냄 · 위기 표현이면 도움 안내 · 대화는 저장 안 함)")
