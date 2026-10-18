@@ -22,6 +22,10 @@ import java.util.List;
 //   { …, "tags": ["phone", "tired"] }
 //   값은 FE 의 ShortfallReason(후기) · CardFailCause(못 한 카드)와 같은 글자이고, 서버가 그 주제의 값만 남깁니다. (ChatTopic)
 //   FE 는 "이유: 폰 · 피곤 — 맞아?" 로 학생에게 확인만 받습니다. 다른 주제 · 주제 없는 채팅은 늘 빈 목록입니다.
+//
+// sources (2026-10-18 과목 쌤 "찾아보기"): 과목 쌤 방에서 AI 가 웹 검색을 했을 때 답에 쓴 출처(최대 3개)입니다.
+//   { …, "sources": [ { "title": "수열 - 위키백과", "url": "https://ko.wikipedia.org/wiki/수열" } ] }
+//   교육 · 공공 · 백과사전 사이트만 남깁니다. (TutorWebSearch.cleanSources) 검색하지 않은 답 · 다른 방은 늘 빈 목록입니다.
 public record ChatReplyResponse(
     String chatId,
     String reply,
@@ -29,7 +33,11 @@ public record ChatReplyResponse(
     List<HelpLine> helpLines,
     List<String> quickReplies,
     Action action,
-    List<String> tags) {
+    List<String> tags,
+    List<Source> sources) {
+
+  // 출처 하나 (웹 검색으로 찾은 페이지 제목과 주소)
+  public record Source(String title, String url) {}
 
   // 행동 버튼 하나. 학생이 눌렀을 때만 FE 가 실행합니다.
   //   type: start_timer(공부 시작) · shrink_today(오늘 목표를 minutes 분으로 줄여 시작) · create_card(새 할 일 title,
@@ -51,7 +59,8 @@ public record ChatReplyResponse(
 
   // 보통의 답 (대화 번호가 글자인 '목표 만들기' 대화, 이슈 #239)
   public static ChatReplyResponse of(String chatId, String reply) {
-    return new ChatReplyResponse(chatId, reply, false, List.of(), List.of(), null, List.of());
+    return new ChatReplyResponse(
+        chatId, reply, false, List.of(), List.of(), null, List.of(), List.of());
   }
 
   // 빠른 답 · 행동 버튼이 붙은 보통의 답 (상담 채팅)
@@ -63,8 +72,19 @@ public record ChatReplyResponse(
   // 빠른 답 · 행동 버튼 · 짐작한 이유 값이 붙은 보통의 답 (주제가 있는 상담 채팅)
   public static ChatReplyResponse withButtons(
       Long chatId, String reply, List<String> quickReplies, Action action, List<String> tags) {
+    return withButtons(chatId, reply, quickReplies, action, tags, List.of());
+  }
+
+  // 위에 웹 검색 출처까지 붙은 답 (과목 쌤 방)
+  public static ChatReplyResponse withButtons(
+      Long chatId,
+      String reply,
+      List<String> quickReplies,
+      Action action,
+      List<String> tags,
+      List<Source> sources) {
     return new ChatReplyResponse(
-        String.valueOf(chatId), reply, false, List.of(), quickReplies, action, tags);
+        String.valueOf(chatId), reply, false, List.of(), quickReplies, action, tags, sources);
   }
 
   // 위기 표현이 감지됐을 때의 답
@@ -74,6 +94,7 @@ public record ChatReplyResponse(
 
   // 위기 표현이 감지됐을 때의 답 (대화 번호가 글자인 '목표 만들기' 대화)
   public static ChatReplyResponse crisis(String chatId, String reply) {
-    return new ChatReplyResponse(chatId, reply, true, HelpLine.ALL, List.of(), null, List.of());
+    return new ChatReplyResponse(
+        chatId, reply, true, HelpLine.ALL, List.of(), null, List.of(), List.of());
   }
 }

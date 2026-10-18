@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.ithopeschool.projectbe.domain.ai.dto.StudyQuizRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.StudyQuizResponse;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumService;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -21,6 +22,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 // Service 단위 테스트: AI 를 가짜로 바꿔서 위기 표현 · 사진 검사 · 못 만듦 · 공부 아님 · 만든 문제를 봅니다.
 class StudyQuizServiceTest {
@@ -32,7 +34,10 @@ class StudyQuizServiceTest {
 
   private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
   private final AiClient aiClient = mock(AiClient.class);
-  private final StudyQuizService service = new StudyQuizService(currentUserProvider, aiClient);
+  // 교육과정 줄은 가짜입니다. 따로 정하지 않으면 빈 목록(학년을 모름)입니다.
+  private final CurriculumService curriculumService = mock(CurriculumService.class);
+  private final StudyQuizService service =
+      new StudyQuizService(currentUserProvider, aiClient, curriculumService);
 
   private static final StudyQuiz.Answer.Item ITEM =
       new StudyQuiz.Answer.Item(
@@ -100,5 +105,27 @@ class StudyQuizServiceTest {
         .isEqualTo(StudyQuizResponse.notStudy());
     assertThat(service.make(request("교과서 52쪽", null, IMAGE))).isEqualTo(StudyQuizResponse.help());
     verify(aiClient, never()).ask(any(), any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("학년을 알면 교육과정 · 관련 성취기준 줄을 주제 · 체크리스트로 골라 AI 입력에 붙인다")
+  void addsCurriculumLines() {
+    given(curriculumService.quizLines(USER_ID, "미적분 극한 교과서 52쪽"))
+        .willReturn(
+            List.of(
+                "교육과정: 고2 · 2022 개정 교육과정",
+                "관련 성취기준(교육부 고시 원문):",
+                "- [12미적Ⅰ-01-02] 미적분Ⅰ · 함수의 극한과 연속: 함수의 극한값을 구할 수 있다."));
+    given(aiClient.ask(eq(USER_ID), eq(GptUsageKind.ASSIST), any(), eq(StudyQuiz.Answer.class)))
+        .willReturn(Optional.of(new StudyQuiz.Answer(false, false, List.of(ITEM))));
+
+    service.make(new StudyQuizRequest("미적분 극한", List.of("교과서 52쪽"), null, null, null));
+
+    ArgumentCaptor<AiQuestion> question = ArgumentCaptor.forClass(AiQuestion.class);
+    verify(aiClient).ask(eq(USER_ID), eq(GptUsageKind.ASSIST), question.capture(), any());
+    assertThat(question.getValue().input())
+        .contains("교육과정: 고2 · 2022 개정 교육과정")
+        .contains("[12미적Ⅰ-01-02]");
+    assertThat(question.getValue().instructions()).contains("교육과정");
   }
 }

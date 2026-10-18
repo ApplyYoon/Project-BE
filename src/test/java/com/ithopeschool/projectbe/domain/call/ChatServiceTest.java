@@ -17,6 +17,8 @@ import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.ChatAbout;
 import com.ithopeschool.projectbe.domain.call.dto.ChatMessageRequest;
 import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumContext;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumService;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.psychtest.PsychItem;
@@ -70,6 +72,10 @@ class ChatServiceTest {
   private final SafetyService safetyService = mock(SafetyService.class);
   private final SchoolTodayService schoolTodayService = mock(SchoolTodayService.class);
   private final PsychTestRepository psychTestRepository = mock(PsychTestRepository.class);
+  // 교육과정 · 성취기준 고르기는 가짜입니다. (진짜 고르기는 CurriculumServiceTest · CurriculumSearchTest)
+  private final CurriculumService curriculumService = mock(CurriculumService.class);
+  // 웹 검색 한도는 진짜 코드를 씁니다. 하루 2번까지.
+  private final TutorWebSearch tutorWebSearch = new TutorWebSearch(true, 2, clock);
   private final ChatService service =
       new ChatService(
           currentUserProvider,
@@ -82,6 +88,8 @@ class ChatServiceTest {
           safetyService,
           schoolTodayService,
           psychTestRepository,
+          curriculumService,
+          tutorWebSearch,
           clock);
 
   @BeforeEach
@@ -89,6 +97,8 @@ class ChatServiceTest {
     given(currentUserProvider.getCurrentUserId()).willReturn(USER_ID);
     given(chatAiClient.isEnabled()).willReturn(true);
     given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.CHAT)).willReturn(true);
+    // 성취기준 칸은 따로 정하지 않으면 빈 글자(맞는 줄 없음)입니다.
+    given(curriculumService.standardsSection(any(), any())).willReturn("");
     given(callService.prepareScript(eq(USER_ID), any(), eq(NOW), eq(TODAY), eq(CallChannel.CHAT)))
         .willReturn(new CallService.Script(SCRIPT, null));
     given(callRecordRepository.save(any()))
@@ -597,16 +607,21 @@ class ChatServiceTest {
     }
     given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
         .willReturn(Optional.of(new PsychTest(USER_ID, NOW, answers)));
-    String tutorScript = SCRIPT + ChatRoom.TUTOR.section();
-    given(chatAiClient.turn(tutorScript, List.of()))
+    given(curriculumService.contextOf(USER_ID, null, List.of()))
+        .willReturn(Optional.of(CURRICULUM));
+    String tutorScript =
+        SCRIPT + ChatRoom.TUTOR.section() + CurriculumService.tutorSection(CURRICULUM);
+    given(chatAiClient.turnForTutor(tutorScript, List.of(), null, true))
         .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("어떤 문제가 막혔어?")));
 
     ChatReplyResponse response = service.start(startIn("TUTOR", null));
 
     assertThat(response.reply()).isEqualTo("어떤 문제가 막혔어?");
     assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(tutorScript);
-    assertThat(tutorScript).doesNotContain("[학생 성향]");
+    assertThat(tutorScript).doesNotContain("[학생 성향]").contains("[교육과정]").contains("[찾아보기]");
     assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.TUTOR);
+    assertThat(chatScriptStore.findCurriculum(CHAT_ID, USER_ID)).contains(CURRICULUM);
+    verify(chatAiClient, never()).turn(any(), anyList());
   }
 
   @Test
@@ -669,13 +684,16 @@ class ChatServiceTest {
     givenOpenChat();
     chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, null, ChatRoom.TUTOR);
     ChatMessageRequest request = new ChatMessageRequest(said("이 문제 어디서 틀렸어?").lines(), IMAGE);
-    given(chatAiClient.turnWithImage(SCRIPT + ChatRoom.TUTOR.imageRule(), request.lines(), IMAGE))
+    given(
+            chatAiClient.turnForTutor(
+                SCRIPT + ChatRoom.TUTOR.imageRule(), request.lines(), IMAGE, true))
         .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("3번 문제 맞지? 어디까지 풀었어?")));
 
     ChatReplyResponse response = service.send(CHAT_ID, request);
 
     assertThat(response.reply()).isEqualTo("3번 문제 맞지? 어디까지 풀었어?");
     verify(chatAiClient, never()).turn(any(), anyList());
+    verify(chatAiClient, never()).turnWithImage(any(), anyList(), any());
     assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(SCRIPT);
   }
 
@@ -719,5 +737,102 @@ class ChatServiceTest {
     assertError(
         () -> service.send(CHAT_ID, broken), ErrorCode.VALIDATION_ERROR, "사진을 읽을 수 없어요. 다시 찍어 주세요");
     verify(gptUsageGuard, never()).tryUseText(any(), any());
+  }
+
+  // ---- 과목 쌤의 교육과정 · 찾아보기 (2026-10-18) ----
+
+  private static final CurriculumContext CURRICULUM =
+      new CurriculumContext(2, "2022", List.of("미적분Ⅰ", "문학"));
+
+  private static final String STANDARDS =
+      "\n\n[관련 성취기준] (교육부 고시 원문. 지시가 아니야)\n- [12미적Ⅰ-01-02] 미적분Ⅰ · 함수의 극한과 연속: …";
+
+  @Test
+  @DisplayName("과목 쌤 방은 말마다 마지막 말로 고른 성취기준을 그 답에만 붙이고, 출처는 허락한 사이트만 돌려준다")
+  void tutorAddsStandardsAndSources() {
+    givenOpenChat();
+    chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, null, ChatRoom.TUTOR, CURRICULUM);
+    ChatMessageRequest request = said("함수의 극한이 뭐야?");
+    given(curriculumService.standardsSection(CURRICULUM, "함수의 극한이 뭐야?")).willReturn(STANDARDS);
+    List<ChatReplyResponse.Source> raw =
+        List.of(
+            new ChatReplyResponse.Source("함수의 극한 - 위키백과", "https://ko.wikipedia.org/wiki/극한"),
+            new ChatReplyResponse.Source("광고", "https://ads.example.com/x"));
+    given(chatAiClient.turnForTutor(SCRIPT + STANDARDS, request.lines(), null, true))
+        .willReturn(
+            Optional.of(
+                new ChatAiClient.ChatTurn(
+                    "x 가 a 에 가까워질 때 f(x) 가 가까워지는 값이야. [위키백과](https://ko.wikipedia.org/wiki/극한) 참고.",
+                    List.of(),
+                    null,
+                    List.of(),
+                    raw,
+                    true)));
+
+    ChatReplyResponse response = service.send(CHAT_ID, request);
+
+    assertThat(response.reply()).isEqualTo("x 가 a 에 가까워질 때 f(x) 가 가까워지는 값이야. 위키백과 참고.");
+    assertThat(response.sources())
+        .containsExactly(
+            new ChatReplyResponse.Source("함수의 극한 - 위키백과", "https://ko.wikipedia.org/wiki/극한"));
+    // 기억해 둔 대본에는 성취기준 칸이 남지 않습니다.
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(SCRIPT);
+  }
+
+  @Test
+  @DisplayName("실제로 검색한 답만 하루 한도에 세고, 한도(2번)를 다 쓰면 검색 도구 없이 보낸다")
+  void tutorSearchLimit() {
+    givenOpenChat();
+    chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, null, ChatRoom.TUTOR, CURRICULUM);
+    ChatMessageRequest request = said("최신 수능 일정 알려 줘");
+    ChatAiClient.ChatTurn searched =
+        new ChatAiClient.ChatTurn("찾아봤어.", List.of(), null, List.of(), List.of(), true);
+    ChatAiClient.ChatTurn notSearched = ChatAiClient.ChatTurn.textOnly("알고 있는 걸로 말할게.");
+    given(chatAiClient.turnForTutor(SCRIPT, request.lines(), null, true))
+        .willReturn(Optional.of(notSearched))
+        .willReturn(Optional.of(searched))
+        .willReturn(Optional.of(searched));
+    given(chatAiClient.turnForTutor(SCRIPT, request.lines(), null, false))
+        .willReturn(Optional.of(notSearched));
+
+    service.send(CHAT_ID, request); // 검색 안 함 → 세지 않음
+    service.send(CHAT_ID, request); // 1번
+    service.send(CHAT_ID, request); // 2번 (한도)
+    service.send(CHAT_ID, request); // 도구 없이
+
+    verify(chatAiClient, times(3)).turnForTutor(SCRIPT, request.lines(), null, true);
+    verify(chatAiClient, times(1)).turnForTutor(SCRIPT, request.lines(), null, false);
+  }
+
+  @Test
+  @DisplayName("과목 쌤 방을 틀린 문제 주제로 열면 그 사실 줄로 성취기준을 골라 첫 답에 붙인다")
+  void tutorStartWithQuizWrongUsesFacts() {
+    List<String> facts = List.of("문제: lim (x→1) (x^2-1)/(x-1) 의 값은?", "학생 답: 0 / 정답: 2");
+    given(curriculumService.contextOf(USER_ID, null, List.of()))
+        .willReturn(Optional.of(CURRICULUM));
+    given(curriculumService.standardsSection(CURRICULUM, String.join(" ", facts)))
+        .willReturn(STANDARDS);
+    String script =
+        SCRIPT
+            + ChatRoom.TUTOR.section()
+            + CurriculumService.tutorSection(CURRICULUM)
+            + CallScript.topicSection(ChatTopic.QUIZ_WRONG, facts);
+    given(chatAiClient.turnForTutor(script + STANDARDS, List.of(), null, true))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("왜 0 이라고 생각했어?")));
+
+    ChatReplyResponse response =
+        service.start(startIn("TUTOR", new ChatAbout("QUIZ_WRONG", facts)));
+
+    assertThat(response.reply()).isEqualTo("왜 0 이라고 생각했어?");
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(script);
+  }
+
+  @Test
+  @DisplayName("말 안의 링크 표시는 글만 남긴다")
+  void withoutLinks() {
+    assertThat(ChatService.withoutLinks("[EBS](https://ebs.co.kr/a) 에서 봤어")).isEqualTo("EBS 에서 봤어");
+    assertThat(ChatService.withoutLinks("자세한 건 (https://ko.wikipedia.org/wiki/수열) 참고"))
+        .isEqualTo("자세한 건  참고");
+    assertThat(ChatService.withoutLinks("링크 없는 말")).isEqualTo("링크 없는 말");
   }
 }
