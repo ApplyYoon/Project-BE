@@ -33,6 +33,12 @@ public final class ProfileLines {
   // 고른 척도 하나와 그 점수
   public record Pick(PsychScale scale, double score) {}
 
+  // 심리검사의 답이 믿기 어려울 때(거의 다 같은 답 · 1-2-1-2 되풀이) AI 를 부르지 않고 쓰는 3줄입니다. (2026-10-18)
+  // 성향을 말하지 않고, 다시 해 보거나 기록으로 같이 보자고만 합니다. (PsychAnswerCheck)
+  public static final List<String> UNSURE_LINES =
+      List.of(
+          "답이 거의 다 같아서 아직 성향을 말하기 어려워", "시간 날 때 한 번 더 해 보면 더 잘 맞춰 볼게", "공부 기록이 쌓이면 기록으로도 같이 볼게");
+
   // GPT 가 돌려주는 JSON 모양 그대로입니다.   { "lines": ["…", "…", "…"] }
   public record Answer(List<String> lines) {}
 
