@@ -20,7 +20,7 @@ import java.util.Map;
 // ⚠️ 이름·학교 같은 개인정보는 넣지 않습니다. 오늘 날짜와 이번 대화만 넣습니다.
 public final class GoalChatPrompt {
 
-  // WOOP 의 "방해물" · "대처" 묻는 규칙입니다. 상담 채팅의 '목표 메이트' 방(ChatRoom.GOAL_MATE)도 같은 문장을 씁니다.
+  // WOOP 의 "방해물" · "대처" 묻는 규칙입니다. 상담 채팅의 '계획' 방(ChatRoom.PLANNER)도 같은 문장을 씁니다.
   public static final String OBSTACLE_RULE =
       "목표를 막는 내 안의 방해물 하나. 학원·부모님·시간처럼 바깥 원인을 말하면"
           + " \"그중 내가 바꿀 수 있는 건 뭐야?\" 라고 다시 물어서 내 안의 것 하나로 좁혀.";

@@ -129,11 +129,15 @@ class ChatControllerTest {
   }
 
   @Test
-  @DisplayName("방(room)은 COACH · GOAL_MATE · TUTOR 만 받고, 다른 글자면 400 이다")
+  @DisplayName("방(room)은 COACH · PLANNER · TUTOR(와 예전 이름 GOAL_MATE)만 받고, 다른 글자면 400 이다")
   void checksRoom() throws Exception {
     given(chatService.start(any(), any(), any())).willReturn(ChatReplyResponse.of(12L, "안녕!"));
 
     postJson("/api/v1/chats", "{\"careLevel\":2,\"maxHarshness\":3,\"room\":\"TUTOR\"}")
+        .andExpect(status().isOk());
+    postJson("/api/v1/chats", "{\"careLevel\":2,\"maxHarshness\":3,\"room\":\"PLANNER\"}")
+        .andExpect(status().isOk());
+    postJson("/api/v1/chats", "{\"careLevel\":2,\"maxHarshness\":3,\"room\":\"GOAL_MATE\"}")
         .andExpect(status().isOk());
     postJson("/api/v1/chats", "{\"careLevel\":2,\"maxHarshness\":3,\"room\":\"FRIEND\"}")
         .andExpect(status().isBadRequest());
