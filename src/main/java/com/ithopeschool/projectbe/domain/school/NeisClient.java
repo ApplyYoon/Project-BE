@@ -23,6 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
 //   https://open.neis.go.kr/hub/schoolInfo      학교기본정보 — 학교 번호로 교육청 코드를 찾습니다
 //   https://open.neis.go.kr/hub/SchoolSchedule  학사일정 — 시험 · 방학 · 행사
 //   https://open.neis.go.kr/hub/mealServiceDietInfo  급식 — 조식 · 중식 · 석식 메뉴
+//   https://open.neis.go.kr/hub/hisTimetable  고등학교 시간표 — 학년 · 반 · 교시 · 과목
 //
 // ■ 인증키 (환경변수 NEIS_API_KEY)
 //   있으면 한 번에 1000건까지 받습니다. 없으면 NEIS 가 한 번에 5건만 주고 쪽 넘기기도 안 돼서,
@@ -165,6 +166,50 @@ public class NeisClient {
     return dishes;
   }
 
+  // 그날 한 반의 시간표를 교시 순서로 받습니다. 수업이 없는 날은 빈 목록, 실패하면 빈 값입니다.
+  // ⚠️ 키가 없으면 NEIS 가 5줄(1~5교시)만 줍니다. 쪽 넘기기(pIndex)나 교시(PERIO)로 나눠 받아도
+  //    같은 5줄이 옵니다. (2026-10-18 확인) 그래서 키가 없으면 뒤 교시는 잘립니다.
+  public Optional<List<NeisPeriod>> fetchTimetable(
+      String officeCode, String schoolCode, int grade, int classNo, LocalDate day) {
+    String query =
+        "ATPT_OFCDC_SC_CODE="
+            + officeCode
+            + "&SD_SCHUL_CODE="
+            + schoolCode
+            + "&ALL_TI_YMD="
+            + day.format(NEIS_DATE)
+            + "&GRADE="
+            + grade
+            + "&CLASS_NM="
+            + classNo;
+    int pageSize = hasApiKey() ? PAGE_SIZE_WITH_KEY : PAGE_SIZE_WITHOUT_KEY;
+    Optional<JsonNode> rows = rowsOf(get("hisTimetable", query, pageSize), "hisTimetable");
+    if (rows.isEmpty()) {
+      return Optional.empty();
+    }
+    List<NeisPeriod> periods = new ArrayList<>();
+    for (JsonNode row : rows.get()) {
+      toPeriod(row).ifPresent(periods::add);
+    }
+    periods.sort((a, b) -> Integer.compare(a.period(), b.period()));
+    return Optional.of(periods);
+  }
+
+  // NEIS 의 시간표 한 줄 → 교시 하나. 교시가 숫자가 아니거나 과목이 없으면 버립니다.
+  static Optional<NeisPeriod> toPeriod(JsonNode row) {
+    String subject = row.path("ITRT_CNTNT").asString("").trim();
+    int period;
+    try {
+      period = Integer.parseInt(row.path("PERIO").asString("").trim());
+    } catch (NumberFormatException e) {
+      return Optional.empty();
+    }
+    if (subject.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(new NeisPeriod(period, subject));
+  }
+
   // 한 번 부르기. 데이터가 없는 기간이면 빈 목록입니다.
   private Optional<List<NeisEvent>> fetchRange(
       String officeCode, String schoolCode, LocalDate from, LocalDate to, int pageSize) {
@@ -266,4 +311,7 @@ public class NeisClient {
 
   // NEIS 급식 한 끼. kind 는 '조식' · '중식' · '석식' 입니다.
   public record NeisMeal(LocalDate date, String kind, List<String> dishes) {}
+
+  // NEIS 시간표 한 칸. period 는 교시(1, 2, …)
+  public record NeisPeriod(int period, String subject) {}
 }
