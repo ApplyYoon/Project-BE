@@ -23,18 +23,23 @@ class HealthControllerTest {
 
   @Test
   void healthReturnsOkAndDbConnected() throws Exception {
-    given(healthService.check()).willReturn(new HealthResponse("ok", "connected"));
+    given(healthService.check())
+        .willReturn(new HealthResponse("ok", "connected", true, false, false));
 
     mockMvc
         .perform(get("/api/v1/health"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("ok"))
-        .andExpect(jsonPath("$.db").value("connected"));
+        .andExpect(jsonPath("$.db").value("connected"))
+        // 켜짐 여부는 참/거짓으로만 나갑니다.
+        .andExpect(jsonPath("$.ai").value(true))
+        .andExpect(jsonPath("$.call").value(false))
+        .andExpect(jsonPath("$.neis").value(false));
   }
 
   @Test
   void healthReturnsOkEvenWhenDbError() throws Exception {
-    given(healthService.check()).willReturn(new HealthResponse("ok", "error"));
+    given(healthService.check()).willReturn(new HealthResponse("ok", "error", false, false, false));
 
     // DB 가 안 붙어도 서버는 살아 있으므로 응답 코드는 200 입니다.
     mockMvc
