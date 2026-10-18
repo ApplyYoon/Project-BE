@@ -16,6 +16,7 @@ import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
 import com.ithopeschool.projectbe.domain.psychtest.PsychScore;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTest;
 import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
@@ -103,6 +104,8 @@ public class DayPlanService {
     boolean planOptimismHigh =
         psychTestRepository
             .findFirstByUserIdOrderByIdDesc(userId)
+            // 답이 거의 다 같아서 믿기 어려운 심리검사는 없는 것으로 봅니다. (PsychTest.isReliable)
+            .filter(PsychTest::isReliable)
             .map(
                 test ->
                     PsychScore.levelOf(

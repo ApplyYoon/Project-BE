@@ -64,4 +64,10 @@ public class PsychTest {
     this.takenAt = takenAt;
     this.answers = new EnumMap<>(answers);
   }
+
+  // 답이 믿을 만한지 (거의 다 같은 답 · 1-2-1-2 되풀이가 아닌지). 저장하지 않고 읽을 때마다 답으로 계산합니다. (PsychAnswerCheck)
+  // 믿기 어려운 검사는 AI 기능들이 성향으로 쓰지 않습니다.
+  public boolean isReliable() {
+    return PsychAnswerCheck.isReliable(answers);
+  }
 }

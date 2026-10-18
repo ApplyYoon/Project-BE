@@ -184,6 +184,23 @@ class ChecklistServiceTest {
   }
 
   @Test
+  @DisplayName("심리검사 답이 모두 같아서 믿기 어려우면 계획 낙관이 7 이어도 계획 성향 줄을 주지 않는다")
+  void unsurePsychTestIgnored() {
+    Map<PsychItem, Integer> allSeven = new java.util.EnumMap<>(PsychItem.class);
+    for (PsychItem item : PsychItem.values()) {
+      allSeven.put(item, 7);
+    }
+    given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(
+            Optional.of(new PsychTest(USER_ID, Instant.parse("2026-10-16T00:00:00Z"), allSeven)));
+    aiAnswers("하나", "둘", "셋");
+
+    service.suggest(new ChecklistRequest("수학 문제집", null));
+
+    assertThat(askedQuestion().input()).doesNotContain("계획 성향");
+  }
+
+  @Test
   @DisplayName("심리검사가 없으면 예전 생각 습관 테스트의 '계획할 때' 가 낙관일 때 계획 성향 줄을 준다")
   void planOptimismFromThinkingTest() {
     ThinkingTest test =
@@ -202,11 +219,13 @@ class ChecklistServiceTest {
     assertThat(askedQuestion().input()).contains("계획 성향: 계획을 크게 잡는 편");
   }
 
-  // 계획 낙관(P1 ~ P5)만 answer, 나머지는 4 인 심리검사
+  // 계획 낙관(P1 ~ P5)만 answer, 나머지는 척도마다 다른 답(1 ~ 7)인 심리검사
+  // (나머지를 모두 4 로 하면 35개가 다 같아져서 믿기 어려운 검사가 됩니다. PsychTest.isReliable)
   private void psychTestWithPlanOptimism(int answer) {
     Map<PsychItem, Integer> answers = new java.util.EnumMap<>(PsychItem.class);
     for (PsychItem item : PsychItem.values()) {
-      answers.put(item, item.scale() == PsychScale.PLAN_OPTIMISM ? answer : 4);
+      answers.put(
+          item, item.scale() == PsychScale.PLAN_OPTIMISM ? answer : item.scale().ordinal() + 1);
     }
     given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
         .willReturn(
