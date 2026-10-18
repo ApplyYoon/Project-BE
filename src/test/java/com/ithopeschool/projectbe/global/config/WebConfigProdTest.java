@@ -32,7 +32,8 @@ class WebConfigProdTest {
 
   @Test
   void prodWithoutEnvAllowsOnlyDevOrigin() throws Exception {
-    given(healthService.check()).willReturn(new HealthResponse("ok", "connected"));
+    given(healthService.check())
+        .willReturn(new HealthResponse("ok", "connected", false, false, false));
 
     // FE 배포 주소(예시)는 막힙니다.
     mockMvc

@@ -16,12 +16,14 @@ import com.ithopeschool.projectbe.domain.call.CallKeyClient.CallKey;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionResponse;
+import com.ithopeschool.projectbe.domain.call.dto.StudySignals;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.cardresult.CardResultService;
 import com.ithopeschool.projectbe.domain.care.MissReason;
 import com.ithopeschool.projectbe.domain.checkin.CheckIn;
 import com.ithopeschool.projectbe.domain.checkin.CheckInRepository;
 import com.ithopeschool.projectbe.domain.checkin.CheckInSource;
+import com.ithopeschool.projectbe.domain.dailysignal.DailySignalRepository;
 import com.ithopeschool.projectbe.domain.exam.Exam;
 import com.ithopeschool.projectbe.domain.exam.ExamRepository;
 import com.ithopeschool.projectbe.domain.exam.ExamScoreRepository;
@@ -80,7 +82,8 @@ class CallServiceTest {
   private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
   // 오늘이 위험한 날인지는 가짜로 둡니다. 진짜 계산은 RiskRuleTest · RiskServiceTest 가 확인합니다. (기본은 위험 없음)
   private final RiskService riskService = mock(RiskService.class);
-  // 대본 끝 "[기록에서 꺼낸 것]" 의 재료(시험 점수 · 과목 · 목표 · 설문 · 카드 판정)도 기본으로 없습니다. (CallContextLoader)
+  // 대본 끝 "[기록에서 꺼낸 것]" 의 재료(시험 점수 · 과목 · 목표 · 설문 · 카드 판정 · 체크인 · 수면)도 기본으로 없습니다.
+  // (CallContextLoader)
   private final CallContextLoader callContextLoader =
       new CallContextLoader(
           examRepository,
@@ -90,7 +93,9 @@ class CallServiceTest {
           mock(OnboardingAnswerRepository.class),
           mock(CardRepository.class),
           mock(CardResultService.class),
-          studySessionRepository);
+          studySessionRepository,
+          mock(CheckInRepository.class),
+          mock(DailySignalRepository.class));
   // 지금은 2026-10-11 오후 3시(한국 시간)입니다. 오늘 날짜는 2026-10-11 입니다.
   private static final Instant NOW = Instant.parse("2026-10-11T06:00:00Z");
   private static final LocalDate TODAY = LocalDate.of(2026, 10, 11);
@@ -808,5 +813,53 @@ class CallServiceTest {
     callService.startSession(REQUEST);
 
     assertThat(sentInstructions()).doesNotContain("[방금 공부한 것]");
+  }
+
+  // ---- 공부 신호 (기기에서 잰 최근 7일, 2026-10-18) ----
+
+  private static final StudySignals SIGNALS =
+      new StudySignals(82, 9, 12, 15, 11, List.of("수열의 극한"));
+
+  private static CallSessionRequest withSignals(int careLevel) {
+    return new CallSessionRequest(careLevel, 3, REQUEST.card(), null, null, null, null, SIGNALS);
+  }
+
+  @Test
+  @DisplayName("공부 신호를 보내면 통화 대본 끝에 [공부 신호] 칸을 붙인다")
+  void studySignalsInScript() {
+    callService.startSession(withSignals(2));
+
+    assertThat(sentInstructions())
+        .contains("[공부 신호]")
+        .contains("- 집중도 평균 82% (세션 9번)")
+        .contains("- 확인 문제 15개 중 11개 맞힘")
+        .contains("- 틀린 주제: 수열의 극한");
+  }
+
+  @Test
+  @DisplayName("공부 신호를 안 보내면 [공부 신호] 칸이 없다")
+  void noStudySignalsWithoutValues() {
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions()).doesNotContain("[공부 신호]");
+  }
+
+  @Test
+  @DisplayName("위로하는 통화(보호 조치 중)에는 공부 신호를 보내도 [공부 신호] 칸을 붙이지 않는다")
+  void noStudySignalsWhenSupportive() {
+    given(safetyService.isActive(USER_ID)).willReturn(true);
+
+    callService.startSession(withSignals(2));
+
+    assertThat(sentInstructions()).contains("위로하고 응원하는 말만").doesNotContain("[공부 신호]");
+  }
+
+  @Test
+  @DisplayName("상담 채팅 대본(CHAT)에도 같은 [공부 신호] 칸을 붙인다")
+  void studySignalsInChatScript() {
+    CallService.Script script =
+        callService.prepareScript(USER_ID, withSignals(2), NOW, TODAY, CallChannel.CHAT);
+
+    assertThat(script.instructions()).contains("[공부 신호]").contains("- 공부 중 폰을 든 횟수 12번");
   }
 }

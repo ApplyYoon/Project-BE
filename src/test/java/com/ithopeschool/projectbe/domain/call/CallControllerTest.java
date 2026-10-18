@@ -112,6 +112,32 @@ class CallControllerTest {
   }
 
   @Test
+  @DisplayName("공부 신호(studySignals)를 받는다")
+  void acceptsStudySignals() throws Exception {
+    given(callService.startSession(any()))
+        .willReturn(new CallSessionResponse("ek_abc123", 1791700000000L, 300, "12"));
+
+    start(
+            "{\"careLevel\":1,\"maxHarshness\":3,\"studySignals\":{\"focusScoreAvg7d\":82,"
+                + "\"focusSessions7d\":9,\"phoneLifts7d\":12,\"quizQuestions7d\":15,"
+                + "\"quizCorrect7d\":11,\"wrongQuizTopics\":[\"수열의 극한\"]}}")
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName("공부 신호의 맞힌 수가 푼 수보다 많거나 틀린 주제가 3개를 넘으면 400")
+  void rejectsBadStudySignals() throws Exception {
+    expectRejected(
+        "{\"careLevel\":1,\"maxHarshness\":3,\"studySignals\":{\"quizQuestions7d\":3,"
+            + "\"quizCorrect7d\":4}}",
+        "quizCorrect7d 는 quizQuestions7d 보다 클 수 없어요");
+    expectRejected(
+        "{\"careLevel\":1,\"maxHarshness\":3,\"studySignals\":{\"wrongQuizTopics\":"
+            + "[\"a\",\"b\",\"c\",\"d\"]}}",
+        "wrongQuizTopics 는 3개까지 보낼 수 있어요");
+  }
+
+  @Test
   @DisplayName("관리 강도 0 ~ 4, 독설 수위 1 ~ 5 가 아니거나 없으면 400")
   void rejectsBadLevels() throws Exception {
     expectRejected(VALID.replace("\"careLevel\": 1", "\"careLevel\": 5"), "careLevel 은 0 ~ 4 예요");

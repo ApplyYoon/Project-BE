@@ -9,16 +9,16 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-// 상담 채팅의 방 3개(코치 · 목표 메이트 · 과목 쌤)의 [이번 방] 칸을 확인합니다. (2026-10-18)
+// 상담 채팅의 방 3개(상담 · 계획 · 과목 쌤)의 [이번 방] 칸을 확인합니다. (2026-10-18)
 class ChatRoomTest {
 
   @Test
-  @DisplayName("요청에서 받는 방 이름(CallSessionRequest.ROOMS)은 ChatRoom 의 이름과 같다")
+  @DisplayName("요청에서 받는 방 이름(CallSessionRequest.ROOMS)은 ChatRoom 의 이름 + 예전 이름 GOAL_MATE 다")
   void roomsMatchEnum() {
     String names =
         Arrays.stream(ChatRoom.values()).map(Enum::name).collect(Collectors.joining("|"));
 
-    assertThat(CallSessionRequest.ROOMS).isEqualTo(names);
+    assertThat(CallSessionRequest.ROOMS).isEqualTo(names + "|" + ChatRoom.OLD_GOAL_MATE);
   }
 
   @Test
@@ -29,16 +29,20 @@ class ChatRoomTest {
   }
 
   @Test
-  @DisplayName("목표 메이트는 WOOP 순서(목표 만들기 대화와 같은 방해물 · 대처 규칙)와 make_plan 을 적는다")
-  void goalMateSection() {
-    assertThat(ChatRoom.GOAL_MATE.section())
-        .startsWith("\n\n[이번 방: 목표 메이트]")
+  @DisplayName("계획 방은 오늘 하루 계획 대화 · WOOP 목표(목표 만들기 대화와 같은 규칙) · make_plan · 주간 점검을 적는다")
+  void plannerSection() {
+    assertThat(ChatRoom.PLANNER.section())
+        .startsWith("\n\n[이번 방: 계획]")
         .contains("위의 [통화 순서] 는 따르지 마")
+        .contains("오늘 하루 스케줄을 같이 짜고 고치는")
+        .contains("계획을 강요하지 말고")
+        .contains("\"오늘 계획 짜 줘\"")
         .contains("1) 바람")
         .contains(GoalChatPrompt.OBSTACLE_RULE)
         .contains(GoalChatPrompt.IF_THEN_RULE)
         .contains("make_plan")
         .contains("다음 주에 바꿀 것 하나");
+    assertThat(ChatRoom.PLANNER.usesPsychSection()).isTrue();
   }
 
   @Test
@@ -56,8 +60,15 @@ class ChatRoomTest {
   @Test
   @DisplayName("글자로 방을 찾고, 없거나 모르는 글자는 빈 값이다")
   void findsRoom() {
-    assertThat(ChatRoom.from("GOAL_MATE")).contains(ChatRoom.GOAL_MATE);
+    assertThat(ChatRoom.from("PLANNER")).contains(ChatRoom.PLANNER);
     assertThat(ChatRoom.from(null)).isEmpty();
     assertThat(ChatRoom.from("tutor")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("예전 이름 GOAL_MATE(목표 메이트)로 오면 계획 방(PLANNER)으로 받는다")
+  void oldGoalMateIsPlanner() {
+    assertThat(ChatRoom.from("GOAL_MATE")).contains(ChatRoom.PLANNER);
+    assertThat(ChatRoom.from(ChatRoom.OLD_GOAL_MATE)).contains(ChatRoom.PLANNER);
   }
 }

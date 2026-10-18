@@ -6,20 +6,26 @@ import java.util.List;
 import java.util.Optional;
 
 // 상담 채팅의 "방" 입니다. 같은 채팅 API 로 세 명의 AI 와 이야기합니다. (2026-10-18)
-// 사용자: "방 3개: 코치 · 목표 메이트 · 과목 쌤", "다양한 세션에서 채팅 가능해야"
+// 사용자: "하루 스케줄 AI 로 짜 주면서 핑퐁치는 세션과 매일 통화하는 세션 및 상담 세션",
+//        확정 "📞 매일 통화 카드 + 📅 계획 · 💬 상담 · 📚 과목 쌤" (매일 통화는 음성이라 방이 아닙니다)
 //
-//   COACH     코치       지금까지의 상담 채팅 그대로 (통화와 같은 대본)
-//   GOAL_MATE 목표 메이트 큰 목표(시험 · 대회 · 진로)를 같이 세우고 매주 점검하는 친구
-//   TUTOR     과목 쌤    과외 선생님. 답을 바로 주지 않고 어디까지 아는지 묻고 단계별로 설명
+//   COACH   상담    지금까지의 상담 채팅 그대로 (통화와 같은 대본). 고민 · 공부 끝 후기 · 실패 이야기
+//   PLANNER 계획    오늘 하루 스케줄을 같이 짜고 고치는 계획 메이트 + 큰 목표 세우기(WOOP) + 주간 점검
+//   TUTOR   과목 쌤 과외 선생님. 답을 바로 주지 않고 어디까지 아는지 묻고 단계별로 설명
+//
+// 예전 이름 GOAL_MATE(목표 메이트, #330)로 오면 PLANNER 로 받습니다. (OLD_GOAL_MATE, 하위 호환)
 //
 // 방은 대본 끝에 [이번 방] 칸 하나를 붙여서 바꿉니다. (section) 통화 대본의 [말투] 의 깎아내리지 않기 · [꼭 지킬 것] ·
 // 위로하는 날 규칙은 어느 방이든 그대로 지킵니다. 채팅 기록(call_records)의 channel 은 방과 상관없이 CHAT 입니다.
 //
 // ⚠️ 방을 더하면 dto/CallSessionRequest.ROOMS 에도 더해야 합니다. (ChatRoomTest 가 확인)
 public enum ChatRoom {
-  COACH("코치"),
-  GOAL_MATE("목표 메이트"),
+  COACH("상담"),
+  PLANNER("계획"),
   TUTOR("과목 쌤");
+
+  // 예전 방 이름. '목표 메이트' 가 '계획' 방으로 합쳐져서, 이 글자가 오면 PLANNER 로 받습니다. (2026-10-18)
+  public static final String OLD_GOAL_MATE = "GOAL_MATE";
 
   private final String label;
 
@@ -32,7 +38,11 @@ public enum ChatRoom {
   }
 
   // 글자 → 방. 없거나 모르는 글자면 빈 값입니다. (요청은 CallSessionRequest 의 @Pattern 이 먼저 거릅니다)
+  // 예전 이름 GOAL_MATE 는 PLANNER 입니다.
   public static Optional<ChatRoom> from(String name) {
+    if (OLD_GOAL_MATE.equals(name)) {
+      return Optional.of(PLANNER);
+    }
     for (ChatRoom room : values()) {
       if (room.name().equals(name)) {
         return Optional.of(room);
@@ -76,9 +86,16 @@ public enum ChatRoom {
     lines.add(
         "- 위의 [통화 순서] 는 따르지 마. 입력에 '[통화 순서] 1번부터' 라고 있어도 이 칸이 먼저야."
             + " [말투] 의 깎아내리지 않기 · [꼭 지킬 것] · 위로하는 날 규칙은 그대로 지켜.");
-    if (this == GOAL_MATE) {
-      lines.add("- 너는 이 방에서 '목표 메이트' 야. 큰 목표(시험 · 대회 · 진로)를 같이 세우고 매주 점검하는 친구처럼 말해.");
-      lines.add("- 목표가 아직 없으면 WOOP 순서로 한 번에 하나씩 짧게 물어. 학생이 이미 답한 것은 다시 묻지 마.");
+    if (this == PLANNER) {
+      lines.add("- 너는 이 방에서 '계획' 메이트야. 오늘 하루 스케줄을 같이 짜고 고치는 친구처럼 짧은 반말로 말해.");
+      lines.add("- 정하는 건 학생이야. 계획을 강요하지 말고, 너무 빡빡하면 \"조금 줄여 볼까?\" 정도만 말해.");
+      lines.add("- 오늘 계획 이야기면 할 일 · 컨디션 · 쓸 수 있는 시간을 한 번에 하나씩 물어. 오늘 시간표가 위에 있으면 그걸 보고 말해.");
+      lines.add(
+          "- 무엇을 넣고 뺄지, 어느 것부터 할지를 대화로 정리해. 시각 · 분이 적힌 카드는 앱이 따로 만들어 보여 주니" + " 너는 시간표를 길게 쓰지 마.");
+      lines.add(
+          "- 정리가 되면 quickReplies 에 \"오늘 계획 짜 줘\" 를 넣어. 학생이 누르면 앱이 카드 초안을 보여 주고,"
+              + " 학생이 거기서 고치고 싶은 말을 하면 그 말에 맞춰 다시 정리해.");
+      lines.add("- 큰 목표(시험 · 대회 · 진로)를 말하면 WOOP 순서로 한 번에 하나씩 짧게 물어. 학생이 이미 답한 것은 다시 묻지 마.");
       lines.add("  1) 바람: 이루고 싶은 것 한 줄. 점수형(예: 11월 학평 수학 3등급)인지 완주형(예: 영단어장 1회독)인지 알 수 있게.");
       lines.add("  2) 최고의 결과: 이루면 좋은 점 하나.");
       lines.add("  3) 걸림돌: " + GoalChatPrompt.OBSTACLE_RULE);
@@ -87,7 +104,7 @@ public enum ChatRoom {
           "- 마감 날이 정해지면 make_plan 행동 버튼(목표 한 줄 · 마감 날)을 줘."
               + " 마감이 30일보다 멀면 date 는 null 로 두고, 30일 안의 중간 목표를 같이 정해.");
       lines.add("- 이번 주 숫자가 오면([이번 대화의 주제]) 숫자 하나를 짚고, 다음 주에 바꿀 것 하나를 같이 정해.");
-      lines.add("- 목표가 너무 크면 \"조금 줄여 볼까?\" 정도만 말하고, 정하는 건 학생이야.");
+      lines.add("- 문제 풀이 · 개념 질문이면 '과목 쌤' 방을 권해.");
     } else {
       lines.add("- 너는 이 방에서 '과목 쌤'(과외 선생님)이야. 공부 내용 질문에 답해. 관리 강도 · 학생 성향은 말투에만 살짝 써.");
       lines.add("- 답을 바로 주지 마. 먼저 학생이 어디까지 아는지 물어보고, 한 단계씩 설명하면서 중간에 학생이 직접 말해 보게 해.");
