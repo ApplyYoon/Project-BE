@@ -86,8 +86,8 @@ public class OnboardingService {
   }
 
   // 처음 답한 자기 인식: 항목마다 "처음으로 답이 있는 줄" 의 값을 꺼냅니다. (answers 는 처음 것부터)
-  // 항목마다 따로 찾는 이유: 온보딩이 짧아져서, 아침형/밤형 같은 것은 나중에 "내 정보 더 알려주기" 에서 처음 답하기 때문입니다.
-  //   1번째 줄: 밤형 없음 · 하루 180분      2번째 줄: 아침형 · 하루 180분      3번째 줄: 밤형 · 하루 120분
+  // 항목마다 따로 찾는 이유: 온보딩이 짧아져서, 아침형/저녁형 같은 것은 나중에 "내 정보 더 알려주기" 에서 처음 답하기 때문입니다.
+  //   1번째 줄: 저녁형 없음 · 하루 180분      2번째 줄: 아침형 · 하루 180분      3번째 줄: 저녁형 · 하루 120분
   //   → 처음 답한 자기 인식은 아침형 · 하루 180분
   public static OnboardingResponse.SelfAwareness firstSelfAwarenessOf(
       List<OnboardingAnswer> answers) {
@@ -166,7 +166,7 @@ public class OnboardingService {
     if (request.chronotype() != null) {
       values.chronotype = Chronotype.fromValue(request.chronotype());
       if (values.chronotype == null) {
-        throw badChoice("아침형/밤형은 " + Chronotype.allowedValues());
+        throw badChoice("아침형/저녁형은 " + Chronotype.allowedValues());
       }
     }
     if (request.maxFocusMinutes() != null) {

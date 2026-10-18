@@ -201,6 +201,8 @@ class LoginRequiredFlowTest {
               "/api/v1/exams/{id}",
               "/api/v1/exams/1",
               "{\"subjectScores\":[{\"subjectId\":\"1\",\"actualScore\":80}]}"),
+          // 시험을 목표에 잇기 · 떼기 (이슈 #228)
+          new Api("PATCH", "/api/v1/exams/{id}/goal", "/api/v1/exams/1/goal", "{\"goalId\":\"1\"}"),
           // 공부 기록
           new Api(
               "POST",
@@ -485,7 +487,14 @@ class LoginRequiredFlowTest {
               "POST",
               "/api/v1/ai/daily-missions",
               "/api/v1/ai/daily-missions",
-              "{\"date\":\"2099-01-01\"}"));
+              "{\"date\":\"2099-01-01\"}"),
+          // 계획 핑퐁 (학생의 요청으로 계획을 고칩니다. 2026-10-18)
+          new Api(
+              "POST",
+              "/api/v1/ai/day-plan/revise",
+              "/api/v1/ai/day-plan/revise",
+              "{\"drafts\":[{\"date\":\"2099-01-01\",\"startTime\":\"19:00\",\"durationMinutes\":30,"
+                  + "\"title\":\"수학\"}],\"request\":\"줄여 줘\"}"));
 
   // 토큰 없이 불러도 되는 API 들입니다. 로그인하기 전에 써야 하는 것뿐입니다.
   // 구글로 시작하기 · 구글로 가입하기(이슈 #19)도 로그인하기 전에 부릅니다. 대신 구글 확인 정보가 있어야 합니다.

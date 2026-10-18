@@ -189,7 +189,9 @@ class ExamFlowTest {
         .andExpect(status().isOk())
         .andExpect(content().json("[]", true));
 
-    // 등록: 201 과 {id, type, name, date, subjectScores} 다섯 칸. id 는 글자, type 은 소문자, 실제 점수는 null
+    // 등록: 201 과 {id, type, name, date, subjectScores, goalId} 여섯 칸. id 는 글자, type 은 소문자, 실제 점수는
+    // null
+    // 목표 없이 등록해서 goalId 는 null 입니다. (이슈 #228)
     ResultActions created =
         send(
             post("/api/v1/exams"),
@@ -201,7 +203,8 @@ class ExamFlowTest {
         .andExpect(jsonPath("$.type").value("school"))
         .andExpect(jsonPath("$.name").value("1학기 중간고사"))
         .andExpect(jsonPath("$.date").value(PAST_DATE))
-        .andExpect(jsonPath("$.length()").value(5))
+        .andExpect(jsonPath("$.goalId").isEmpty())
+        .andExpect(jsonPath("$.length()").value(6))
         .andExpect(jsonPath("$.subjectScores.length()").value(2))
         .andExpect(jsonPath("$.subjectScores[0].subjectId").value(math))
         .andExpect(jsonPath("$.subjectScores[0].expectedScore").value(85))

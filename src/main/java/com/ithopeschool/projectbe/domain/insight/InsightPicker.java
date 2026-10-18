@@ -57,7 +57,7 @@ public final class InsightPicker {
 
   // 온보딩 때 스스로 말한 것과 이 발견을 견준 결과입니다.
   public enum SelfView {
-    // 스스로 말한 것과 다름 (예: 밤형이라고 했는데 오전에 더 잘 됨)
+    // 스스로 말한 것과 다름 (예: 저녁형이라고 했는데 오전에 더 잘 됨)
     DIFFERENT,
     // 온보딩 답이 없어서 견줄 수 없음
     UNKNOWN,

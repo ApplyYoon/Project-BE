@@ -193,7 +193,7 @@ class DayPlanServiceTest {
   }
 
   @Test
-  @DisplayName("밤형이면 늦은 시간부터 채운다")
+  @DisplayName("저녁형이면 늦은 시간부터 채운다")
   void nightTypeFillsLate() {
     given(onboarding.findFirstByUserIdOrderByAnsweredAtDescIdDesc(USER_ID))
         .willReturn(Optional.of(answer(LocalTime.of(23, 0), LocalTime.of(7, 0), Chronotype.NIGHT)));
@@ -204,7 +204,7 @@ class DayPlanServiceTest {
     assertThat(response.drafts())
         .extracting(DayPlanResponse.Draft::startTime)
         .containsExactly("20:40", "21:10", "22:10");
-    assertThat(response.evidence()).contains("밤형이라고 해서 늦은 시간부터 채웠어요");
+    assertThat(response.evidence()).contains("저녁형이라고 해서 늦은 시간부터 채웠어요");
   }
 
   @Test
@@ -260,5 +260,25 @@ class DayPlanServiceTest {
         .hasMessage("오늘부터 14일 안의 날짜를 보내 주세요");
     assertThatThrownBy(() -> service.suggest(new DayPlanRequest(TODAY.plusDays(15))))
         .isInstanceOf(ApiException.class);
+  }
+
+  @Test
+  @DisplayName("컨디션이 2 이하면 총량을 60% 로 줄여 가볍게 짜고 근거에 적는다 · 준비하는 것과 과목을 AI 입력에 넣는다")
+  void lowConditionMakesLighterPlan() {
+    aiAnswers(null);
+
+    DayPlanResponse usual = service.suggest(new DayPlanRequest(MONDAY));
+    DayPlanResponse lighter =
+        service.suggest(
+            new DayPlanRequest(
+                MONDAY, new DayPlanRequest.Focus("SUNEUNG", null), List.of("미적분Ⅰ"), 2));
+
+    assertThat(lighter.totalMinutes()).isEqualTo(usual.totalMinutes() * 60 / 100);
+    assertThat(lighter.evidence()).anyMatch(line -> line.contains("가볍게 짰어요"));
+    assertThat(
+            DayPlanService.extraLinesOf(
+                new DayPlanRequest(
+                    MONDAY, new DayPlanRequest.Focus("CONTEST", "정보올림피아드"), List.of("미적분Ⅰ"), 3)))
+        .containsExactly("준비하는 것: 대회 · 자격증 — 정보올림피아드", "오늘 배운 과목: 미적분Ⅰ");
   }
 }

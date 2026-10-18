@@ -45,7 +45,7 @@ import org.springframework.stereotype.Component;
 //   - 다음 시험: 오늘 포함 가장 가까운 시험 하나
 //   - 지난 시험: 어제 이전 시험 중 가장 최근 것 하나. 실제 점수를 적은 과목만 (하나도 없으면 넣지 않음)
 //   - 목표: 진행 중이고 D-day 가 지나지 않은 것, 가까운 순으로 최대 2개
-//   - 아침형/밤형: 가장 최근 설문의 답과, 최근 2주(어제까지) 판정이 끝난 카드 중 아침 · 밤 카드를 체크리스트까지 다 채운 횟수
+//   - 아침형/저녁형: 가장 최근 설문의 답과, 최근 2주(어제까지) 판정이 끝난 카드 중 아침 · 저녁 카드를 체크리스트까지 다 채운 횟수
 //     (CardResultService.getJudgedDays 의 checklistRate)
 //   - 못 채운 이유: 최근 2주 미실행 카드에서 고른 원인 + 타이머를 목표 전에 끝내며 고른 이유 ('기타' 는 뺌)
 @Component
@@ -54,9 +54,9 @@ public class CallContextLoader {
 
   // 대본에 넣는 목표의 최대 개수. 많으면 AI 가 늘어놓기 쉬워서 줄입니다.
   static final int MAX_GOALS = 2;
-  // 아침형/밤형 · 못 채운 이유를 볼 기간(일). 어제까지 14일입니다. (오늘 카드는 아직 끝나지 않았을 수 있음)
+  // 아침형/저녁형 · 못 채운 이유를 볼 기간(일). 어제까지 14일입니다. (오늘 카드는 아직 끝나지 않았을 수 있음)
   static final int RECENT_DAYS = 14;
-  // 아침 카드: 이 시각부터 정오 전까지 시작 / 밤 카드: 18시부터 다음 날 이 시각 전까지 시작 (하루의 기준 새벽 4시)
+  // 아침 카드: 이 시각부터 정오 전까지 시작 / 저녁 카드: 18시부터 다음 날 이 시각 전까지 시작 (하루의 기준 새벽 4시)
   static final LocalTime DAY_START = LocalTime.of(4, 0);
   static final LocalTime NOON = LocalTime.NOON;
   static final LocalTime EVENING = LocalTime.of(18, 0);
@@ -84,7 +84,7 @@ public class CallContextLoader {
         causesOf(userId, judged, from, to));
   }
 
-  // 가장 최근 설문의 아침형/밤형과, 아침 · 밤 카드를 다 채운 횟수. 답이 없으면 null
+  // 가장 최근 설문의 아침형/저녁형과, 아침 · 저녁 카드를 다 채운 횟수. 답이 없으면 null
   private CallContext.RhythmGap rhythmGapOf(Long userId, List<JudgedCardDay> judged) {
     Chronotype said =
         onboardingAnswerRepository

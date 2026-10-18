@@ -82,21 +82,21 @@ class CallContextTest {
   }
 
   @Test
-  @DisplayName("밤형이라고 답했는데 아침 카드가 20%p 이상 더 잘 됐으면, 몇 번 중 몇 번인지 적고 스스로 알아차리게 물으라고 한다")
+  @DisplayName("저녁형이라고 답했는데 아침 카드가 20%p 이상 더 잘 됐으면, 몇 번 중 몇 번인지 적고 스스로 알아차리게 물으라고 한다")
   void rhythmAgainstWhatTheySaid() {
     List<String> lines = CallContext.rhythmLines(new CallContext.RhythmGap(true, 9, 10, 6, 12));
 
     assertThat(lines.get(0))
         .isEqualTo(
-            "- 가입 때 스스로 '밤형' 이라고 답했어. 그런데 최근 2주 기록에서 체크리스트까지 다 채운 날은 아침 카드 10번 중 9번(90%), 밤 카드 12번 중 6번(50%)이야.");
-    assertThat(lines.get(1)).contains("단정하지 말고", "아침이 더 잘 되는 것 같은데", "밤에 하던 카드 하나를 아침으로");
+            "- 가입 때 스스로 '저녁형' 이라고 답했어. 그런데 최근 2주 기록에서 체크리스트까지 다 채운 날은 아침 카드 10번 중 9번(90%), 저녁 카드 12번 중 6번(50%)이야.");
+    assertThat(lines.get(1)).contains("단정하지 말고", "아침이 더 잘 되는 것 같은데", "저녁에 하던 카드 하나를 아침으로");
   }
 
   @Test
-  @DisplayName("아침형이라고 답했는데 밤이 더 잘 됐어도 같은 방식으로 적는다")
+  @DisplayName("아침형이라고 답했는데 저녁이 더 잘 됐어도 같은 방식으로 적는다")
   void morningSaidButNightBetter() {
     assertThat(CallContext.rhythmLines(new CallContext.RhythmGap(false, 2, 5, 4, 5)).get(1))
-        .contains("밤이 더 잘 되는 것 같은데", "아침에 하던 카드 하나를 밤으로");
+        .contains("저녁이 더 잘 되는 것 같은데", "아침에 하던 카드 하나를 저녁으로");
   }
 
   @Test

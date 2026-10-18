@@ -61,6 +61,7 @@ erDiagram
     users ||--o{ goals : "user_id"
     goals ||--o{ goal_target_snapshots : "goal_id"
     goals ||--o{ cards : "goal_id"
+    goals |o--o{ exams : "goal_id"
     psych_tests ||--o{ psych_test_answers : "psych_test_id"
     onboarding_answers ||--o{ onboarding_answer_failure_causes : "onboarding_answer_id"
     onboarding_answers ||--o{ onboarding_answer_subject_levels : "onboarding_answer_id"
@@ -298,7 +299,7 @@ erDiagram
         time school_end_time "학교 끝나는 시각"
         time academy_end_time "학원 끝나는 시각"
         varchar study_place "주로 공부하는 장소 (HOME, SCHOOL, ACADEMY, LIBRARY, CAFE, OTHER 중 하나)"
-        varchar chronotype "[자기 인식] 아침형/밤형 (MORNING, NIGHT 중 하나)"
+        varchar chronotype "[자기 인식] 아침형/저녁형 (MORNING, NIGHT 중 하나)"
         int max_focus_minutes "[자기 인식] 한 번에 집중 가능한 시간(분) (30, 50, 90, 120 중 하나)"
         varchar biggest_distraction "[자기 인식] 가장 큰 방해 요소 (PHONE, SLEEPY, WANDERING_MIND, PEOPLE, NOISE, OTHER 중 하나)"
         int daily_available_minutes "[자기 인식] 하루 공부 가능 시간(분) (60, 120, 180, 240, 300 중 하나)"
@@ -339,6 +340,7 @@ erDiagram
         varchar name "시험 이름 (50자까지)"
         varchar type "시험 종류 (MOCK, SCHOOL, QUIZ, ETC 중 하나)"
         date exam_date "시험 날짜"
+        bigint goal_id FK "이어진 점수형 목표 (없으면 비어 있음, 이슈 #228)"
     }
     exam_scores {
         bigint id PK "점수 한 줄을 구분하는 고유 번호"
@@ -631,8 +633,8 @@ erDiagram
 > - "기타" 에 직접 쓴 약점 글은 서버로 받지 않아서 저장하지 않습니다.
 
 > `onboarding_answers` · 딸린 테이블 두 개 · `initial_plans` 는 2026-10-17 에 이슈 #21 에서 **학생이 설계**했습니다.
-> - 한 줄 = 설문 하나. 고치면 원래 줄을 고치지 않고 **새 줄을 더합니다.** 그래야 처음 답한 자기 인식(아침형/밤형 등)이 남아서 #40 에서 실제 기록과 견줄 수 있습니다.
-> - 지금 내 설문은 `answered_at` 이 가장 늦은 줄, 처음 자기 인식은 항목마다 **처음으로 답이 있는 줄**에서 꺼냅니다. (온보딩이 짧아져서 아침형/밤형 같은 것은 나중에 처음 답하기 때문)
+> - 한 줄 = 설문 하나. 고치면 원래 줄을 고치지 않고 **새 줄을 더합니다.** 그래야 처음 답한 자기 인식(아침형/저녁형 등)이 남아서 #40 에서 실제 기록과 견줄 수 있습니다.
+> - 지금 내 설문은 `answered_at` 이 가장 늦은 줄, 처음 자기 인식은 항목마다 **처음으로 답이 있는 줄**에서 꺼냅니다. (온보딩이 짧아져서 아침형/저녁형 같은 것은 나중에 처음 답하기 때문)
 > - 한 줄에 여러 개인 답(무너진 때 · 과목별 수준)은 `thinking_tests` 처럼 딸린 테이블에 담았습니다.
 > - 처음 계획은 규칙이 달라서(온보딩을 다시 해도 안 바뀌고 "다시 세우기" 때만 바뀜) 테이블을 따로 뒀습니다. 한 사람에 한 줄이라 그림의 선이 `||--o|` (0개 또는 1개) 입니다.
 > - 엔티티 이름은 `OnboardingAnswer` · `UserInitialPlan` 입니다. (`routine/InitialPlan` 은 루틴 초안 계산 도구라서 이름이 겹치지 않게 했습니다)
