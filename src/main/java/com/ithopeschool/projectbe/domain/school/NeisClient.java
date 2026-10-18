@@ -22,6 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
 // 교육부 NEIS(교육정보 개방 포털)를 부르는 곳입니다. (이슈 #282)
 //   https://open.neis.go.kr/hub/schoolInfo      학교기본정보 — 학교 번호로 교육청 코드를 찾습니다
 //   https://open.neis.go.kr/hub/SchoolSchedule  학사일정 — 시험 · 방학 · 행사
+//   https://open.neis.go.kr/hub/mealServiceDietInfo  급식 — 조식 · 중식 · 석식 메뉴
 //
 // ■ 인증키 (환경변수 NEIS_API_KEY)
 //   있으면 한 번에 1000건까지 받습니다. 없으면 NEIS 가 한 번에 5건만 주고 쪽 넘기기도 안 돼서,
@@ -117,6 +118,51 @@ public class NeisClient {
       events.addAll(oneDay.get());
     }
     return Optional.of(events);
+  }
+
+  // 그날의 급식(조식 · 중식 · 석식)을 받습니다. 급식이 없는 날(주말 · 방학)은 빈 목록, 실패하면 빈 값입니다.
+  // 하루에 많아야 3줄이라, 키가 없어도(한 번에 5줄) 다 옵니다. (2026-10-18 확인)
+  public Optional<List<NeisMeal>> fetchMeals(String officeCode, String schoolCode, LocalDate day) {
+    String query =
+        "ATPT_OFCDC_SC_CODE="
+            + officeCode
+            + "&SD_SCHUL_CODE="
+            + schoolCode
+            + "&MLSV_YMD="
+            + day.format(NEIS_DATE);
+    Optional<JsonNode> rows =
+        rowsOf(get("mealServiceDietInfo", query, PAGE_SIZE_WITHOUT_KEY), "mealServiceDietInfo");
+    if (rows.isEmpty()) {
+      return Optional.empty();
+    }
+    List<NeisMeal> meals = new ArrayList<>();
+    for (JsonNode row : rows.get()) {
+      toMeal(row, day).ifPresent(meals::add);
+    }
+    return Optional.of(meals);
+  }
+
+  // NEIS 의 급식 한 줄 → 끼니 하나. 끼니 이름이나 메뉴가 없으면 버립니다.
+  static Optional<NeisMeal> toMeal(JsonNode row, LocalDate day) {
+    String kind = row.path("MMEAL_SC_NM").asString("").trim();
+    List<String> dishes = dishesOf(row.path("DDISH_NM").asString(""));
+    if (kind.isEmpty() || dishes.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(new NeisMeal(day, kind, dishes));
+  }
+
+  // 메뉴 글을 메뉴 목록으로 바꿉니다. 메뉴는 <br/> 로 이어져 오고, 뒤의 (1.5.6) 같은 숫자는 알레르기 번호라 뗍니다.
+  //   '흑미밥 <br/>나주곰탕 (1.5.6.16)<br/>배추김치 (9)' → ['흑미밥', '나주곰탕', '배추김치']
+  static List<String> dishesOf(String text) {
+    List<String> dishes = new ArrayList<>();
+    for (String part : text.split("<br\\s*/?>")) {
+      String dish = part.replaceAll("\\([0-9.\\s]*\\)", "").trim();
+      if (!dish.isEmpty()) {
+        dishes.add(dish);
+      }
+    }
+    return dishes;
   }
 
   // 한 번 부르기. 데이터가 없는 기간이면 빈 목록입니다.
@@ -217,4 +263,7 @@ public class NeisClient {
 
   // NEIS 학사일정 하나. grades 가 비어 있으면 학년 구분이 없는 행사입니다.
   public record NeisEvent(LocalDate date, String name, String content, List<Integer> grades) {}
+
+  // NEIS 급식 한 끼. kind 는 '조식' · '중식' · '석식' 입니다.
+  public record NeisMeal(LocalDate date, String kind, List<String> dishes) {}
 }
