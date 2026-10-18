@@ -284,18 +284,24 @@ FE 함수(`getDaySummary`)와 BE 함수(`AchievementRate.percentOf`) 모두 이�
 
 ### 상태 확인
 
-`GET /api/v1/health` — 서버와 DB 가 살아 있는지 확인
+`GET /api/v1/health` — 서버와 DB 가 살아 있는지, AI · 통화 · NEIS 가 켜져 있는지 확인 (로그인 없이)
 
 **응답 200**
 
 ```json
-{ "status": "ok", "db": "connected" }
+{ "status": "ok", "db": "connected", "ai": true, "call": true, "neis": false }
 ```
 
-| 필드     | 무엇                                          |
-| -------- | --------------------------------------------- |
-| `status` | 서버 상태. 응답이 왔다면 항상 `"ok"`          |
-| `db`     | DB 상태. `"connected"` 또는 `"error"`         |
+| 필드     | 무엇                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------- |
+| `status` | 서버 상태. 응답이 왔다면 항상 `"ok"`                                                                  |
+| `db`     | DB 상태. `"connected"` 또는 `"error"`                                                                 |
+| `ai`     | 글 AI(채팅 · 계획 · 문제 · 알림 문장)를 부를 수 있는지. `OPENAI_API_KEY` 와 글 모델 이름이 둘 다 있으면 `true` |
+| `call`   | AI 음성 통화를 걸 수 있는지. `OPENAI_API_KEY` 와 `OPENAI_REALTIME_MODEL` 이 둘 다 있으면 `true`          |
+| `neis`   | `NEIS_API_KEY` 가 있는지. `false` 면 NEIS 가 한 번에 5건만 줘서 시간표가 일부(7교시 중 5개)만 옵니다     |
+
+- `ai` · `call` · `neis` 는 **켜져 있는지 참/거짓뿐**입니다. 키 값 · 모델 이름 · 길이는 담지 않아서 공개돼도 괜찮습니다.
+- 쓰는 곳: 배포 서버(Render)의 환경변수가 다 들어갔는지 로그인 없이 확인할 때. 예) 통화를 Vercel 임시 길(`/api/voice-key`)에서 BE 길(`/realtime/session`)로 옮기기 전에 `call` 이 `true` 인지 봅니다.
 
 ### 가입 · 로그인
 
