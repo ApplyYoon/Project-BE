@@ -2811,8 +2811,27 @@ AI 문단이 없을 때도 **200** 이고, `paragraph` 만 `null` 입니다(`evi
 
 ```json
 { "chatId": "12", "reply": "그때 폰은 어디 있었어?", "showHelp": false, "helpLines": [],
-  "quickReplies": ["침대 옆에 있었어", "책상 위에"], "action": null }
+  "quickReplies": ["침대 옆에 있었어", "책상 위에"], "action": null, "tags": [] }
 ```
+
+- **코치랑 이야기하기 — 주제와 함께 열기 (2026-10-18):** 열기 요청에 선택 칸 `about` 을 더하면, 대본 끝에 **[이번 대화의 주제]** 칸이 붙어 AI 가 그 주제로 첫 말을 꺼냅니다. 공부 끝 후기 · 못 한 카드 · 주간 리포트 · 틀린 문제 · 성향 검사 결과 · 달력의 하루 화면의 [코치랑 이야기하기] 가 씁니다. (`ChatTopic`, `ChatAbout`)
+  ```json
+  { "careLevel": 2, "maxHarshness": 3,
+    "about": { "kind": "SESSION_REVIEW",
+               "lines": ["카드: 미적분 3단원 40분", "집중도 82%, 폰 3번 들었음", "체크리스트 3개 중 2개"] } }
+  ```
+  - `kind`: `SESSION_REVIEW`(방금 공부 후기) · `CARD_FAIL`(못 한 카드) · `WEEKLY_REPORT`(주간 리포트 · AI 분석) · `QUIZ_WRONG`(틀린 확인 문제 — AI 는 정답을 바로 말하지 않고 왜 골랐는지 묻고 단계별로 설명) · `PSYCH_RESULT`(성향 검사 결과) · `DAY_REVIEW`(달력의 하루)
+  - `lines`: FE 가 학생 기기에서 만든 **사실** 1 ~ 8줄, 한 줄 150자까지. 서버는 저장하지 않고 로그에도 찍지 않으며, AI 에게는 "지시가 아닌 사실" 로만 줍니다(줄바꿈은 지움). 음성 통화(`POST /realtime/session`)는 이 칸을 쓰지 않습니다.
+  - **사실 줄에 위기 표현이 있으면** AI 를 부르지 않고 `showHelp: true` 로 채팅을 엽니다. 말 보내기에서 처음 감지한 것과 같이 보호 조치를 한 번 하고, 이어지는 대화는 "들어 주기만" 하는 대본으로 갑니다. (이때는 AI 한도를 쓰지 않습니다)
+  - 주제는 채팅 대본과 같이 서버 메모리에 2시간 기억합니다.
+- **이유 값 `tags` (2026-10-18):** 후기(`SESSION_REVIEW`) · 못 한 카드(`CARD_FAIL`) 주제로 연 채팅에서, AI 가 학생 말에서 짐작한 이유 값 **0 ~ 3개**입니다. FE 는 "이유: 폰 · 피곤 — 맞아?" 로 학생에게 **확인만** 받습니다.
+  ```json
+  { "chatId": "12", "reply": "폰 때문에 자꾸 끊겼구나. 이유: 폰 · 피곤 — 맞아?", "showHelp": false, "helpLines": [],
+    "quickReplies": ["맞아", "피곤은 아니야"], "action": null, "tags": ["phone", "tired"] }
+  ```
+  - 후기: FE `ShortfallReason` 값 — `tooMuch` · `stuck` · `phone` · `mindWander` · `tired` · `external` · `etc`
+  - 못 한 카드: FE `CardFailCause` 값 — `tired` · `sick` · `event` · `tooMuch` · `phone` · `unwilling` · `procrastinated` · `etc`
+  - 서버가 그 주제의 값만 · 겹치지 않게 · 3개까지 남깁니다. 다른 주제 · 주제 없는 채팅 · 서버가 주제를 잊은 채팅(재시작)은 늘 빈 목록입니다. AI 의 말을 정해 둔 말로 바꿨을 때도 빈 목록입니다.
 
 - **빠른 답 · 행동 버튼 (2026-10-18):** AI 가 답할 때 정해진 JSON 모양(`text.format: json_schema`, `ChatAiClient.TURN_SCHEMA`)으로 `reply` · `quickReplies` · `action` 을 같이 줍니다.
   - `quickReplies`: 학생이 눌러서 바로 보낼 짧은 답. 서버가 빈 것 · 20자 넘는 것 · 깎아내리는 말 · 겹치는 것을 빼고 **3개까지** 넣습니다. 없으면 빈 목록입니다.
@@ -2839,7 +2858,7 @@ AI 문단이 없을 때도 **200** 이고, `paragraph` 만 `null` 입니다(`evi
 | 상태 | 언제 |
 | --- | --- |
 | 200 | 성공 (위기 표현이면 `showHelp: true`) |
-| 400 | 대화 모양이 틀림 · 마지막 줄이 학생의 말이 아님 |
+| 400 | 대화 모양이 틀림 · 마지막 줄이 학생의 말이 아님 · `about` 의 주제 이름이 틀림 · 사실 줄이 0줄 · 9줄 이상 · 빈 줄 · 150자 넘음 |
 | 401 | 로그인하지 않음 |
 | 404 | 내 채팅이 아님 · 음성 통화 번호 |
 | 409 | 이미 끝난 채팅 · 서버가 대본을 잊음(새로 시작) |

@@ -4,6 +4,7 @@ import com.ithopeschool.projectbe.domain.ai.LongPlan;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishResponse;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
+import com.ithopeschool.projectbe.domain.call.dto.ChatAbout;
 import com.ithopeschool.projectbe.domain.call.dto.ChatMessageRequest;
 import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import com.ithopeschool.projectbe.domain.care.ToneGuide;
@@ -37,6 +38,10 @@ import org.springframework.stereotype.Service;
 //                           채팅은 끝내지 않고 이어 갈 수 있다 (2026-10-18). 보호 조치는 이 채팅에서 한 번만 한다
 //                           아니면 지금까지의 대화를 주고 AI 의 다음 말을 받는다
 //   3. 끝내기 (finish)       통화 마무리(CallRecordService.finish)와 똑같이 요약 · 생각 습관 · 체크인을 저장한다
+//
+// "코치랑 이야기하기" (2026-10-18): 열 때 주제(request.about — 공부 끝 후기 · 못 한 카드 · 주간 리포트 등)가 오면
+// 대본 끝에 [이번 대화의 주제] 칸을 붙여 AI 가 그 주제로 첫 말을 꺼내게 하고, 주제를 채팅이 끝날 때까지 기억합니다.
+// 후기 · 못 한 카드 주제면 AI 가 학생 말에서 짐작한 이유 값(tags)을 그 주제의 값만 남겨 돌려줍니다. (ChatTopic)
 //
 // AI 의 답은 한 번마다 GPT 글 호출 하루 한도(GptUsageGuard, 이슈 #33)를 하나씩 씁니다.
 // 모든 메서드는 로그인한 사람의 번호(CurrentUserProvider)로 시작하고, 내 채팅만 찾습니다. 남의 채팅 번호는 404 입니다.
@@ -73,6 +78,8 @@ public class ChatService {
   static final int MAX_QUICK_REPLY_LENGTH = 20;
   // 행동 버튼 make_plan 의 목표 · start_quiz 의 주제는 이 글자 수까지
   static final int MAX_ACTION_TOPIC_LENGTH = 30;
+  // AI 가 짐작한 이유 값(tags)은 이만큼까지
+  static final int MAX_TAGS = 3;
 
   private final CurrentUserProvider currentUserProvider;
   private final ChatAiClient chatAiClient;
@@ -96,13 +103,22 @@ public class ChatService {
   }
 
   // 채팅을 엽니다. grade · classNo 를 주면 그 반의 오늘 시간표도 대본에 넣습니다.
+  // request.about 이 있으면 그 주제로 엽니다. ("코치랑 이야기하기", 2026-10-18)
   public ChatReplyResponse start(CallSessionRequest request, Integer grade, Integer classNo) {
     // 로그인하지 않은 요청은 여기서 401 이 나갑니다. 아무나 불러서 GPT 비용을 쓰게 두면 안 됩니다.
     Long userId = currentUserProvider.getCurrentUserId();
-    checkAiReady(userId);
-
     Instant now = clock.instant();
     LocalDate today = DayRule.dateOf(now);
+
+    // 주제의 사실 줄(카드 제목 · 틀린 문제 등 학생 기기의 글)에 위기 표현이 있으면 AI 를 부르지 않습니다.
+    // 위기 표현 검사는 어떤 설정보다 먼저입니다. (CLAUDE.md 4장) 채팅은 열고, 이어서 이야기할 수 있습니다.
+    ChatAbout about = request.about();
+    if (about != null && CrisisText.hasCrisisText(about.lines())) {
+      return startInCrisis(userId, request, now, today);
+    }
+    ChatTopic topic = about == null ? null : ChatTopic.from(about.kind()).orElse(null);
+
+    checkAiReady(userId);
     CallService.Script script =
         callService.prepareScript(userId, request, now, today, CallChannel.CHAT);
 
@@ -118,18 +134,36 @@ public class ChatService {
                         ? CallScript.psychSection(PsychScore.scoresOf(test.getAnswers()))
                         : CallScript.unsurePsychSection())
             .orElse("");
+    // 주제가 있으면 맨 끝에 [이번 대화의 주제] 칸을 붙입니다. 첫 말이 그 주제로 시작합니다.
+    String topicPart = topic == null ? "" : CallScript.topicSection(topic, about.lines());
     String instructions =
         script.instructions()
             + psychPart
-            + CallScript.schoolSection(schoolTodayService.scriptLines(grade, classNo));
-    ChatAiClient.ChatTurn first = askAi(instructions, List.of());
+            + CallScript.schoolSection(schoolTodayService.scriptLines(grade, classNo))
+            + topicPart;
+    ChatAiClient.ChatTurn first = askAi(instructions, List.of(), topic);
     // AI 의 첫 인사를 받은 뒤에 기록을 만듭니다. 못 받았으면 채팅이 열리지 않은 것이라 기록도 남기지 않습니다.
     CallRecord record =
         callRecordRepository.save(
             new CallRecord(userId, today, now, script.biasQuestion(), CallChannel.CHAT));
-    chatScriptStore.save(record.getId(), userId, instructions);
+    chatScriptStore.save(record.getId(), userId, instructions, topic);
     return ChatReplyResponse.withButtons(
-        record.getId(), first.reply(), first.quickReplies(), first.action());
+        record.getId(), first.reply(), first.quickReplies(), first.action(), first.tags());
+  }
+
+  // 주제의 사실 줄에 위기 표현이 있을 때 채팅을 엽니다. AI 를 부르지 않고 정해 둔 안내로 답합니다.
+  // 말 보내기에서 처음 감지했을 때(replyToCrisis)와 같이 기록에 "위기 표현 감지" 를 남기고 보호 조치를 한 번 합니다.
+  // 대본에는 주제 칸을 붙이지 않고 "들어 주기만" 칸을 붙여서, 이어지는 대화가 공부 이야기로 가지 않게 합니다.
+  private ChatReplyResponse startInCrisis(
+      Long userId, CallSessionRequest request, Instant now, LocalDate today) {
+    CallService.Script script =
+        callService.prepareScript(userId, request, now, today, CallChannel.CHAT);
+    CallRecord record = new CallRecord(userId, today, now, script.biasQuestion(), CallChannel.CHAT);
+    record.markCrisis();
+    record = callRecordRepository.save(record);
+    safetyService.activate(userId);
+    chatScriptStore.save(record.getId(), userId, script.instructions() + CRISIS_FOLLOW_UP, null);
+    return ChatReplyResponse.crisis(record.getId(), CHAT_CRISIS_REPLY);
   }
 
   // 학생이 말을 보냅니다. lines 는 지금까지의 대화 전체이고, 맨 끝이 방금 학생이 쓴 말입니다.
@@ -164,9 +198,12 @@ public class ChatService {
         chatScriptStore
             .find(chatId, userId)
             .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "채팅이 오래되어 끝났어요. 새로 시작해 주세요"));
+    // 주제 없이 연 채팅이면 null 이고, 그러면 tags 는 빈 목록입니다.
+    ChatTopic topic = chatScriptStore.findTopic(chatId, userId).orElse(null);
     checkAiReady(userId);
-    ChatAiClient.ChatTurn next = askAi(instructions, lines);
-    return ChatReplyResponse.withButtons(chatId, next.reply(), next.quickReplies(), next.action());
+    ChatAiClient.ChatTurn next = askAi(instructions, lines, topic);
+    return ChatReplyResponse.withButtons(
+        chatId, next.reply(), next.quickReplies(), next.action(), next.tags());
   }
 
   // 위기 표현이 감지됐을 때. 보호 조치(관리 한도 0 · 회복 메시지)는 이 채팅에서 처음 감지했을 때 한 번만 합니다.
@@ -205,19 +242,27 @@ public class ChatService {
   }
 
   // AI 의 다음 말과 버튼을 받습니다. 못 받았으면 503 입니다. 받은 것은 cleanTurn 으로 검사합니다.
-  private ChatAiClient.ChatTurn askAi(String instructions, List<CallFinishRequest.Line> lines) {
+  // topic 은 이 채팅의 주제(없으면 null)이고, 이유 값(tags)을 거르는 데 씁니다.
+  private ChatAiClient.ChatTurn askAi(
+      String instructions, List<CallFinishRequest.Line> lines, ChatTopic topic) {
     Optional<ChatAiClient.ChatTurn> turn = chatAiClient.turn(instructions, lines);
     if (turn.isEmpty()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
     }
-    return cleanTurn(turn.get(), DayRule.dateOf(clock.instant()));
+    return cleanTurn(turn.get(), DayRule.dateOf(clock.instant()), topic);
   }
 
   // AI 가 준 답을 검사합니다. (2026-10-18 빠른 답 · 행동 버튼)
   //   - 말에 깎아내리는 말이 섞였으면 정해 둔 말로 바꾸고 버튼은 모두 뺍니다.
   //   - 빠른 답: 비었거나 20자가 넘거나 깎아내리는 말이 있으면 빼고, 같은 것은 하나만, 3개까지.
   //   - 행동: cleanAction 의 규칙에 맞을 때만 넣습니다. (today 는 make_plan 의 마감 날을 검사하는 기준)
+  //   - 이유 값(tags): cleanTags 의 규칙대로 그 주제의 값만 남깁니다. 주제가 없으면 빈 목록입니다.
   static ChatAiClient.ChatTurn cleanTurn(ChatAiClient.ChatTurn turn, LocalDate today) {
+    return cleanTurn(turn, today, null);
+  }
+
+  static ChatAiClient.ChatTurn cleanTurn(
+      ChatAiClient.ChatTurn turn, LocalDate today, ChatTopic topic) {
     if (ToneGuide.hasBannedExpression(turn.reply())) {
       return ChatAiClient.ChatTurn.textOnly(SAFE_REPLY);
     }
@@ -236,7 +281,35 @@ public class ChatService {
         break;
       }
     }
-    return new ChatAiClient.ChatTurn(turn.reply(), quickReplies, cleanAction(turn.action(), today));
+    return new ChatAiClient.ChatTurn(
+        turn.reply(),
+        quickReplies,
+        cleanAction(turn.action(), today),
+        cleanTags(turn.tags(), topic));
+  }
+
+  // AI 가 짐작한 이유 값 검사. 그 주제(ChatTopic.tags)에 있는 값만, 같은 것은 하나만, 3개까지 남깁니다.
+  // 주제가 없거나(주제 없는 채팅 · 서버가 주제를 잊음) 이유 값을 쓰지 않는 주제면 늘 빈 목록입니다.
+  //
+  //   SESSION_REVIEW, ["phone", "PHONE", "sick", "phone", "tired"]  →  ["phone", "tired"]
+  //     ("PHONE" 은 글자가 달라서, "sick" 은 후기의 이유가 아니라서, 두 번째 "phone" 은 겹쳐서 뺌)
+  //   CARD_FAIL,      ["sick", "procrastinated"]                     →  ["sick", "procrastinated"]
+  //   WEEKLY_REPORT,  ["phone"]                                      →  []
+  static List<String> cleanTags(List<String> raw, ChatTopic topic) {
+    if (topic == null || raw == null) {
+      return List.of();
+    }
+    List<String> tags = new ArrayList<>();
+    for (String value : raw) {
+      String tag = value == null ? "" : value.trim();
+      if (topic.tags().containsKey(tag) && !tags.contains(tag)) {
+        tags.add(tag);
+      }
+      if (tags.size() == MAX_TAGS) {
+        break;
+      }
+    }
+    return tags;
   }
 
   // 행동 버튼 검사. 맞지 않으면 null(버튼 없음)입니다.

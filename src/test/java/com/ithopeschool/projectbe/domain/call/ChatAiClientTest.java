@@ -170,4 +170,22 @@ class ChatAiClientTest {
     assertThat(ChatAiClient.parseTurn("{\"reply\":\"\"}"))
         .isEqualTo(ChatAiClient.ChatTurn.textOnly("{\"reply\":\"\"}"));
   }
+
+  @Test
+  @DisplayName("주제가 있는 채팅의 이유 값(tags)을 읽고, 없으면 빈 목록이다")
+  void parseTurnReadsTags() {
+    String withTags =
+        "{\"reply\":\"어땠어?\",\"quickReplies\":[],\"action\":null,\"tags\":[\"phone\",\"tired\"]}";
+    String withoutTags = "{\"reply\":\"어땠어?\",\"quickReplies\":[],\"action\":null}";
+
+    assertThat(ChatAiClient.parseTurn(withTags).tags()).containsExactly("phone", "tired");
+    assertThat(ChatAiClient.parseTurn(withoutTags).tags()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("답 모양(TURN_SCHEMA)은 tags 를 꼭 채우게 한다 (strict 모드는 모든 칸이 required 여야 함)")
+  void schemaRequiresTags() {
+    assertThat(ChatAiClient.TURN_SCHEMA.get("required"))
+        .isEqualTo(List.of("reply", "quickReplies", "action", "tags"));
+  }
 }

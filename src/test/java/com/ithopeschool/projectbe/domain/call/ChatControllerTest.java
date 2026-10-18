@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import java.util.Collections;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -89,6 +90,41 @@ class ChatControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("speaker 는 ai 또는 me 예요"));
 
+    verifyNoInteractions(chatService);
+  }
+
+  @Test
+  @DisplayName("주제(about)와 함께 열 수 있고, 응답에 이유 값(tags)이 담긴다")
+  void startsWithTopic() throws Exception {
+    given(chatService.start(any(), any(), any()))
+        .willReturn(
+            ChatReplyResponse.withButtons(
+                12L, "40분 했네! 어땠어?", Collections.emptyList(), null, List.of("phone")));
+
+    postJson(
+            "/api/v1/chats",
+            "{\"careLevel\":2,\"maxHarshness\":3,\"about\":{\"kind\":\"SESSION_REVIEW\","
+                + "\"lines\":[\"카드: 미적분 3단원 40분\"]}}")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.tags[0]").value("phone"));
+  }
+
+  @Test
+  @DisplayName("주제 이름이 틀리거나 · 사실 줄이 없거나 · 9줄 이상이거나 · 한 줄이 150자를 넘으면 400 이고 로직을 부르지 않는다")
+  void rejectsBadTopic() throws Exception {
+    String base = "{\"careLevel\":2,\"maxHarshness\":3,\"about\":";
+    postJson("/api/v1/chats", base + "{\"kind\":\"HOMEWORK\",\"lines\":[\"a\"]}}")
+        .andExpect(status().isBadRequest());
+    postJson("/api/v1/chats", base + "{\"kind\":\"CARD_FAIL\",\"lines\":[]}}")
+        .andExpect(status().isBadRequest());
+    postJson("/api/v1/chats", base + "{\"kind\":\"CARD_FAIL\",\"lines\":[\" \"]}}")
+        .andExpect(status().isBadRequest());
+    String nineLines = "\"a\",".repeat(8) + "\"a\"";
+    postJson("/api/v1/chats", base + "{\"kind\":\"CARD_FAIL\",\"lines\":[" + nineLines + "]}}")
+        .andExpect(status().isBadRequest());
+    String longLine = "가".repeat(151);
+    postJson("/api/v1/chats", base + "{\"kind\":\"CARD_FAIL\",\"lines\":[\"" + longLine + "\"]}}")
+        .andExpect(status().isBadRequest());
     verifyNoInteractions(chatService);
   }
 }

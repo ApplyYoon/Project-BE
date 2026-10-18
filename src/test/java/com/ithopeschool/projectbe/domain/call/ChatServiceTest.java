@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest.Line;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
+import com.ithopeschool.projectbe.domain.call.dto.ChatAbout;
 import com.ithopeschool.projectbe.domain.call.dto.ChatMessageRequest;
 import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
@@ -456,5 +457,113 @@ class ChatServiceTest {
     assertThat(
             ChatService.cleanAction(new ChatReplyResponse.Action("start_quiz", null, null), TODAY))
         .isNull();
+  }
+
+  // ---- 코치랑 이야기하기 (주제가 있는 채팅, 2026-10-18) ----
+
+  private static CallSessionRequest startAbout(String kind, String... facts) {
+    return new CallSessionRequest(2, 3, null, null, null, new ChatAbout(kind, List.of(facts)));
+  }
+
+  @Test
+  @DisplayName("주제와 함께 열면 대본 끝에 [이번 대화의 주제] 칸을 붙이고, 주제를 기억하고, 그 주제의 이유 값만 돌려준다")
+  void startWithTopic() {
+    List<String> facts = List.of("카드: 미적분 3단원 40분", "집중도 82%, 폰 3번 들었음");
+    String withTopic = SCRIPT + CallScript.topicSection(ChatTopic.SESSION_REVIEW, facts);
+    given(chatAiClient.turn(withTopic, List.of()))
+        .willReturn(
+            Optional.of(
+                new ChatAiClient.ChatTurn(
+                    "40분 했네! 폰을 3번 들었던데 어땠어?",
+                    List.of("폰이 신경 쓰였어"),
+                    null,
+                    List.of("phone", "sick", "phone"))));
+
+    ChatReplyResponse response =
+        service.start(startAbout("SESSION_REVIEW", facts.get(0), facts.get(1)));
+
+    assertThat(response.reply()).isEqualTo("40분 했네! 폰을 3번 들었던데 어땠어?");
+    // "sick" 은 후기의 이유 값이 아니라서, 두 번째 "phone" 은 겹쳐서 빠집니다.
+    assertThat(response.tags()).containsExactly("phone");
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(withTopic);
+    assertThat(chatScriptStore.findTopic(CHAT_ID, USER_ID)).contains(ChatTopic.SESSION_REVIEW);
+  }
+
+  @Test
+  @DisplayName("주제로 연 채팅은 말을 주고받을 때도 그 주제의 이유 값만 돌려준다")
+  void sendKeepsTopicTags() {
+    givenOpenChat();
+    chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, ChatTopic.CARD_FAIL);
+    ChatMessageRequest request = said("어제 미루다가 그냥 잤어");
+    given(chatAiClient.turn(SCRIPT, request.lines()))
+        .willReturn(
+            Optional.of(
+                new ChatAiClient.ChatTurn(
+                    "미루다 보니 늦어졌구나. 이유: 미루다 보니 · 피곤 — 맞아?",
+                    List.of(),
+                    null,
+                    List.of("procrastinated", "stuck", "tired", "phone", "sick"))));
+
+    ChatReplyResponse response = service.send(CHAT_ID, request);
+
+    // "stuck" 은 못 한 카드의 이유 값이 아니라서 빠지고, 3개까지만 남습니다.
+    assertThat(response.tags()).containsExactly("procrastinated", "tired", "phone");
+  }
+
+  @Test
+  @DisplayName("주제 없이 연 채팅 · 서버가 주제를 잊은 채팅은 이유 값이 늘 빈 목록이다")
+  void noTopicMeansNoTags() {
+    givenOpenChat();
+    ChatMessageRequest request = said("폰 봤어");
+    given(chatAiClient.turn(SCRIPT, request.lines()))
+        .willReturn(
+            Optional.of(new ChatAiClient.ChatTurn("그랬구나", List.of(), null, List.of("phone"))));
+
+    assertThat(service.send(CHAT_ID, request).tags()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("주제의 사실 줄에 위기 표현이 있으면 AI 를 부르지 않고 안내로 열고, 보호 조치를 한 번 한다")
+  void startWithCrisisInTopic() {
+    ChatReplyResponse response = service.start(startAbout("QUIZ_WRONG", "문제: 죽고 싶다는 말의 뜻은?"));
+
+    assertThat(response.showHelp()).isTrue();
+    assertThat(response.reply()).isEqualTo(ChatService.CHAT_CRISIS_REPLY);
+    assertThat(response.chatId()).isEqualTo(String.valueOf(CHAT_ID));
+    verify(chatAiClient, never()).turn(any(), anyList());
+    verify(gptUsageGuard, never()).tryUseText(any(), any());
+    verify(safetyService).activate(USER_ID);
+    ArgumentCaptor<CallRecord> saved = ArgumentCaptor.forClass(CallRecord.class);
+    verify(callRecordRepository).save(saved.capture());
+    assertThat(saved.getValue().isCrisisDetected()).isTrue();
+    // 이어지는 대화는 주제 없이 "들어 주기만" 하는 대본으로 갑니다.
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID))
+        .contains(SCRIPT + ChatService.CRISIS_FOLLOW_UP);
+    assertThat(chatScriptStore.findTopic(CHAT_ID, USER_ID)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("이유 값 검사: 그 주제의 값만, 겹치지 않게, 3개까지. 주제가 없거나 이유 값을 안 쓰는 주제면 빈 목록")
+  void cleansTags() {
+    assertThat(
+            ChatService.cleanTags(
+                List.of("phone", "PHONE", " tired ", "sick", "phone"), ChatTopic.SESSION_REVIEW))
+        .containsExactly("phone", "tired");
+    assertThat(ChatService.cleanTags(List.of("phone"), ChatTopic.WEEKLY_REPORT)).isEmpty();
+    assertThat(ChatService.cleanTags(List.of("phone"), null)).isEmpty();
+    assertThat(ChatService.cleanTags(null, ChatTopic.CARD_FAIL)).isEmpty();
+    List<String> withNull = new ArrayList<>();
+    withNull.add(null);
+    withNull.add("sick");
+    assertThat(ChatService.cleanTags(withNull, ChatTopic.CARD_FAIL)).containsExactly("sick");
+  }
+
+  @Test
+  @DisplayName("AI 의 말에 깎아내리는 말이 있으면 이유 값도 같이 뺀다")
+  void bannedReplyDropsTags() {
+    ChatAiClient.ChatTurn turn =
+        new ChatAiClient.ChatTurn("이것도 못 하다니 한심해.", List.of(), null, List.of("phone"));
+
+    assertThat(ChatService.cleanTurn(turn, TODAY, ChatTopic.SESSION_REVIEW).tags()).isEmpty();
   }
 }

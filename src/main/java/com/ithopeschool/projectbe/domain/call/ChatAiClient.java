@@ -49,7 +49,8 @@ public class ChatAiClient {
 
   // 상담 채팅 답의 모양(JSON schema)입니다. OpenAI 가 이 모양으로만 답하게 합니다. (turn)
   //   { "reply": "…", "quickReplies": ["…"], "action": { "type": "none", "minutes": null, "title":
-  // null, "date": null } }
+  // null, "date": null }, "tags": [] }
+  // tags 는 "코치랑 이야기하기" 주제(ChatTopic)가 있을 때 AI 가 학생 말에서 짐작한 이유 값입니다. (2026-10-18)
   // 개수 · 길이 제한은 schema 대신 서버가 검사합니다. (ChatService.cleanTurn)
   static final Map<String, Object> TURN_SCHEMA =
       Map.of(
@@ -58,7 +59,7 @@ public class ChatAiClient {
           "additionalProperties",
           false,
           "required",
-          List.of("reply", "quickReplies", "action"),
+          List.of("reply", "quickReplies", "action", "tags"),
           "properties",
           Map.of(
               "reply",
@@ -92,7 +93,9 @@ public class ChatAiClient {
                       "title",
                       Map.of("type", List.of("string", "null")),
                       "date",
-                      Map.of("type", List.of("string", "null"))))));
+                      Map.of("type", List.of("string", "null")))),
+              "tags",
+              Map.of("type", "array", "items", Map.of("type", "string"))));
 
   // 상담 채팅 대본 끝에 붙이는 "답 모양" 규칙입니다.
   static final String TURN_RULES =
@@ -110,7 +113,9 @@ public class ChatAiClient {
               + " 시험 · 대회 · 수행평가처럼 무엇을 언제까지 준비한다고 하면 make_plan 과 title(목표 한 줄, 30자 안쪽) ·"
               + " date(마감 날 YYYY-MM-DD, 모르면 null). 학생이 방금 공부를 끝냈다고 하거나 잘 알았는지 확인해 달라고 하면"
               + " start_quiz 와 title(공부한 주제, 30자 안쪽). 아니면 none. date 는 make_plan 에만 써.",
-          "- 학생이 힘든 마음을 말하면 action 은 none 이고 quickReplies 는 비워.");
+          "- tags: [이번 대화의 주제] 에 '고를 수 있는 이유' 가 있을 때만, 학생 말에서 보이는 이유 값 0~3개."
+              + " 그 목록에 없는 값은 쓰지 마. 주제가 없거나 이유가 안 보이면 빈 목록.",
+          "- 학생이 힘든 마음을 말하면 action 은 none 이고 quickReplies · tags 는 비워.");
 
   private final String apiKey;
   private final String model;
@@ -160,8 +165,14 @@ public class ChatAiClient {
     }
   }
 
-  // 상담 채팅의 답 한 번: 학생에게 할 말 + 누를 수 있는 짧은 답 + 행동 하나. (2026-10-18)
-  public record ChatTurn(String reply, List<String> quickReplies, ChatReplyResponse.Action action) {
+  // 상담 채팅의 답 한 번: 학생에게 할 말 + 누를 수 있는 짧은 답 + 행동 하나 + 짐작한 이유 값. (2026-10-18)
+  public record ChatTurn(
+      String reply, List<String> quickReplies, ChatReplyResponse.Action action, List<String> tags) {
+
+    // 이유 값 없는 답 (주제 없는 채팅 · 테스트에서 씀)
+    public ChatTurn(String reply, List<String> quickReplies, ChatReplyResponse.Action action) {
+      this(reply, quickReplies, action, List.of());
+    }
 
     // 버튼 없이 말만 있는 답
     public static ChatTurn textOnly(String reply) {
@@ -215,7 +226,10 @@ public class ChatAiClient {
                   raw.action().title(),
                   raw.action().date());
       return new ChatTurn(
-          raw.reply().trim(), raw.quickReplies() == null ? List.of() : raw.quickReplies(), action);
+          raw.reply().trim(),
+          raw.quickReplies() == null ? List.of() : raw.quickReplies(),
+          action,
+          raw.tags() == null ? List.of() : raw.tags());
     } catch (JacksonException e) {
       return ChatTurn.textOnly(text);
     }
@@ -280,7 +294,7 @@ public class ChatAiClient {
 
   // 받은 JSON 의 모양 (TURN_SCHEMA)
   @JsonIgnoreProperties(ignoreUnknown = true)
-  record RawTurn(String reply, List<String> quickReplies, RawAction action) {
+  record RawTurn(String reply, List<String> quickReplies, RawAction action, List<String> tags) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record RawAction(String type, Integer minutes, String title, String date) {}
