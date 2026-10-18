@@ -6,9 +6,12 @@ import com.ithopeschool.projectbe.domain.bias.BiasQuestion;
 import com.ithopeschool.projectbe.domain.bias.CognitiveBias;
 import com.ithopeschool.projectbe.domain.bias.Weakness;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest.Card;
+import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
 import com.ithopeschool.projectbe.domain.risk.RiskLevel;
 import java.time.LocalDate;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -634,5 +637,26 @@ class CallScriptTest {
   @DisplayName("위로하는 통화(관리 강도 0)는 위험한 날이어도 지침이 그대로다 (이미 부드럽다)")
   void supportiveCallIgnoresRisk() {
     assertThat(withRisk(0, RiskLevel.HIGH)).isEqualTo(withRisk(0, RiskLevel.NONE));
+  }
+
+  @Test
+  @DisplayName("학생 성향 칸: 높은 척도만 규칙을 넣고, 관리 선호가 낮으면 부드럽게, 두드러진 게 없으면 빈 글자")
+  void psychSection() {
+    Map<PsychScale, Double> scores = new EnumMap<>(PsychScale.class);
+    for (PsychScale scale : PsychScale.values()) {
+      scores.put(scale, 4.0);
+    }
+    assertThat(CallScript.psychSection(scores)).isEmpty();
+
+    scores.put(PsychScale.DISTRACTION, 6.0);
+    scores.put(PsychScale.CARE_PREFERENCE, 2.0);
+    String section = CallScript.psychSection(scores);
+
+    assertThat(section).contains("[학생 성향]");
+    assertThat(section).contains("폰을 엎어 두자고");
+    assertThat(section).contains("부드럽게 제안해");
+    assertThat(section).doesNotContain("5분만");
+    // 점수는 학생에게 말하지 않게 합니다.
+    assertThat(section).contains("점수나 '검사 결과' 라는 말은 하지 말고");
   }
 }
