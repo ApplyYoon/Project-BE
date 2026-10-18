@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
@@ -17,8 +18,14 @@ import com.ithopeschool.projectbe.domain.call.dto.ChatMessageRequest;
 import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
+import com.ithopeschool.projectbe.domain.psychtest.PsychItem;
+import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
+import com.ithopeschool.projectbe.domain.psychtest.PsychScore;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTest;
+import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
 import com.ithopeschool.projectbe.domain.safety.HelpLine;
 import com.ithopeschool.projectbe.domain.safety.SafetyService;
+import com.ithopeschool.projectbe.domain.school.SchoolTodayService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
@@ -27,7 +34,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -56,6 +65,8 @@ class ChatServiceTest {
   // 대본을 기억하는 곳은 진짜 코드를 씁니다.
   private final ChatScriptStore chatScriptStore = new ChatScriptStore(clock);
   private final SafetyService safetyService = mock(SafetyService.class);
+  private final SchoolTodayService schoolTodayService = mock(SchoolTodayService.class);
+  private final PsychTestRepository psychTestRepository = mock(PsychTestRepository.class);
   private final ChatService service =
       new ChatService(
           currentUserProvider,
@@ -66,6 +77,8 @@ class ChatServiceTest {
           callRecordRepository,
           chatScriptStore,
           safetyService,
+          schoolTodayService,
+          psychTestRepository,
           clock);
 
   @BeforeEach
@@ -113,9 +126,45 @@ class ChatServiceTest {
   // ---- 채팅 열기 ----
 
   @Test
+  @DisplayName("오늘 학교 정보가 있으면 대본 끝에 [오늘 학교] 칸을 붙여 AI 에 건네고 기억한다")
+  void startAddsSchoolLines() {
+    List<String> schoolLines = List.of("- 오늘 중식: 흑미밥, 나주곰탕");
+    given(schoolTodayService.scriptLines(2, 1)).willReturn(schoolLines);
+    String withSchool = SCRIPT + CallScript.schoolSection(schoolLines);
+    given(chatAiClient.turn(withSchool, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("오늘 급식 나주곰탕이네!")));
+
+    ChatReplyResponse response = service.start(START, 2, 1);
+
+    assertThat(response.reply()).isEqualTo("오늘 급식 나주곰탕이네!");
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(withSchool);
+  }
+
+  @Test
+  @DisplayName("성향 검사가 있으면 대본에 [학생 성향] 칸을 붙인다 (시작 저항이 높으면 '5분만')")
+  void startAddsPsychSection() {
+    Map<PsychItem, Integer> answers = new EnumMap<>(PsychItem.class);
+    for (PsychItem item : PsychItem.values()) {
+      // 시작 저항 문장만 7점, 나머지는 4점(보통)
+      answers.put(item, item.scale() == PsychScale.START_RESISTANCE ? 7 : 4);
+    }
+    given(psychTestRepository.findFirstByUserIdOrderByIdDesc(USER_ID))
+        .willReturn(Optional.of(new PsychTest(USER_ID, NOW, answers)));
+    String withPsych = SCRIPT + CallScript.psychSection(PsychScore.scoresOf(answers));
+    given(chatAiClient.turn(withPsych, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("5분만 먼저 해 볼까?")));
+
+    ChatReplyResponse response = service.start(START);
+
+    assertThat(response.reply()).isEqualTo("5분만 먼저 해 볼까?");
+    assertThat(withPsych).contains("[학생 성향]").contains("5분만");
+  }
+
+  @Test
   @DisplayName("채팅을 열면 통화와 같은 대본(채팅 버전)으로 AI 의 첫 인사를 받고, 채팅 기록을 만든다")
   void startsAChat() {
-    given(chatAiClient.reply(SCRIPT, List.of())).willReturn(Optional.of("안녕! 어제는 어땠어?"));
+    given(chatAiClient.turn(SCRIPT, List.of()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("안녕! 어제는 어땠어?")));
 
     ChatReplyResponse response = service.start(START);
 
@@ -147,7 +196,7 @@ class ChatServiceTest {
   @Test
   @DisplayName("AI 의 첫 인사를 못 받으면 503 이고 채팅 기록을 만들지 않는다")
   void startFailsWithoutFirstReply() {
-    given(chatAiClient.reply(any(), anyList())).willReturn(Optional.empty());
+    given(chatAiClient.turn(any(), anyList())).willReturn(Optional.empty());
 
     assertError(
         () -> service.start(START),
@@ -163,7 +212,8 @@ class ChatServiceTest {
   void sendsAMessage() {
     givenOpenChat();
     ChatMessageRequest request = said("폰 보다가 늦게 시작했어");
-    given(chatAiClient.reply(SCRIPT, request.lines())).willReturn(Optional.of("그때 폰은 어디 있었어?"));
+    given(chatAiClient.turn(SCRIPT, request.lines()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("그때 폰은 어디 있었어?")));
 
     ChatReplyResponse response = service.send(CHAT_ID, request);
 
@@ -172,24 +222,46 @@ class ChatServiceTest {
   }
 
   @Test
-  @DisplayName("학생의 말에 위기 표현이 있으면 GPT 를 부르지 않고 도움 안내로 채팅을 끝낸다")
-  void crisisStopsTheChat() {
+  @DisplayName("학생의 말에 위기 표현이 있으면 GPT 를 부르지 않고 도움 안내로 답하고, 채팅은 끝내지 않는다")
+  void crisisKeepsTheChatOpen() {
     CallRecord chat = givenOpenChat();
 
     ChatReplyResponse response = service.send(CHAT_ID, said("그냥 다 그만두고 죽고 싶어"));
 
     assertThat(response.showHelp()).isTrue();
-    assertThat(response.reply()).isEqualTo(ChatService.CRISIS_REPLY);
+    assertThat(response.reply()).isEqualTo(ChatService.CHAT_CRISIS_REPLY);
     assertThat(response.helpLines()).isEqualTo(HelpLine.ALL);
     verify(chatAiClient, never()).reply(any(), anyList());
     verify(gptUsageGuard, never()).tryUseText(any(), any());
-    // "위기 표현이 감지된 통화" 로 남습니다. 그 뒤 7일 동안 통화·채팅이 위로하는 쪽이 됩니다.
+    // "위기 표현이 감지됨" 표시는 남기지만 채팅은 끝내지 않습니다. 그 뒤 7일 동안 통화·채팅이 위로하는 쪽이 됩니다.
     assertThat(chat.isCrisisDetected()).isTrue();
-    assertThat(chat.isFinished()).isTrue();
+    assertThat(chat.isFinished()).isFalse();
     verify(callRecordRepository).save(chat);
-    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).isEmpty();
+    // 남은 대화에서 공부 이야기를 꺼내지 않게 대본에 한 칸이 붙습니다.
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID))
+        .contains(SCRIPT + ChatService.CRISIS_FOLLOW_UP);
     // 통화 마무리와 같은 보호 조치(관리 한도 0 · 회복 메시지)를 합니다.
     verify(safetyService).activate(USER_ID);
+  }
+
+  @Test
+  @DisplayName("안내한 뒤에는 앞의 말로 다시 걸리지 않고 AI 와 이어서 이야기한다 (보호 조치는 한 번만)")
+  void afterCrisisTheChatContinues() {
+    CallRecord chat = givenOpenChat();
+    service.send(CHAT_ID, said("죽고 싶어"));
+
+    ChatMessageRequest next = said("죽고 싶어", "그냥 오늘 너무 힘들었어");
+    given(chatAiClient.turn(SCRIPT + ChatService.CRISIS_FOLLOW_UP, next.lines()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("많이 힘들었구나. 무슨 일이 있었어?")));
+    ChatReplyResponse response = service.send(CHAT_ID, next);
+
+    assertThat(response.showHelp()).isFalse();
+    assertThat(response.reply()).isEqualTo("많이 힘들었구나. 무슨 일이 있었어?");
+    assertThat(chat.isFinished()).isFalse();
+
+    // 마지막 말에 또 위기 표현이 있으면 다시 안내하지만, 보호 조치는 다시 하지 않습니다.
+    assertThat(service.send(CHAT_ID, said("죽고 싶어", "괜찮아", "사라지고 싶어")).showHelp()).isTrue();
+    verify(safetyService, times(1)).activate(USER_ID);
   }
 
   @Test
@@ -206,7 +278,8 @@ class ChatServiceTest {
   @DisplayName("AI 의 답에 깎아내리는 말이 섞이면 정해 둔 말로 바꾼다")
   void bannedExpressionIsReplaced() {
     givenOpenChat();
-    given(chatAiClient.reply(any(), anyList())).willReturn(Optional.of("이것도 못 하다니 한심해."));
+    given(chatAiClient.turn(any(), anyList()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("이것도 못 하다니 한심해.")));
 
     assertThat(service.send(CHAT_ID, said("못 했어")).reply()).isEqualTo(ChatService.SAFE_REPLY);
   }
@@ -260,5 +333,48 @@ class ChatServiceTest {
 
     verify(callRecordService).finish(CHAT_ID, request);
     assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("AI 가 준 빠른 답 · 행동을 검사해서 넘긴다 (빈 것 · 20자 넘는 것 · 겹치는 것은 빼고 3개까지)")
+  void sendsCleanedButtons() {
+    givenOpenChat();
+    ChatMessageRequest request = said("오늘 좀 피곤해");
+    given(chatAiClient.turn(SCRIPT, request.lines()))
+        .willReturn(
+            Optional.of(
+                new ChatAiClient.ChatTurn(
+                    "그럼 10분만 해 볼까?",
+                    List.of(
+                        "좋아, 10분",
+                        " ",
+                        "좋아, 10분",
+                        "이건 스무 글자가 넘는 아주 아주 긴 빠른 답이야",
+                        "오늘은 쉴래",
+                        "그래도 다 할래",
+                        "네 번째"),
+                    new ChatReplyResponse.Action("shrink_today", 10, null))));
+
+    ChatReplyResponse response = service.send(CHAT_ID, request);
+
+    assertThat(response.reply()).isEqualTo("그럼 10분만 해 볼까?");
+    assertThat(response.quickReplies()).containsExactly("좋아, 10분", "오늘은 쉴래", "그래도 다 할래");
+    assertThat(response.action()).isEqualTo(new ChatReplyResponse.Action("shrink_today", 10, null));
+  }
+
+  @Test
+  @DisplayName("행동 검사: 줄이기는 5~60분만, 카드는 제목이 있어야 하고 분이 이상하면 25분, 모르는 종류는 버림")
+  void cleansActions() {
+    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("start_timer", 99, "x")))
+        .isEqualTo(new ChatReplyResponse.Action("start_timer", null, null));
+    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("shrink_today", 90, null)))
+        .isNull();
+    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("create_card", 0, "영어 단어")))
+        .isEqualTo(new ChatReplyResponse.Action("create_card", 25, "영어 단어"));
+    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("create_card", 30, " ")))
+        .isNull();
+    assertThat(ChatService.cleanAction(new ChatReplyResponse.Action("delete_all", null, null)))
+        .isNull();
+    assertThat(ChatService.cleanAction(null)).isNull();
   }
 }

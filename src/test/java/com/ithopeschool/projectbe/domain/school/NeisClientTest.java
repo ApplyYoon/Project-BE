@@ -179,4 +179,75 @@ class NeisClientTest {
         .isEmpty();
     assertThat(NeisClient.rowsOf(Optional.of("<html>"), "SchoolSchedule")).isEmpty();
   }
+
+  @Test
+  @DisplayName("급식은 그날 하루를 받고, <br/> 로 나눈 메뉴에서 알레르기 번호를 뗀다")
+  void fetchesMeals() {
+    NeisClient client = new NeisClient("", builder);
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/mealServiceDietInfo")))
+        .andExpect(queryParam("ATPT_OFCDC_SC_CODE", "J10"))
+        .andExpect(queryParam("SD_SCHUL_CODE", "7530560"))
+        .andExpect(queryParam("MLSV_YMD", "20261012"))
+        .andRespond(
+            withSuccess(
+                """
+                {"mealServiceDietInfo":[{"head":[{"list_total_count":2}]},{"row":[
+                  {"MMEAL_SC_NM":"중식","MLSV_YMD":"20261012","DDISH_NM":"흑미밥 <br/>나주곰탕 (1.5.6.16)<br/>배추김치 (9)"},
+                  {"MMEAL_SC_NM":"석식","MLSV_YMD":"20261012","DDISH_NM":""}
+                ]}]}
+                """,
+                MediaType.APPLICATION_JSON));
+
+    Optional<List<NeisClient.NeisMeal>> meals =
+        client.fetchMeals("J10", "7530560", LocalDate.of(2026, 10, 12));
+
+    // 메뉴가 빈 석식은 버립니다.
+    assertThat(meals)
+        .contains(
+            List.of(
+                new NeisClient.NeisMeal(
+                    LocalDate.of(2026, 10, 12), "중식", List.of("흑미밥", "나주곰탕", "배추김치"))));
+    neis.verify();
+  }
+
+  @Test
+  @DisplayName("급식이 없는 날(INFO-200)은 빈 목록, NEIS 가 멈추면 빈 값(실패)")
+  void mealsNoDataAndFailure() {
+    NeisClient client = new NeisClient("", builder);
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/mealServiceDietInfo")))
+        .andRespond(withSuccess(NO_DATA, MediaType.APPLICATION_JSON));
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/mealServiceDietInfo")))
+        .andRespond(withServerError());
+
+    assertThat(client.fetchMeals("J10", "7530560", LocalDate.of(2026, 10, 17))).contains(List.of());
+    assertThat(client.fetchMeals("J10", "7530560", LocalDate.of(2026, 10, 19))).isEmpty();
+    neis.verify();
+  }
+
+  @Test
+  @DisplayName("시간표는 학년 · 반 · 날짜로 받고 교시 순서로 정리한다 (교시가 숫자가 아니거나 과목이 없으면 버림)")
+  void fetchesTimetable() {
+    NeisClient client = new NeisClient("", builder);
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/hisTimetable")))
+        .andExpect(queryParam("ALL_TI_YMD", "20261016"))
+        .andExpect(queryParam("GRADE", "2"))
+        .andExpect(queryParam("CLASS_NM", "1"))
+        .andExpect(queryParam("pSize", "5"))
+        .andRespond(
+            withSuccess(
+                """
+                {"hisTimetable":[{"head":[{"list_total_count":7}]},{"row":[
+                  {"PERIO":"2","ITRT_CNTNT":"마케팅과 광고"},
+                  {"PERIO":"1","ITRT_CNTNT":"미적분Ⅰ"},
+                  {"PERIO":"","ITRT_CNTNT":"교시 없음"},
+                  {"PERIO":"3","ITRT_CNTNT":" "}
+                ]}]}
+                """,
+                MediaType.APPLICATION_JSON));
+
+    assertThat(client.fetchTimetable("J10", "7530560", 2, 1, LocalDate.of(2026, 10, 16)))
+        .contains(
+            List.of(new NeisClient.NeisPeriod(1, "미적분Ⅰ"), new NeisClient.NeisPeriod(2, "마케팅과 광고")));
+    neis.verify();
+  }
 }

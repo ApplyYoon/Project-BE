@@ -14,16 +14,17 @@ import tools.jackson.databind.annotation.JsonDeserialize;
 //   { "grade": "고2", "targetExam": "수능", "targetExamDate": "2027-11-18",
 //     "dailyAvailableMinutes": 180 }
 //
-// - 꼭 보내야 하는 것은 학년 · 목표 시험 · 시험 날짜 · 하루 공부 가능 시간 네 개뿐입니다. (FE #239)
+// - 꼭 보내야 하는 것은 학년 · 하루 공부 가능 시간 두 개뿐입니다.
+//   목표 시험 · 시험 날짜는 2026-10-17 부터 선택입니다. 새 온보딩(FE #417 정리 뒤)이 더 묻지 않아서,
+//   필수로 두면 새 학생이 설문(취침 · 기상 · 아침형/밤형 등)을 서버에 저장할 길이 없었습니다.
 // - 나머지는 보내지 않으면 비어 있는 채로 저장됩니다. (PUT 은 "설문 전체를 이 답으로" 라는 뜻입니다)
 // - 정해진 값인지(학년·장소 등)와 내 과목인지는 Service 에서 검사합니다.
 // - 숫자 칸은 정수만 받습니다. 180.5 처럼 소수를 보내면 400 입니다. (WholeNumberDeserializer)
 // 글자 수·모양 검사는 PATCH 요청(OnboardingUpdateRequest)과 똑같습니다. 한쪽을 고치면 다른 쪽도 고쳐 주세요.
 public record OnboardingSaveRequest(
     @NotBlank(message = "학년을 골라 주세요") String grade,
-    @NotBlank(message = "목표 시험을 입력해 주세요") @Size(max = 30, message = "목표 시험은 1 ~ 30자로 적어 주세요")
-        String targetExam,
-    @NotNull(message = "시험 날짜를 보내 주세요") LocalDate targetExamDate,
+    @Size(max = 30, message = "목표 시험은 30자 이하로 적어 주세요") String targetExam,
+    LocalDate targetExamDate,
     @Size(max = 30, message = "목표 대학은 30자 이하로 적어 주세요") String targetUniversity,
     @Size(max = 30, message = "목표 점수는 30자 이하로 적어 주세요") String targetScore,
     @Pattern(regexp = TIME, message = "기상 시각은 07:00 처럼 보내 주세요") String wakeUpTime,
@@ -55,7 +56,7 @@ public record OnboardingSaveRequest(
   // 값이 들어오는 순간에 앞뒤 공백을 지웁니다. 비어 있어도 되는 글자는 빈 글자("")를 "안 보냄"(null)으로 바꿉니다.
   public OnboardingSaveRequest {
     grade = trim(grade);
-    targetExam = trim(targetExam);
+    targetExam = blankToNull(targetExam);
     targetUniversity = blankToNull(targetUniversity);
     targetScore = blankToNull(targetScore);
     wakeUpTime = blankToNull(wakeUpTime);

@@ -65,12 +65,11 @@ public class OnboardingAnswer {
   @Column(nullable = false, length = 20)
   private Grade grade;
 
-  // 목표로 하는 시험 이름 (예: 수능)
-  @Column(nullable = false, length = 30)
+  // 목표로 하는 시험 이름 (예: 수능). 선택 — 2026-10-17 새 온보딩부터 묻지 않아서 비어 있을 수 있습니다.
+  @Column(length = 30)
   private String targetExam;
 
-  // 목표 시험 날짜 (D-day 계산용)
-  @Column(nullable = false)
+  // 목표 시험 날짜 (D-day 계산용). 선택 — 위와 같은 이유로 비어 있을 수 있습니다.
   private LocalDate targetExamDate;
 
   // 목표 대학 (선택)

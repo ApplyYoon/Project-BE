@@ -205,8 +205,11 @@ public class CallRecordService {
   }
 
   // 위기 표현이 감지된 통화: 내용은 남기지 않고 "감지됨" 만 남깁니다. 다음 통화는 7일 동안 위로하는 통화가 됩니다. (CallService)
+  // 상담 채팅 중에 이미 위기 표현을 감지해 보호 조치를 했으면(markCrisis) 다시 하지 않습니다. (회복 메시지가 두 번 쌓이지 않게)
   private CallFinishResponse finishWithCrisis(CallRecord record, Instant now) {
-    safetyService.activate(record.getUserId());
+    if (!record.isCrisisDetected()) {
+      safetyService.activate(record.getUserId());
+    }
     record.finishWithCrisis(now);
     callRecordRepository.save(record);
     return CallFinishResponse.help(String.valueOf(record.getId()));

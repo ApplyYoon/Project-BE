@@ -2,9 +2,11 @@ package com.ithopeschool.projectbe.domain.call;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
+import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +16,8 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 // 상담 채팅에서 GPT(OpenAI) 의 답을 받는 곳입니다. (이슈 #238)
 // 코치 문단(CoachAiClient)과 같은 방식 · 같은 설정입니다. 채팅은 답을 조금 더 기다리는 것만 다릅니다.
@@ -40,6 +44,62 @@ public class ChatAiClient {
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
   // 답을 기다리는 최대 시간. 채팅은 학생이 답을 기다리는 화면이라 15초가 지나면 포기하고 다시 보내게 합니다.
   private static final Duration READ_TIMEOUT = Duration.ofSeconds(15);
+
+  private static final JsonMapper JSON = JsonMapper.builder().build();
+
+  // 상담 채팅 답의 모양(JSON schema)입니다. OpenAI 가 이 모양으로만 답하게 합니다. (turn)
+  //   { "reply": "…", "quickReplies": ["…"], "action": { "type": "none", "minutes": null, "title":
+  // null } }
+  // 개수 · 길이 제한은 schema 대신 서버가 검사합니다. (ChatService.cleanTurn)
+  static final Map<String, Object> TURN_SCHEMA =
+      Map.of(
+          "type",
+          "object",
+          "additionalProperties",
+          false,
+          "required",
+          List.of("reply", "quickReplies", "action"),
+          "properties",
+          Map.of(
+              "reply",
+              Map.of("type", "string"),
+              "quickReplies",
+              Map.of("type", "array", "items", Map.of("type", "string")),
+              "action",
+              Map.of(
+                  "type",
+                  "object",
+                  "additionalProperties",
+                  false,
+                  "required",
+                  List.of("type", "minutes", "title"),
+                  "properties",
+                  Map.of(
+                      "type",
+                      Map.of(
+                          "type",
+                          "string",
+                          "enum",
+                          List.of("none", "start_timer", "shrink_today", "create_card")),
+                      "minutes",
+                      Map.of("type", List.of("integer", "null")),
+                      "title",
+                      Map.of("type", List.of("string", "null"))))));
+
+  // 상담 채팅 대본 끝에 붙이는 "답 모양" 규칙입니다.
+  static final String TURN_RULES =
+      String.join(
+          "\n",
+          "",
+          "",
+          "[답 모양]",
+          "- reply: 학생에게 할 말. 두세 문장.",
+          "- quickReplies: 학생이 눌러서 바로 보낼 짧은 답 2~3개. 학생 말투로, 각각 15자 안쪽."
+              + " 예: '좋아, 해 볼게' · '10분만 할래' · '오늘은 힘들어'.",
+          "- action: 학생이 지금 공부를 시작하겠다고 하면 start_timer."
+              + " 목표를 줄이기로 했으면 shrink_today 와 minutes(5~60)."
+              + " 새로 할 일을 정했으면 create_card 와 title(20자 안쪽) · minutes. 아니면 none.",
+          "- 학생이 힘든 마음을 말하면 action 은 none 이고 quickReplies 는 비워.");
 
   private final String apiKey;
   private final String model;
@@ -86,6 +146,64 @@ public class ChatAiClient {
       // 시간 초과, 연결 실패, 4xx·5xx 응답이 모두 여기로 옵니다. 예외 메시지에는 대화가 들어 있을 수 있어서 종류만 찍습니다.
       log.warn("[AI] 채팅 답을 받지 못했어요: {}", e.getClass().getSimpleName());
       return Optional.empty();
+    }
+  }
+
+  // 상담 채팅의 답 한 번: 학생에게 할 말 + 누를 수 있는 짧은 답 + 행동 하나. (2026-10-18)
+  public record ChatTurn(String reply, List<String> quickReplies, ChatReplyResponse.Action action) {
+
+    // 버튼 없이 말만 있는 답
+    public static ChatTurn textOnly(String reply) {
+      return new ChatTurn(reply, List.of(), null);
+    }
+  }
+
+  // 대본과 대화를 주고, AI 코치의 다음 말과 버튼을 정해진 모양(TURN_SCHEMA)으로 받습니다. 꺼져 있거나 실패하면 빈 값입니다.
+  // reply() 와 같은 방법으로 부르고, 대본 끝에 [답 모양] 규칙과 칸 모양을 더할 뿐입니다.
+  public Optional<ChatTurn> turn(String instructions, List<CallFinishRequest.Line> lines) {
+    if (!isEnabled()) {
+      return Optional.empty();
+    }
+    try {
+      TurnRequest request =
+          new TurnRequest(
+              model,
+              instructions + TURN_RULES,
+              inputOf(lines),
+              false,
+              new TextOption(new Format("json_schema", "coach_turn", true, TURN_SCHEMA)));
+      OpenAiResponse response =
+          restClient
+              .post()
+              .uri("/responses")
+              .header("Authorization", "Bearer " + apiKey)
+              .body(request)
+              .retrieve()
+              .body(OpenAiResponse.class);
+      return textOf(response).map(ChatAiClient::parseTurn);
+    } catch (RestClientException e) {
+      // 예외 메시지에는 대화가 들어 있을 수 있어서 종류만 찍습니다.
+      log.warn("[AI] 채팅 답을 받지 못했어요: {}", e.getClass().getSimpleName());
+      return Optional.empty();
+    }
+  }
+
+  // 받은 글(JSON)을 답 한 번으로 바꿉니다. JSON 이 아니거나 reply 가 없으면 받은 글을 그대로 말로 씁니다. (버튼 없이)
+  static ChatTurn parseTurn(String text) {
+    try {
+      RawTurn raw = JSON.readValue(text, RawTurn.class);
+      if (raw.reply() == null || raw.reply().isBlank()) {
+        return ChatTurn.textOnly(text);
+      }
+      ChatReplyResponse.Action action =
+          raw.action() == null
+              ? null
+              : new ChatReplyResponse.Action(
+                  raw.action().type(), raw.action().minutes(), raw.action().title());
+      return new ChatTurn(
+          raw.reply().trim(), raw.quickReplies() == null ? List.of() : raw.quickReplies(), action);
+    } catch (JacksonException e) {
+      return ChatTurn.textOnly(text);
     }
   }
 
@@ -137,6 +255,22 @@ public class ChatAiClient {
 
   // 보내는 모양: { "model": "...", "instructions": "...", "input": "...", "store": false }
   record OpenAiRequest(String model, String instructions, String input, boolean store) {}
+
+  // 정해진 모양으로 받을 때 보내는 모양: 위에 text.format(json_schema)을 더합니다. (AiClient 와 같은 방법)
+  record TurnRequest(
+      String model, String instructions, String input, boolean store, TextOption text) {}
+
+  record TextOption(Format format) {}
+
+  record Format(String type, String name, boolean strict, Map<String, Object> schema) {}
+
+  // 받은 JSON 의 모양 (TURN_SCHEMA)
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  record RawTurn(String reply, List<String> quickReplies, RawAction action) {
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record RawAction(String type, Integer minutes, String title) {}
+  }
 
   // 받는 모양에서 우리가 읽는 부분만 적었습니다. 나머지 필드는 무시합니다.
   @JsonIgnoreProperties(ignoreUnknown = true)
