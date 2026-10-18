@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.auth;
 
+import com.ithopeschool.projectbe.domain.auth.dto.DemoLoginRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.GoogleLoginRequest;
 import com.ithopeschool.projectbe.domain.auth.dto.GoogleLoginResponse;
 import com.ithopeschool.projectbe.domain.auth.dto.GoogleSignupRequest;
@@ -10,6 +11,7 @@ import com.ithopeschool.projectbe.domain.auth.dto.UserResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -31,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
   private final AuthService authService;
+  private final DemoLoginService demoLoginService;
 
   @Operation(summary = "이메일로 가입하기 (계정만 만들고 로그인은 하지 않음)")
   @SecurityRequirements
@@ -61,6 +64,18 @@ public class AuthController {
   @ResponseStatus(HttpStatus.CREATED)
   public LoginResponse googleSignup(@Valid @RequestBody GoogleSignupRequest request) {
     return authService.googleSignup(request);
+  }
+
+  // 시연 코드로 로그인하기 (2026-10-18). 앱 안의 웹 화면처럼 구글 로그인이 안 되는 곳에서 시연 계정으로 들어옵니다.
+  // 서버에 코드(DEMO_LOGIN_CODE)가 없으면 404 입니다. (DemoLoginService)
+  @Operation(summary = "시연 코드로 로그인하기 (시연 계정 하나, 서버에 코드가 없으면 꺼짐)")
+  @SecurityRequirements
+  @PostMapping("/demo-login")
+  public LoginResponse demoLogin(
+      @Valid @RequestBody DemoLoginRequest request, HttpServletRequest http) {
+    String place =
+        DemoLoginService.placeOf(http.getHeader("X-Forwarded-For"), http.getRemoteAddr());
+    return demoLoginService.login(request.code(), place);
   }
 
   // 로그인이 필요한 주소입니다. Swagger 에서는 오른쪽 위 Authorize 에 토큰을 넣고 부릅니다.
