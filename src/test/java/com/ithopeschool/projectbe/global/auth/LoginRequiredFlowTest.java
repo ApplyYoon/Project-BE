@@ -179,6 +179,8 @@ class LoginRequiredFlowTest {
               "/api/v1/cards/results?from=2026-10-01&to=2026-10-07",
               null),
           new Api("GET", "/api/v1/cards/plan-pattern", "/api/v1/cards/plan-pattern?goalId=1", null),
+          // 달력 (내 카드 결과 · 체크인을 봅니다. 이슈 #235)
+          new Api("GET", "/api/v1/calendar", "/api/v1/calendar?month=2026-10", null),
           // 잠금 해제 기록
           new Api(
               "POST",
