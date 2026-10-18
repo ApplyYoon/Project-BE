@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.school;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -15,6 +16,7 @@ import com.ithopeschool.projectbe.domain.auth.Account;
 import com.ithopeschool.projectbe.domain.auth.AccountRepository;
 import com.ithopeschool.projectbe.domain.school.dto.SchoolTodayResponse;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
+import com.ithopeschool.projectbe.global.exception.ApiException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -83,7 +85,7 @@ class SchoolTodayServiceTest {
   void noSchool() {
     hasSchool(null);
 
-    assertThat(service.getMyToday()).isEqualTo(SchoolTodayResponse.noSchool(TODAY));
+    assertThat(service.getMyToday(null, null)).isEqualTo(SchoolTodayResponse.noSchool(TODAY));
     verifyNoInteractions(neisClient);
   }
 
@@ -103,7 +105,7 @@ class SchoolTodayServiceTest {
             List.of(
                 new SchoolEvent(SCHOOL, LocalDate.of(2026, 11, 2), "2학기 2차 정기시험", null, "1,2")));
 
-    SchoolTodayResponse today = service.getMyToday();
+    SchoolTodayResponse today = service.getMyToday(null, null);
 
     assertThat(today.school().name()).isEqualTo("한국디지털미디어고등학교");
     assertThat(today.meals())
@@ -127,13 +129,13 @@ class SchoolTodayServiceTest {
         .willReturn(Optional.of(List.of(lunch(TODAY, "나주곰탕"))));
     given(neisClient.fetchMeals("J10", SCHOOL, TOMORROW)).willReturn(Optional.of(List.of()));
 
-    service.getMyToday();
+    service.getMyToday(null, null);
     given(clock.instant()).willReturn(NOW.plus(Duration.ofHours(5)));
-    service.getMyToday();
+    service.getMyToday(null, null);
     verify(neisClient, times(1)).fetchMeals("J10", SCHOOL, TODAY);
 
     given(clock.instant()).willReturn(NOW.plus(Duration.ofHours(7)));
-    service.getMyToday();
+    service.getMyToday(null, null);
     verify(neisClient, times(2)).fetchMeals("J10", SCHOOL, TODAY);
   }
 
@@ -147,9 +149,9 @@ class SchoolTodayServiceTest {
         .willReturn(Optional.empty());
     given(neisClient.fetchMeals("J10", SCHOOL, TOMORROW)).willReturn(Optional.empty());
 
-    service.getMyToday();
+    service.getMyToday(null, null);
     given(clock.instant()).willReturn(NOW.plus(Duration.ofHours(7)));
-    SchoolTodayResponse today = service.getMyToday();
+    SchoolTodayResponse today = service.getMyToday(null, null);
 
     assertThat(today.meals())
         .containsExactly(new SchoolTodayResponse.Meal(TODAY, "중식", List.of("흑미밥", "나주곰탕")));
@@ -164,15 +166,71 @@ class SchoolTodayServiceTest {
     given(neisClient.fetchMeals(anyString(), anyString(), any()))
         .willReturn(Optional.of(List.of()));
 
-    service.getMyToday();
-    service.getMyToday();
+    service.getMyToday(null, null);
+    service.getMyToday(null, null);
     verify(neisClient, times(1)).findOfficeCode(SCHOOL);
 
     // 다른 학교 번호인데 교육청 코드를 못 찾는 경우
     hasSchool("0000000");
     given(fetchRepository.findById("0000000")).willReturn(Optional.empty());
     given(neisClient.findOfficeCode("0000000")).willReturn(Optional.empty());
-    assertThat(service.getMyToday().meals()).isEmpty();
+    assertThat(service.getMyToday(null, null).meals()).isEmpty();
     verify(neisClient, never()).fetchMeals(anyString(), eq("0000000"), any());
+  }
+
+  @Test
+  @DisplayName("학년 · 반을 주면 오늘 그 반 시간표를 넣고, 안 주면 시간표는 null 이다")
+  void timetableOnlyWithClass() {
+    hasSchool(SCHOOL);
+    hasSavedOfficeCode();
+    given(neisClient.fetchMeals(anyString(), anyString(), any()))
+        .willReturn(Optional.of(List.of()));
+    given(neisClient.hasApiKey()).willReturn(true);
+    given(neisClient.fetchTimetable("J10", SCHOOL, 2, 1, TODAY))
+        .willReturn(
+            Optional.of(
+                List.of(new NeisClient.NeisPeriod(1, "미적분Ⅰ"), new NeisClient.NeisPeriod(2, "문학"))));
+
+    SchoolTodayResponse withClass = service.getMyToday(2, 1);
+    assertThat(withClass.timetable())
+        .containsExactly(
+            new SchoolTodayResponse.Period(1, "미적분Ⅰ"), new SchoolTodayResponse.Period(2, "문학"));
+    assertThat(withClass.timetablePartial()).isFalse();
+
+    assertThat(service.getMyToday(null, null).timetable()).isNull();
+  }
+
+  @Test
+  @DisplayName("키가 없는데 5줄이 꽉 차서 오면 뒤 교시가 잘렸을 수 있다고 알린다")
+  void timetablePartialWithoutKey() {
+    hasSchool(SCHOOL);
+    hasSavedOfficeCode();
+    given(neisClient.fetchMeals(anyString(), anyString(), any()))
+        .willReturn(Optional.of(List.of()));
+    given(neisClient.hasApiKey()).willReturn(false);
+    given(neisClient.fetchTimetable("J10", SCHOOL, 2, 1, TODAY))
+        .willReturn(
+            Optional.of(
+                List.of(
+                    new NeisClient.NeisPeriod(1, "미적분Ⅰ"),
+                    new NeisClient.NeisPeriod(2, "마케팅과 광고"),
+                    new NeisClient.NeisPeriod(3, "문학"),
+                    new NeisClient.NeisPeriod(4, "회계 정보 처리 시스템"),
+                    new NeisClient.NeisPeriod(5, "스포츠 생활1"))));
+
+    assertThat(service.getMyToday(2, 1).timetablePartial()).isTrue();
+  }
+
+  @Test
+  @DisplayName("학년 · 반 중 하나만 주거나 범위를 넘으면 400(VALIDATION_ERROR) 이고 NEIS 를 부르지 않는다")
+  void rejectsBadClass() {
+    hasSchool(SCHOOL);
+
+    assertThatThrownBy(() -> service.getMyToday(2, null)).isInstanceOf(ApiException.class);
+    assertThatThrownBy(() -> service.getMyToday(null, 1)).isInstanceOf(ApiException.class);
+    assertThatThrownBy(() -> service.getMyToday(4, 1)).isInstanceOf(ApiException.class);
+    assertThatThrownBy(() -> service.getMyToday(2, 31)).isInstanceOf(ApiException.class);
+    assertThatThrownBy(() -> service.getMyToday(0, 0)).isInstanceOf(ApiException.class);
+    verifyNoInteractions(neisClient);
   }
 }
