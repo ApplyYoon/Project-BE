@@ -193,6 +193,13 @@ class LoginRequiredFlowTest {
               null),
           // 달력 (내 카드 결과 · 체크인을 봅니다. 이슈 #235)
           new Api("GET", "/api/v1/calendar", "/api/v1/calendar?month=2026-10", null),
+          // 관리 단계 (내 카드 결과 · 체크인으로 판정해 저장합니다. 이슈 #62)
+          new Api("POST", "/api/v1/care-stages/today", "/api/v1/care-stages/today", null),
+          new Api(
+              "GET",
+              "/api/v1/care-stages",
+              "/api/v1/care-stages?from=2026-10-01&to=2026-10-18",
+              null),
           // 잠금 해제 기록
           new Api(
               "POST",

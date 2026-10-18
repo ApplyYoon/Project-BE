@@ -53,6 +53,7 @@ erDiagram
     users ||--o{ consent_records : "user_id"
     users ||--o{ onboarding_answers : "user_id"
     users ||--o| initial_plans : "user_id"
+    users ||--o{ daily_care_stages : "user_id"
     users ||--o{ daily_signals : "user_id"
     thinking_tests ||--o{ thinking_test_scores : "thinking_test_id"
     thinking_tests ||--o{ thinking_test_weaknesses : "thinking_test_id"
@@ -337,6 +338,16 @@ erDiagram
         int daily_minutes "하루에 공부하기로 한 시간(분) (60, 120, 180, 240, 300 중 하나)"
         int days_per_week "일주일에 며칠 하기로 했는지 (3, 5, 6, 7 중 하나)"
     }
+    daily_care_stages {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "누구의 단계인지"
+        date stage_date "어느 날의 단계인지 (같은 사람 안에서 중복 불가)"
+        integer stage "관리 단계 0~4"
+        varchar rule "어느 규칙으로 정했는지 (SAFETY, RECOVERY, UP ...)"
+        boolean suggest_shrink "계획을 줄여 보자고 할지"
+        varchar reason "왜 이 단계인지 한 줄"
+        timestamptz decided_at "판정한 시각"
+    }
     daily_signals {
         bigint id PK "줄을 구분하는 고유 번호"
         bigint user_id FK "이 데이터의 주인"
@@ -584,6 +595,7 @@ erDiagram
 | `messages` | AI 가 사용자에게 보낸 메시지 하나가 한 줄 (종류, 내용, 보낸 시각, 읽은 시각) | #30 |
 | `call_records` | AI 통화 한 번이 한 줄 (확인하려던 생각 습관, 요약, 보인 생각 습관과 근거, 약속, 위기 표현 표시) | #28 · #29 |
 | `push_subscriptions` | 웹 푸시(앱을 닫아도 오는 알림)를 받겠다고 한 기기 하나가 한 줄 (보낼 주소, 잠금 열쇠) | #32 |
+| `daily_care_stages` | 한 사람의 하루 관리 단계(0~4)와 그 이유가 한 줄. 하루에 한 번 정하고 바꾸지 않음 | #62 |
 | `daily_signals` | 한 사람의 하루치 휴대폰·수면·걸음 데이터가 한 줄 (수면 시간, 잠든·일어난 시각, 걸음 수, SNS 30분 초과). 같은 날을 다시 보내면 덮어씀. 날짜 말고는 다 비어도 됨 | #18 |
 | `thinking_tests` | 생각 습관 테스트 한 번이 한 줄 (마친 시각, 테스트 모양 번호). 다시 하면 새 줄이 쌓임 | #35 |
 | `thinking_test_scores` | 테스트 한 번의 습관 8개 평균이 한 줄씩 (`@ElementCollection`) | #35 |
@@ -718,6 +730,12 @@ erDiagram
 > - 이유 글에 **위기 표현**(#56)이 있으면 글은 저장하지 않고 `crisis_detected` 만 남깁니다. (`call_records` 와 같은 방식)
 > - 실패 원인은 체크인의 못 채운 이유(`MissReason`)와 같은 값이고, 이 이슈에서 **'미루다 보니'(`PROCRASTINATED`)** 를 더했습니다. 그래서 `call_records.miss_reason` · `checkins.miss_reason` · `study_sessions.stop_reason` 의 검사 규칙에도 이 값이 들어갑니다.
 > - 두 테이블 모두 `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
+
+> `daily_care_stages` 는 2026-10-18 에 이슈 #62 에서 **AI 가 만든 테이블**입니다. (테이블 설계를 AI 에게 맡긴 범위, **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - 하루의 단계를 **한 번 정하면 바꾸지 않습니다.** 그래서 "어제 몇 단계였나"(하루 한 칸 규칙)와 "당근 주 vs 채찍 주"(#47)를 이 표로 셉니다.
+> - 이유 문장(`reason`)을 그대로 남깁니다. 규칙 문장이 나중에 바뀌어도 그날 학생이 본 문장이 남게 하려는 것입니다.
+> - 계산 재료(의지력 등)는 남기지 않습니다. 의지력은 어떤 응답에도 넣지 않는 값이라서입니다. (낙인 방지, `WillpowerNotInResponseTest`)
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
 
 > `checkin_emotions` 는 2026-10-17 에 이슈 #220(최종 기획서 4.2 「홈」의 하루 첫 태그)에서 **AI 가 만든 딸린 테이블**입니다. (체크인은 선생님이 AI 에게 맡긴 범위)
 > - 하루 첫 태그 = 컨디션(1~5) + 감정 태그 여러 개. 감정은 한 체크인에 여러 개라서 `thinking_test_weaknesses` 처럼 딸린 테이블에 담았습니다. 엔티티는 `CheckIn` 하나입니다.
