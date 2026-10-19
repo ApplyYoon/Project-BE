@@ -556,7 +556,10 @@ class LoginRequiredFlowTest {
           "POST /api/v1/auth/google",
           "POST /api/v1/auth/google/signup",
           // 시연 코드 로그인(2026-10-18). 코드가 맞아야 토큰을 주고, 서버에 코드가 없으면 404 입니다.
-          "POST /api/v1/auth/demo-login");
+          "POST /api/v1/auth/demo-login",
+          // 학교 종류 + 학과 목록(2026-10-19). 가입 화면에서 "무슨 과야?" 를 물을 때(계정이 생기기 전) 부릅니다.
+          // NEIS 의 공개 자료이고 내 데이터가 없습니다.
+          "GET /api/v1/schools/{schoolCode}/majors");
 
   // 로그인 토큰이 아니라 "작업 키"(X-Job-Key)로 지키는 API 입니다. 사람이 아니라 예약 작업이 부릅니다.
   // 키가 없으면 401 인 것은 JobFlowTest 가 확인합니다.
