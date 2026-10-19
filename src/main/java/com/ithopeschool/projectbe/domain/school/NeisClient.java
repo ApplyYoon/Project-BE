@@ -5,8 +5,10 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +26,8 @@ import tools.jackson.databind.json.JsonMapper;
 //   https://open.neis.go.kr/hub/SchoolSchedule  학사일정 — 시험 · 방학 · 행사
 //   https://open.neis.go.kr/hub/mealServiceDietInfo  급식 — 조식 · 중식 · 석식 메뉴
 //   https://open.neis.go.kr/hub/hisTimetable  고등학교 시간표 — 학년 · 반 · 교시 · 과목
+//   https://open.neis.go.kr/hub/schulAflcoinfo · schoolMajorinfo  학교 계열 · 학과 — 가입 때 "무슨 과야?"
+// (2026-10-19)
 //
 // ■ 인증키 (환경변수 NEIS_API_KEY)
 //   있으면 한 번에 1000건까지 받습니다. 없으면 NEIS 가 한 번에 5건만 주고 쪽 넘기기도 안 돼서,
@@ -87,6 +91,95 @@ public class NeisClient {
     }
     String homepage = rows.get().get(0).path("HMPG_ADRES").asString("").trim();
     return homepage.isBlank() ? Optional.empty() : Optional.of(homepage);
+  }
+
+  // 학교 번호로 학교 종류를 찾습니다. (학교기본정보의 교육청 코드 · 고등학교 구분 · 일반계/전문계) 2026-10-19 확인:
+  //   한국디지털미디어고 → (J10, 특성화고, 전문계)   분당고 → (J10, 일반고, 일반계)
+  //   수원하이텍고(마이스터고) → (J10, 특목고, 전문계)   경기과학고 → (J10, 특목고, 일반계)
+  // NEIS 가 멈추면 빈 값, 그런 번호의 학교가 없으면 빈 목록입니다. (번호가 같은 학교는 하나뿐이라 0개 또는 1개)
+  public Optional<List<NeisSchool>> findSchool(String schoolCode) {
+    Optional<JsonNode> rows =
+        rowsOf(get("schoolInfo", "SD_SCHUL_CODE=" + schoolCode, 1), "schoolInfo");
+    if (rows.isEmpty()) {
+      return Optional.empty();
+    }
+    List<NeisSchool> schools = new ArrayList<>();
+    for (JsonNode row : rows.get()) {
+      String officeCode = row.path("ATPT_OFCDC_SC_CODE").asString("").trim();
+      if (!officeCode.isEmpty()) {
+        schools.add(
+            new NeisSchool(
+                officeCode,
+                row.path("HS_SC_NM").asString("").trim(),
+                row.path("HS_GNRL_BUSNS_SC_NM").asString("").trim()));
+      }
+    }
+    return Optional.of(schools);
+  }
+
+  // 학교의 학과 이름을 받습니다. (학교학과정보 schoolMajorinfo) 같은 이름은 한 번만, NEIS 가 준 순서대로 둡니다.
+  //   한국디지털미디어고 → [웹프로그래밍과, 해킹방어과, e-비즈니스과, 디지털콘텐츠과]
+  // ⚠️ 키가 없으면 한 번에 5줄만 와서, 계열(학교계열정보 schulAflcoinfo)마다 나눠 받습니다. (2026-10-19 확인)
+  //    그래도 한 계열에 학과 줄이 5개를 넘으면 뒤가 잘립니다. (서울로봇고는 계열마다 14 · 17줄)
+  //    다 받았는지는 complete 로 알려 줍니다. 한 번이라도 실패하면 빈 값입니다.
+  public Optional<NeisMajors> fetchMajors(String officeCode, String schoolCode) {
+    String school = "ATPT_OFCDC_SC_CODE=" + officeCode + "&SD_SCHUL_CODE=" + schoolCode;
+    if (hasApiKey()) {
+      Optional<JsonNode> rows =
+          rowsOf(get("schoolMajorinfo", school, PAGE_SIZE_WITH_KEY), "schoolMajorinfo");
+      return rows.map(
+          found -> new NeisMajors(majorNamesOf(List.of(found)), found.size() < PAGE_SIZE_WITH_KEY));
+    }
+
+    Optional<JsonNode> trackRows =
+        rowsOf(get("schulAflcoinfo", school, PAGE_SIZE_WITHOUT_KEY), "schulAflcoinfo");
+    if (trackRows.isEmpty()) {
+      return Optional.empty();
+    }
+    List<String> tracks = textsOf(List.of(trackRows.get()), "ORD_SC_NM");
+    // 계열 정보가 없는 학교는 계열 없이 한 번만 부릅니다.
+    List<String> queries = new ArrayList<>();
+    if (tracks.isEmpty()) {
+      queries.add(school);
+    }
+    for (String track : tracks) {
+      // 한글 계열 이름은 RestClient 가 주소에 넣을 때 알아서 바꿔(인코딩) 줍니다.
+      queries.add(school + "&ORD_SC_NM=" + track);
+    }
+    // 계열이 5줄 꽉 차서 왔으면 계열이 더 있을 수 있습니다.
+    boolean complete = trackRows.get().size() < PAGE_SIZE_WITHOUT_KEY;
+    List<JsonNode> parts = new ArrayList<>();
+    for (String query : queries) {
+      Optional<JsonNode> rows =
+          rowsOf(get("schoolMajorinfo", query, PAGE_SIZE_WITHOUT_KEY), "schoolMajorinfo");
+      if (rows.isEmpty()) {
+        return Optional.empty();
+      }
+      if (rows.get().size() >= PAGE_SIZE_WITHOUT_KEY) {
+        complete = false;
+      }
+      parts.add(rows.get());
+    }
+    return Optional.of(new NeisMajors(majorNamesOf(parts), complete));
+  }
+
+  // 여러 번 받은 학과 줄에서 학과 이름(DDDEP_NM)만 겹치지 않게 꺼냅니다.
+  static List<String> majorNamesOf(List<JsonNode> parts) {
+    return textsOf(parts, "DDDEP_NM");
+  }
+
+  // 줄들에서 한 칸의 글자를 겹치지 않게, 처음 나온 순서대로 꺼냅니다. 빈 칸은 버립니다.
+  private static List<String> textsOf(List<JsonNode> parts, String field) {
+    Set<String> texts = new LinkedHashSet<>();
+    for (JsonNode rows : parts) {
+      for (JsonNode row : rows) {
+        String text = row.path(field).asString("").trim();
+        if (!text.isEmpty()) {
+          texts.add(text);
+        }
+      }
+    }
+    return new ArrayList<>(texts);
   }
 
   // from ~ to 의 학사일정을 받습니다. 한 번이라도 실패하면 빈 값입니다. (일부만 받은 일정으로 덮어쓰지 않게)
@@ -326,4 +419,16 @@ public class NeisClient {
 
   // NEIS 시간표 한 칸. period 는 교시(1, 2, …)
   public record NeisPeriod(int period, String subject) {}
+
+  // NEIS 학교 하나의 종류. schoolType 은 '일반고' · '특성화고' · '특목고' · '자율고', course 는 '일반계' · '전문계'
+  public record NeisSchool(String officeCode, String schoolType, String course) {
+
+    // 학과를 물어볼 학교인지. 특성화고와 마이스터고(특목고 중 전문계)는 학과가 있습니다.
+    public boolean asksMajor() {
+      return "특성화고".equals(schoolType) || "전문계".equals(course);
+    }
+  }
+
+  // NEIS 학과 목록. complete 가 false 면 키가 없어서 뒤가 잘렸을 수 있습니다.
+  public record NeisMajors(List<String> names, boolean complete) {}
 }
