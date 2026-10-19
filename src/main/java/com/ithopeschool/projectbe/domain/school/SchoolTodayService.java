@@ -158,6 +158,33 @@ public class SchoolTodayService {
     return lines;
   }
 
+  // 그 반의 오늘 시간표 과목 이름 (교시 순서, 같은 과목은 한 번). 학년 · 반이 없거나 이상하거나, 시간표가 없으면 빈 목록입니다.
+  // 과목 쌤 채팅이 "오늘 배운 과목" 의 성취기준을 먼저 고르려고 씁니다. (CurriculumService, 2026-10-18)
+  // 시간표는 메모리에 받아 둔 것을 써서, 같은 요청에서 scriptLines 와 같이 불러도 NEIS 를 다시 부르지 않습니다.
+  //   todaySubjects(2, 1) → ["미적분Ⅰ", "문학", "영어Ⅱ"]
+  public List<String> todaySubjects(Integer grade, Integer classNo) {
+    boolean hasClass =
+        grade != null
+            && classNo != null
+            && grade >= 1
+            && grade <= 3
+            && classNo >= 1
+            && classNo <= MAX_CLASS_NO;
+    if (!hasClass) {
+      return List.of();
+    }
+    SchoolTodayResponse today = getMyToday(grade, classNo);
+    List<String> subjects = new ArrayList<>();
+    if (today.timetable() != null) {
+      for (SchoolTodayResponse.Period period : today.timetable()) {
+        if (period.subject() != null && !subjects.contains(period.subject())) {
+          subjects.add(period.subject());
+        }
+      }
+    }
+    return subjects;
+  }
+
   // 오늘 학교 정보 → 대본 줄. 예:
   //   - 오늘 시간표: 1교시 미적분Ⅰ, 2교시 문학 (5교시까지만 알아)
   //   - 오늘 중식: 흑미밥, 나주곰탕, 배추김치

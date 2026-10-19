@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.call;
 
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumContext;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -19,6 +20,8 @@ import org.springframework.stereotype.Component;
 // "코치랑 이야기하기" 로 연 채팅은 주제(ChatTopic)도 같이 기억합니다. (2026-10-18)
 // 말을 주고받을 때 AI 가 돌려준 이유 값(tags)을 그 주제에 맞는 값만 남기려고 씁니다. 잊으면 tags 는 빈 목록입니다.
 // 방(ChatRoom)도 같이 기억합니다. 사진이 붙은 말에 방마다 다른 규칙을 붙이려고 씁니다. 잊으면 코치입니다.
+// 과목 쌤 방은 그 학생의 교육과정(CurriculumContext — 학년 · 교육과정 버전 · 오늘 과목)도 기억합니다.
+// 말마다 질문에 맞는 성취기준을 고르려고 씁니다. 잊으면 성취기준 칸을 붙이지 않습니다. (2026-10-18)
 @Component
 @RequiredArgsConstructor
 public class ChatScriptStore {
@@ -32,7 +35,12 @@ public class ChatScriptStore {
   // 기억해 둔 대본 하나. 누구의 채팅인지 같이 적어 두어 남의 채팅 번호로는 꺼낼 수 없게 합니다.
   // topic 은 주제 없이 연 채팅이면 null 입니다.
   private record Saved(
-      Long userId, String instructions, ChatTopic topic, ChatRoom room, Instant savedAt) {}
+      Long userId,
+      String instructions,
+      ChatTopic topic,
+      ChatRoom room,
+      CurriculumContext curriculum,
+      Instant savedAt) {}
 
   private final Map<Long, Saved> savedByChatId = new HashMap<>();
   private final Clock clock;
@@ -41,10 +49,22 @@ public class ChatScriptStore {
   // synchronized: 여러 요청이 동시에 와도 한 번에 하나씩만 들어옵니다. (CoachParagraphStore 와 같은 이유)
   public synchronized void save(
       Long chatId, Long userId, String instructions, ChatTopic topic, ChatRoom room) {
+    save(chatId, userId, instructions, topic, room, null);
+  }
+
+  // 위와 같고, 과목 쌤 방의 교육과정(없으면 null)도 기억합니다.
+  public synchronized void save(
+      Long chatId,
+      Long userId,
+      String instructions,
+      ChatTopic topic,
+      ChatRoom room,
+      CurriculumContext curriculum) {
     if (!savedByChatId.containsKey(chatId) && savedByChatId.size() >= MAX_SIZE) {
       savedByChatId.clear();
     }
-    savedByChatId.put(chatId, new Saved(userId, instructions, topic, room, clock.instant()));
+    savedByChatId.put(
+        chatId, new Saved(userId, instructions, topic, room, curriculum, clock.instant()));
   }
 
   // 코치 방으로 연 채팅 (방을 따로 고르지 않은 채팅)
@@ -52,7 +72,7 @@ public class ChatScriptStore {
     save(chatId, userId, instructions, topic, ChatRoom.COACH);
   }
 
-  // 대본만 바꿔 기억합니다. 같은 사람의 같은 채팅에 기억해 둔 주제 · 방이 있으면 그대로 둡니다.
+  // 대본만 바꿔 기억합니다. 같은 사람의 같은 채팅에 기억해 둔 주제 · 방 · 교육과정이 있으면 그대로 둡니다.
   // (위기 표현 뒤 대본에 한 칸을 덧붙일 때 씁니다. ChatService.replyToCrisis)
   public synchronized void save(Long chatId, Long userId, String instructions) {
     Saved before = savedByChatId.get(chatId);
@@ -62,7 +82,8 @@ public class ChatScriptStore {
         userId,
         instructions,
         same ? before.topic() : null,
-        same ? before.room() : ChatRoom.COACH);
+        same ? before.room() : ChatRoom.COACH,
+        same ? before.curriculum() : null);
   }
 
   // 그 사람의 그 채팅 대본. 없거나, 남의 채팅이거나, 2시간이 지났으면 비어 있습니다.
@@ -78,6 +99,11 @@ public class ChatScriptStore {
   // 그 사람의 그 채팅 방. 대본을 잊었으면 비어 있습니다. (부르는 쪽이 코치로 봅니다)
   public synchronized Optional<ChatRoom> findRoom(Long chatId, Long userId) {
     return findSaved(chatId, userId).map(Saved::room);
+  }
+
+  // 그 사람의 그 채팅 교육과정. 과목 쌤 방이 아니거나, 학년을 몰랐거나, 대본을 잊었으면 비어 있습니다.
+  public synchronized Optional<CurriculumContext> findCurriculum(Long chatId, Long userId) {
+    return findSaved(chatId, userId).map(Saved::curriculum);
   }
 
   // 기억해 둔 것 하나. 없거나, 남의 채팅이거나, 2시간이 지났으면 비어 있습니다. (지난 것은 지웁니다)
