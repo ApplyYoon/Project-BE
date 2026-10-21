@@ -14,6 +14,7 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -106,8 +107,14 @@ public class CallReviewClient {
         return Optional.empty();
       }
       return Optional.of(JSON.readValue(text.get(), CallReview.Raw.class));
+    } catch (RestClientResponseException e) {
+      // OpenAI 가 4xx·5xx 로 답했습니다. 상태 번호로 원인을 나눌 수 있어서 번호도 찍습니다. (본문은 찍지 않음)
+      //   400 모델 이름 · 칸 모양(schema)이 틀림   401 키가 틀림   429 OpenAI 쪽 한도   5xx OpenAI 쪽 문제
+      log.warn(
+          "[AI] 통화 정리 호출에 실패했어요: {} {}", e.getClass().getSimpleName(), e.getStatusCode().value());
+      return Optional.empty();
     } catch (RestClientException e) {
-      // 시간 초과, 연결 실패, 4xx·5xx 응답이 모두 여기로 옵니다. 내용이 담겨 있을 수 있어서 종류만 찍습니다.
+      // 시간 초과, 연결 실패가 여기로 옵니다. 내용이 담겨 있을 수 있어서 종류만 찍습니다.
       log.warn("[AI] 통화 정리 호출에 실패했어요: {}", e.getClass().getSimpleName());
       return Optional.empty();
     } catch (JacksonException e) {

@@ -10,12 +10,16 @@ import com.ithopeschool.projectbe.domain.care.ToneGuide;
 //
 // 칸마다 검사하는 것
 //   crisis           true 일 때만 true. 빠졌거나 이상하면 false (위기 표현은 단어 목록으로도 따로 검사합니다)
-//   summary          앞뒤 빈칸을 지우고, 비었거나 300자를 넘거나 깎아내리는 말이 있으면 비움
+//   summary          앞뒤 빈칸을 지우고, 비었거나 깎아내리는 말이 있으면 비움. 300자를 넘으면 줄임 (끝의 '이해도: …' 는 지킴)
 //   foundBias        생각 습관 목록(CognitiveBias)의 이름이 아니면 비움
-//   foundEvidence    습관이 비었으면 같이 비움. 100자를 넘거나 깎아내리는 말이 있으면 비움
-//   actualQuestion   200자를 넘거나 깎아내리는 말이 있으면 비움
+//   foundEvidence    습관이 비었으면 같이 비움. 깎아내리는 말이 있으면 비움. 100자를 넘으면 줄임
+//   actualQuestion   깎아내리는 말이 있으면 비움. 200자를 넘으면 줄임
 //   missReason       FE 의 이유 글자('tooMuch' 등)가 아니면 비움
-//   promiseIf·Then   각 50자까지. 둘 중 하나라도 비면 둘 다 비움 ("만약 ~하면 → ~한다" 가 다 있어야 약속)
+//   promiseIf·Then   각 50자까지. 넘으면 줄이지 않고 비움 (학생이 정한 약속이라, 자르면 뜻이 바뀝니다)
+//                    둘 중 하나라도 비면 둘 다 비움 ("만약 ~하면 → ~한다" 가 다 있어야 약속)
+//
+// 왜 줄이나요? 예전에는 넘치면 비웠는데, 확인 통화는 요약 끝에 '이해도' 를 붙여서 300자를 넘기 쉬웠습니다.
+// 그러면 통화를 마무리해도 요약이 통째로 사라졌습니다. 글자 수 한도는 DB 칸 길이(call_records)와 같습니다.
 //   promiseKept      true · false · 비움 그대로
 //   mood             1 ~ 5 가 아니면 비움
 //   expectedMinutes  0 ~ 1440 이 아니면 비움
@@ -42,6 +46,10 @@ public record CallReview(
   static final int MAX_QUESTION = 200;
   static final int MAX_PROMISE = 50;
   static final int MAX_MINUTES = 1440;
+  // 확인 통화의 요약 끝에 붙는 이해도 글의 시작 (CallReviewPrompt 규칙 4)
+  static final String UNDERSTANDING_MARK = "이해도:";
+  // 줄인 글의 끝에 붙이는 표시
+  static final String CUT_MARK = "…";
 
   // GPT 가 돌려준 그대로의 값입니다. (검사 전) 칸 이름은 CallReviewPrompt.schema 와 같습니다.
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -72,7 +80,7 @@ public record CallReview(
 
     return new CallReview(
         Boolean.TRUE.equals(raw.crisis()),
-        safeText(raw.summary(), MAX_SUMMARY),
+        summaryOf(raw.summary()),
         foundBias,
         foundBias == null ? null : safeText(raw.foundEvidence(), MAX_EVIDENCE),
         safeText(raw.actualQuestion(), MAX_QUESTION),
@@ -84,13 +92,48 @@ public record CallReview(
         inRange(raw.expectedMinutes(), 0, MAX_MINUTES));
   }
 
-  // 학생에게 보여 줄 글. 앞뒤 빈칸을 지우고, 비었거나 너무 길거나 깎아내리는 말이 있으면 null 입니다.
+  // 학생에게 보여 줄 글. 앞뒤 빈칸을 지우고, 비었거나 깎아내리는 말이 있으면 null 입니다.
+  // 너무 길면 maxLength 에 맞게 줄입니다.   ("가" 120자, 100) → "가" 99자 + "…"
   static String safeText(String text, int maxLength) {
-    String trimmed = plainText(text, maxLength);
-    if (trimmed == null || ToneGuide.hasBannedExpression(trimmed)) {
+    if (text == null || text.isBlank() || ToneGuide.hasBannedExpression(text)) {
       return null;
     }
-    return trimmed;
+    return cut(text.strip(), maxLength);
+  }
+
+  // 통화 요약. safeText 와 같지만, 줄일 때 끝에 붙은 '이해도: …' 는 남기고 그 앞의 내용을 줄입니다.
+  // 이해도는 기록 · 분석에서 읽는 값이라 잘리면 안 됩니다.
+  //   ("공부 이야기" 350자 + " 이해도: 조금 헷갈림") → "공부 이야기" 앞부분 + "… 이해도: 조금 헷갈림" (모두 300자)
+  static String summaryOf(String text) {
+    String summary = safeText(text, Integer.MAX_VALUE);
+    if (summary == null || summary.length() <= MAX_SUMMARY) {
+      return summary;
+    }
+    int mark = summary.lastIndexOf(UNDERSTANDING_MARK);
+    if (mark <= 0) {
+      return cut(summary, MAX_SUMMARY);
+    }
+    String understanding = " " + summary.substring(mark);
+    String body = summary.substring(0, mark).strip();
+    // 이해도 글이 너무 길어서(이상한 답) 내용이 들어갈 자리가 없으면, 그냥 앞에서부터 줄입니다.
+    int bodyLength = MAX_SUMMARY - understanding.length();
+    if (bodyLength <= CUT_MARK.length()) {
+      return cut(summary, MAX_SUMMARY);
+    }
+    return cut(body, bodyLength) + understanding;
+  }
+
+  // maxLength 자를 넘으면 앞에서부터 (maxLength - 1)자만 남기고 "…" 을 붙입니다. 안 넘으면 그대로입니다.
+  static String cut(String text, int maxLength) {
+    if (text.length() <= maxLength) {
+      return text;
+    }
+    int end = maxLength - CUT_MARK.length();
+    // 이모지는 자바 글자 2칸을 씁니다. 그 가운데에서 자르면 깨진 글자가 되므로 한 칸 앞에서 자릅니다.
+    if (Character.isHighSurrogate(text.charAt(end - 1))) {
+      end--;
+    }
+    return text.substring(0, end).strip() + CUT_MARK;
   }
 
   // 학생이 한 말(약속). 앞뒤 빈칸을 지우고, 비었거나 너무 길면 null 입니다.
