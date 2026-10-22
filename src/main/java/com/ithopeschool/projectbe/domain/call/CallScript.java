@@ -532,8 +532,22 @@ public final class CallScript {
     if (text == null) {
       return "";
     }
-    String line = text.replaceAll("\\s+", " ").trim();
-    return line.length() > maxLength ? line.substring(0, maxLength) : line;
+    return cutKeepingEmoji(text.replaceAll("\\s+", " ").trim(), maxLength);
+  }
+
+  // maxLength 글자까지 자릅니다. 이모지 한가운데서 자르게 되면 한 칸 앞에서 자릅니다.
+  // 이모지는 자바 글자 2칸이라, 가운데서 자르면 깨진 글자가 남고 OpenAI 가 그 요청을 거절할 수 있습니다. (2026-10-22 QA, CallReview.cut 과
+  // 같은 방법)
+  //   cutKeepingEmoji("공부😀", 3)  →  "공부"   (😀 의 앞 칸만 남지 않게)
+  static String cutKeepingEmoji(String text, int maxLength) {
+    if (text.length() <= maxLength) {
+      return text;
+    }
+    int end = maxLength;
+    if (Character.isHighSurrogate(text.charAt(end - 1))) {
+      end--;
+    }
+    return text.substring(0, end);
   }
 
   // ---- 오늘 예측 (위험한 날) ----
