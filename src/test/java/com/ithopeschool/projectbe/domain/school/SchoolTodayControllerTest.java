@@ -51,7 +51,7 @@ class SchoolTodayControllerTest {
                         + "\"timetable\":[{\"period\":1,\"subject\":\"미적분Ⅰ\"}],\"timetablePartial\":false,"
                         + "\"meals\":[{\"date\":\"2026-10-19\",\"kind\":\"중식\",\"dishes\":[\"흑미밥\",\"나주곰탕\"]}],"
                         + "\"events\":[{\"date\":\"2026-11-02\",\"name\":\"2학기 2차 정기시험\","
-                        + "\"grades\":[1,2],\"exam\":true,\"dDay\":14}]}",
+                        + "\"grades\":[1,2],\"exam\":true,\"dDay\":14}],\"schoolDay\":\"2026-10-19\"}",
                     true));
   }
 
@@ -76,7 +76,7 @@ class SchoolTodayControllerTest {
             content()
                 .json(
                     "{\"date\":\"2026-10-19\",\"school\":null,\"timetable\":null,"
-                        + "\"timetablePartial\":false,\"meals\":[],\"events\":[]}",
+                        + "\"timetablePartial\":false,\"meals\":[],\"events\":[],\"schoolDay\":\"2026-10-19\"}",
                     true));
   }
 }

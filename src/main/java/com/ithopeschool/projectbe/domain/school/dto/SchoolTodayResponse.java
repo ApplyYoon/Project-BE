@@ -14,7 +14,9 @@ import java.util.List;
 // - school 이 null 이면 가입 때 학교를 안 고른 것입니다. timetable 은 null, meals · events 는 빈 목록입니다.
 // - timetable: 오늘 우리 반 시간표(교시 순서). 학년 · 반을 안 보냈으면 null, 수업이 없는 날은 빈 목록입니다.
 // - timetablePartial: true 면 뒤 교시가 잘렸을 수 있습니다. (서버에 NEIS 키가 없으면 NEIS 가 5교시까지만 줌)
-// - meals: 오늘과 내일의 급식. 급식이 없는 날(주말 · 방학)이나 NEIS 가 멈췄을 때는 그날 것이 빠집니다.
+// - meals: 오늘과 내일의 급식. 급식이 없는 날(방학)이나 NEIS 가 멈췄을 때는 그날 것이 빠집니다.
+// - schoolDay: 시간표 · 급식을 보여 주는 날 (2026-10-22). 평일이면 date 와 같고, 토 · 일이면 다음 월요일입니다.
+//   그래서 주말에는 timetable 이 월요일 시간표, meals 가 월 · 화 급식입니다. FE 는 이 날로 "월요일 시간표" 처럼 적습니다.
 // - events: 오늘부터 30일 안의 학사일정, 앞에서부터 10개까지. grades 가 빈 목록이면 학년 구분이 없는 행사입니다.
 //   dDay 는 오늘부터 며칠 남았는지 (오늘이면 0)
 public record SchoolTodayResponse(
@@ -23,7 +25,8 @@ public record SchoolTodayResponse(
     List<Period> timetable,
     boolean timetablePartial,
     List<Meal> meals,
-    List<Event> events) {
+    List<Event> events,
+    LocalDate schoolDay) {
 
   public record Period(int period, String subject) {}
 
@@ -32,9 +35,10 @@ public record SchoolTodayResponse(
   public record Event(LocalDate date, String name, List<Integer> grades, boolean exam, long dDay) {}
 
   public static SchoolTodayResponse noSchool(LocalDate date) {
-    return new SchoolTodayResponse(date, null, null, false, List.of(), List.of());
+    return new SchoolTodayResponse(date, null, null, false, List.of(), List.of(), date);
   }
 
+  // 평일 응답 (시간표 · 급식이 오늘 것)
   public static SchoolTodayResponse of(
       LocalDate date,
       String code,
@@ -43,12 +47,26 @@ public record SchoolTodayResponse(
       boolean timetablePartial,
       List<Meal> meals,
       List<Event> events) {
+    return of(date, code, name, timetable, timetablePartial, meals, events, date);
+  }
+
+  // 시간표 · 급식을 보여 주는 날(schoolDay)을 따로 정한 응답 (주말이면 다음 월요일)
+  public static SchoolTodayResponse of(
+      LocalDate date,
+      String code,
+      String name,
+      List<Period> timetable,
+      boolean timetablePartial,
+      List<Meal> meals,
+      List<Event> events,
+      LocalDate schoolDay) {
     return new SchoolTodayResponse(
         date,
         new SchoolEventsResponse.School(code, name),
         timetable,
         timetablePartial,
         meals,
-        events);
+        events,
+        schoolDay);
   }
 }
