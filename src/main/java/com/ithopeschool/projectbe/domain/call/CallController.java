@@ -30,8 +30,8 @@ public class CallController {
     return callService.startSession(request);
   }
 
-  // 확인 통화 문이 열렸는지 봅니다. 오늘 공부를 하나 끝내야 열립니다. (2026-10-18, CheckCall)
-  @Operation(summary = "확인 통화가 열렸는지 보기 (오늘 끝낸 공부 · 토큰 필요)")
+  // 오늘 끝낸 공부(확인 통화에 쓸 것)를 봅니다. 문은 늘 열려 있습니다. (2026-10-22 공부 조건 제거, CheckCall)
+  @Operation(summary = "확인 통화에 쓸 오늘 끝낸 공부 보기 (공부가 없어도 통화는 열림 · 토큰 필요)")
   @GetMapping("/check-call")
   public CheckCallResponse checkCall() {
     return checkCallService.check();

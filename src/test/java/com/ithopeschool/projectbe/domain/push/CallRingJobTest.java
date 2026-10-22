@@ -10,8 +10,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import com.ithopeschool.projectbe.domain.call.CheckCall;
-import com.ithopeschool.projectbe.domain.call.CheckCallService;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.job.JobContext;
 import com.ithopeschool.projectbe.domain.job.JobResultStore;
@@ -50,9 +48,8 @@ class CallRingJobTest {
   private final QuietHoursSettings quietHoursSettings = mock(QuietHoursSettings.class);
   private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
   private final JobResultStore resultStore = new JobResultStore();
-  // 확인 통화 문은 기본으로 열려 있습니다. (오늘 공부를 끝냄)
-  private final CheckCallService checkCallService = mock(CheckCallService.class);
 
+  // 오늘 끝낸 공부는 보지 않습니다. 통화의 공부 조건은 2026-10-22 에 뺐습니다. (CheckCall)
   private final CallRingJob job =
       new CallRingJob(
           subscriptions,
@@ -62,8 +59,7 @@ class CallRingJobTest {
           careSettings,
           quietHoursSettings,
           gptUsageGuard,
-          resultStore,
-          checkCallService);
+          resultStore);
 
   // 한국 시간 "HH:mm" 에 작업이 돈 것으로 합니다.
   private static JobContext at(String koreanTime) {
@@ -111,18 +107,6 @@ class CallRingJobTest {
         .willReturn(Optional.empty());
     given(quietHoursSettings.windowOf(anyLong())).willReturn(QuietHours.Window.DEFAULT);
     given(gptUsageGuard.allowedCallSeconds(anyLong())).willReturn(300);
-    given(checkCallService.gateOf(anyLong(), any()))
-        .willReturn(new CheckCall.Gate(true, null, null));
-  }
-
-  @Test
-  @DisplayName("오늘 끝낸 공부가 없어서 확인 통화 문이 닫혀 있으면 울리지 않는다 (눌러도 못 거니까)")
-  void notWhenCallLocked() {
-    given(checkCallService.gateOf(STUDENT, TODAY)).willReturn(CheckCall.Gate.locked());
-
-    job.run(at("21:00"));
-
-    expectNotRang();
   }
 
   @Test

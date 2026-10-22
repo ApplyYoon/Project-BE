@@ -232,6 +232,33 @@ class ChatServiceTest {
   }
 
   @Test
+  @DisplayName("인사 없이 열면 AI 를 부르지 않고 한도도 쓰지 않으며, 채팅 기록과 대본만 만든다 (채팅 수정 1)")
+  void startsWithoutGreeting() {
+    ChatReplyResponse response = service.start(START, null, null, false);
+
+    assertThat(response.chatId()).isEqualTo("12");
+    assertThat(response.reply()).isNull();
+    assertThat(response.showHelp()).isFalse();
+    verify(chatAiClient, never()).turn(any(), anyList());
+    verify(gptUsageGuard, never()).tryUseText(any(), any());
+    verify(callRecordRepository).save(any());
+    // 이어지는 말 보내기는 같은 대본을 씁니다.
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(SCRIPT);
+  }
+
+  @Test
+  @DisplayName("인사 없이 열어도 AI 가 꺼져 있으면 503 이고 채팅 기록을 만들지 않는다")
+  void startWithoutGreetingNeedsAi() {
+    given(chatAiClient.isEnabled()).willReturn(false);
+
+    assertError(
+        () -> service.start(START, null, null, false),
+        ErrorCode.SERVICE_UNAVAILABLE,
+        "AI 상담이 아직 켜져 있지 않아요");
+    verify(callRecordRepository, never()).save(any());
+  }
+
+  @Test
   @DisplayName("AI 의 첫 인사를 못 받으면 503 이고 채팅 기록을 만들지 않는다")
   void startFailsWithoutFirstReply() {
     given(chatAiClient.turn(any(), anyList())).willReturn(Optional.empty());

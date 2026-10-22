@@ -40,8 +40,8 @@ import org.springframework.stereotype.Service;
 // 순서
 //   1. 로그인한 사람인지 확인한다             (아니면 401)
 //   2. 통화를 켤 수 있는 서버인지 본다         (내 컴퓨터에서는 꺼져 있습니다 → 503)
-//   3. 확인 통화 문이 열렸는지 본다           (오늘 끝낸 공부가 없으면 403 CALL_LOCKED. CheckCall, 2026-10-18)
-//      위로 기간(보호 조치 중 · 최근 7일 위기 표현)이면 공부 없이도 열립니다.
+//   3. 오늘 끝낸 공부가 있는지 본다           (있으면 확인 통화. 없어도 통화는 걸 수 있습니다. CheckCall)
+//      처음(2026-10-18)에는 공부가 없으면 403 CALL_LOCKED 였는데, 2026-10-22 에 이 조건을 뺐습니다.
 //   3-2. 오늘 건 횟수 · 통화 시간이 한도 안인지 본다 (넘었으면 429. GptUsageGuard, 이슈 #33)
 //      오늘 남은 시간이 한 번 최대 길이보다 짧으면, 이번 통화의 최대 길이를 남은 시간으로 줄입니다.
 //   4. 최근 2주의 통화 기록을 읽는다          (CallRecord)
@@ -91,7 +91,7 @@ public class CallService {
   private final RiskService riskService;
   // 시험 · 목표 · 가입 심리검사를 서버 DB 에서 꺼냅니다. (CallContext)
   private final CallContextLoader callContextLoader;
-  // 확인 통화 문 (오늘 끝낸 공부가 있어야 열림, 2026-10-18)
+  // 오늘 끝낸 공부 (있으면 확인 통화로 시작, 2026-10-18)
   private final CheckCallService checkCallService;
 
   public CallService(
@@ -134,18 +134,15 @@ public class CallService {
     }
     Instant now = clock.instant();
     LocalDate today = DayRule.dateOf(now);
-    // 확인 통화 문: 오늘 공부를 하나 끝내야 열립니다. (위로 기간은 예외)
-    CheckCall.Gate gate = checkCallService.gateOf(userId, today);
-    if (!gate.open()) {
-      throw new ApiException(ErrorCode.CALL_LOCKED, CheckCall.LOCKED_MESSAGE);
-    }
+    // 오늘 끝낸 공부. 없으면 null 이고, 그러면 [방금 공부한 것] 없이 보통 통화로 시작합니다.
+    CheckCall.Studied studied = checkCallService.gateOf(userId, today).studied();
     // 이번 통화를 최대 몇 초까지 해도 되는지. 0 이면 오늘 횟수나 시간을 다 쓴 것입니다.
     int allowedSeconds = gptUsageGuard.allowedCallSeconds(userId);
     if (allowedSeconds <= 0) {
       throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 통화는 다 썼어요. 내일 다시 만나요");
     }
 
-    Script script = prepareScript(userId, request, now, today, CallChannel.VOICE, gate.studied());
+    Script script = prepareScript(userId, request, now, today, CallChannel.VOICE, studied);
     String instructions = script.instructions();
     BiasQuestion biasQuestion = script.biasQuestion();
     // OpenAI 에는 "어느 사용자의 요청인지" 를 알아볼 수 없는 글자로만 알려 줍니다. (번호를 그대로 보내지 않습니다)

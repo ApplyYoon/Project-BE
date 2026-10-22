@@ -284,19 +284,7 @@ class CallControllerTest {
   }
 
   @Test
-  @DisplayName("공부 전에 통화를 걸면 403 CALL_LOCKED 와 안내 문장을 돌려준다")
-  void lockedCallIs403() throws Exception {
-    given(callService.startSession(any()))
-        .willThrow(new ApiException(ErrorCode.CALL_LOCKED, CheckCall.LOCKED_MESSAGE));
-
-    start(VALID)
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.error.code").value("CALL_LOCKED"))
-        .andExpect(jsonPath("$.error.message").value("오늘 공부 하나를 끝내면 확인 통화가 열려요"));
-  }
-
-  @Test
-  @DisplayName("확인 통화 열림 확인: 열리면 방금 공부한 것(제목 · 분 · 끝난 시각 밀리초)을, 닫히면 이유를 돌려준다")
+  @DisplayName("확인 통화 열림 확인: 방금 공부한 것(제목 · 분 · 끝난 시각 밀리초)을, 공부가 없으면 studied 없이 돌려준다")
   void checkCallShape() throws Exception {
     given(checkCallService.check())
         .willReturn(
@@ -311,13 +299,13 @@ class CallControllerTest {
         .andExpect(jsonPath("$.studied.endedAt").value(1792310400000L))
         .andExpect(jsonPath("$.reason").doesNotExist());
 
-    given(checkCallService.check())
-        .willReturn(new CheckCallResponse(false, null, CheckCall.NO_STUDY_TODAY));
+    // 공부 조건을 뺀 뒤(2026-10-22)로는 공부가 없어도 open 이 true 입니다.
+    given(checkCallService.check()).willReturn(new CheckCallResponse(true, null, null));
     mockMvc
         .perform(get("/api/v1/realtime/check-call"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.open").value(false))
+        .andExpect(jsonPath("$.open").value(true))
         .andExpect(jsonPath("$.studied").doesNotExist())
-        .andExpect(jsonPath("$.reason").value("NO_STUDY_TODAY"));
+        .andExpect(jsonPath("$.reason").doesNotExist());
   }
 }
