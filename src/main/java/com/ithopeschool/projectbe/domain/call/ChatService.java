@@ -38,6 +38,7 @@ import org.springframework.stereotype.Service;
 //
 //   1. 채팅 열기 (start)     통화와 같은 순서로 대본을 만들고(CallService.prepareScript, 학생 카드는 DB),
 //                           오늘 학교 정보(시간표 · 급식 · 학사일정)를 붙여 AI 의 첫 인사를 받는다
+//                           greet 이 false 면 첫 인사 없이 채팅 번호만 만든다 (채팅 수정 1)
 //   2. 말 보내기 (send)      학생의 말을 위기 표현 검사 → 걸리면 GPT 를 부르지 않고 정해 둔 안내로 답한다
 //                           채팅은 끝내지 않고 이어 갈 수 있다 (2026-10-18). 보호 조치는 이 채팅에서 한 번만 한다
 //                           아니면 지금까지의 대화를 주고 AI 의 다음 말을 받는다
@@ -127,6 +128,16 @@ public class ChatService {
   // 채팅을 엽니다. grade · classNo 를 주면 그 반의 오늘 시간표도 대본에 넣습니다.
   // request.about 이 있으면 그 주제로 엽니다. ("코치랑 이야기하기", 2026-10-18)
   public ChatReplyResponse start(CallSessionRequest request, Integer grade, Integer classNo) {
+    return start(request, grade, classNo, true);
+  }
+
+  // greet 이 false 면 AI 의 첫 인사를 받지 않고 채팅 번호만 만듭니다. (채팅 수정 1)
+  //   학생이 먼저 말을 쓰고 보내는 화면에서는 첫 인사가 화면에 나오지 않고 버려졌습니다.
+  //   점검에서 그 인사를 만드는 데 8.5초가 걸려서, 첫 답까지 18초가 걸렸습니다.
+  //   인사 없이 열면 GPT 를 부르지 않으니 하루 한도도 쓰지 않습니다. 응답의 reply 는 null 입니다.
+  //   FE 는 받은 채팅 번호로 바로 말 보내기(POST /chats/{id}/messages)를 부르면 됩니다.
+  public ChatReplyResponse start(
+      CallSessionRequest request, Integer grade, Integer classNo, boolean greet) {
     // 로그인하지 않은 요청은 여기서 401 이 나갑니다. 아무나 불러서 GPT 비용을 쓰게 두면 안 됩니다.
     Long userId = currentUserProvider.getCurrentUserId();
     Instant now = clock.instant();
@@ -142,7 +153,12 @@ public class ChatService {
     // 방은 고르지 않았으면 코치입니다. 주제와 방이 어울리지 않아도(예: 틀린 문제를 코치 방에서) 그대로 엽니다.
     ChatRoom room = ChatRoom.from(request.room()).orElse(ChatRoom.COACH);
 
-    checkAiReady(userId);
+    // 하루 한도는 첫 인사를 받을 때만 씁니다. 인사 없이 열어도 AI 가 꺼진 서버면 여기서 503 으로 알립니다.
+    if (greet) {
+      checkAiReady(userId);
+    } else {
+      checkAiEnabled();
+    }
     CallService.Script script =
         callService.prepareScript(userId, request, now, today, CallChannel.CHAT);
 
@@ -179,23 +195,30 @@ public class ChatService {
             + room.section()
             + curriculumPart
             + topicPart;
-    ChatAiClient.ChatTurn first =
-        room == ChatRoom.TUTOR
-            ? askTutor(
-                userId,
-                // 주제(틀린 문제 등)로 열었으면 그 사실 줄로 성취기준을 고릅니다.
-                instructions
-                    + curriculumService.standardsSection(
-                        curriculum, about == null ? "" : String.join(" ", about.lines())),
-                List.of(),
-                topic,
-                null)
-            : askAi(instructions, List.of(), topic);
+    // 인사 없이 열면 first 는 null 입니다.
+    ChatAiClient.ChatTurn first = null;
+    if (greet) {
+      first =
+          room == ChatRoom.TUTOR
+              ? askTutor(
+                  userId,
+                  // 주제(틀린 문제 등)로 열었으면 그 사실 줄로 성취기준을 고릅니다.
+                  instructions
+                      + curriculumService.standardsSection(
+                          curriculum, about == null ? "" : String.join(" ", about.lines())),
+                  List.of(),
+                  topic,
+                  null)
+              : askAi(instructions, List.of(), topic);
+    }
     // AI 의 첫 인사를 받은 뒤에 기록을 만듭니다. 못 받았으면 채팅이 열리지 않은 것이라 기록도 남기지 않습니다.
     CallRecord record =
         callRecordRepository.save(
             new CallRecord(userId, today, now, script.biasQuestion(), CallChannel.CHAT));
     chatScriptStore.save(record.getId(), userId, instructions, topic, room, curriculum);
+    if (first == null) {
+      return ChatReplyResponse.opened(record.getId());
+    }
     return ChatReplyResponse.withButtons(
         record.getId(),
         first.reply(),
@@ -340,11 +363,16 @@ public class ChatService {
 
   // AI 를 쓸 수 있는 서버인지, 오늘 한도가 남았는지 봅니다. 한도가 남았으면 한 번을 씁니다.
   private void checkAiReady(Long userId) {
-    if (!chatAiClient.isEnabled()) {
-      throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 상담이 아직 켜져 있지 않아요");
-    }
+    checkAiEnabled();
     if (!gptUsageGuard.tryUseText(userId, GptUsageKind.CHAT)) {
       throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 AI 사용량을 다 썼어요. 내일 다시 이야기해요");
+    }
+  }
+
+  // AI 를 쓸 수 있는 서버인지만 봅니다. 한도는 쓰지 않습니다. (인사 없이 채팅 열기)
+  private void checkAiEnabled() {
+    if (!chatAiClient.isEnabled()) {
+      throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 상담이 아직 켜져 있지 않아요");
     }
   }
 

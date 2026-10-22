@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.call;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
@@ -36,7 +37,7 @@ class ChatControllerTest {
   @Test
   @DisplayName("채팅을 열면 200 과 채팅 번호 · AI 의 첫 말을 돌려준다 (요청 모양은 통화 시작과 같음)")
   void starts() throws Exception {
-    given(chatService.start(any(), any(), any()))
+    given(chatService.start(any(), any(), any(), anyBoolean()))
         .willReturn(ChatReplyResponse.of(12L, "안녕! 어제는 어땠어?"));
 
     postJson("/api/v1/chats", "{\"careLevel\":2,\"maxHarshness\":3}")
@@ -50,7 +51,8 @@ class ChatControllerTest {
   @Test
   @DisplayName("학년 · 반을 주소에 실으면 그대로 넘긴다 (오늘 시간표를 대본에 넣으려고)")
   void startsWithClass() throws Exception {
-    given(chatService.start(any(), eq(2), eq(1))).willReturn(ChatReplyResponse.of(12L, "안녕!"));
+    given(chatService.start(any(), eq(2), eq(1), eq(true)))
+        .willReturn(ChatReplyResponse.of(12L, "안녕!"));
 
     mockMvc
         .perform(
@@ -60,7 +62,25 @@ class ChatControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"careLevel\":2,\"maxHarshness\":3}"))
         .andExpect(status().isOk());
-    verify(chatService).start(any(), eq(2), eq(1));
+    verify(chatService).start(any(), eq(2), eq(1), eq(true));
+  }
+
+  @Test
+  @DisplayName("greet=false 로 열면 첫 인사 없이 채팅 번호만 돌려준다 (reply 는 null, 채팅 수정 1)")
+  void startsWithoutGreeting() throws Exception {
+    given(chatService.start(any(), any(), any(), eq(false)))
+        .willReturn(ChatReplyResponse.opened(12L));
+
+    mockMvc
+        .perform(
+            post("/api/v1/chats")
+                .param("greet", "false")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"careLevel\":2,\"maxHarshness\":3}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.chatId").value("12"))
+        .andExpect(jsonPath("$.reply").doesNotExist());
+    verify(chatService).start(any(), any(), any(), eq(false));
   }
 
   @Test
@@ -96,7 +116,7 @@ class ChatControllerTest {
   @Test
   @DisplayName("주제(about)와 함께 열 수 있고, 응답에 이유 값(tags)이 담긴다")
   void startsWithTopic() throws Exception {
-    given(chatService.start(any(), any(), any()))
+    given(chatService.start(any(), any(), any(), anyBoolean()))
         .willReturn(
             ChatReplyResponse.withButtons(
                 12L, "40분 했네! 어땠어?", Collections.emptyList(), null, List.of("phone")));
@@ -131,7 +151,8 @@ class ChatControllerTest {
   @Test
   @DisplayName("방(room)은 COACH · PLANNER · TUTOR(와 예전 이름 GOAL_MATE)만 받고, 다른 글자면 400 이다")
   void checksRoom() throws Exception {
-    given(chatService.start(any(), any(), any())).willReturn(ChatReplyResponse.of(12L, "안녕!"));
+    given(chatService.start(any(), any(), any(), anyBoolean()))
+        .willReturn(ChatReplyResponse.of(12L, "안녕!"));
 
     postJson("/api/v1/chats", "{\"careLevel\":2,\"maxHarshness\":3,\"room\":\"TUTOR\"}")
         .andExpect(status().isOk());

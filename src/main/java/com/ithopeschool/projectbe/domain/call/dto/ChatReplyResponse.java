@@ -10,6 +10,9 @@ import java.util.List;
 // helpLines 에 도움받을 곳(청소년상담 1388 · 자살예방상담 109)이 들어 있습니다.
 // 상담 채팅은 거기서 끝나지 않고 이어서 이야기할 수 있습니다. (2026-10-18) '목표 만들기' 대화는 거기서 끝납니다.
 //
+// 첫 인사 없이 연 채팅(POST /chats?greet=false, 채팅 수정 1)은 reply 가 null 이고 나머지 목록은 비어 있습니다.
+//   { "chatId": "12", "reply": null, "showHelp": false, "helpLines": [], … }
+//
 // quickReplies · action (2026-10-18): AI 가 답과 같이 준 "학생이 누를 짧은 답"(3개까지)과 "행동 하나" 입니다.
 //   { …, "quickReplies": ["좋아, 해 볼게", "10분만 할래"], "action": { "type": "shrink_today", "minutes":
 // 10, "title": null } }
@@ -61,6 +64,11 @@ public record ChatReplyResponse(
   public static ChatReplyResponse of(String chatId, String reply) {
     return new ChatReplyResponse(
         chatId, reply, false, List.of(), List.of(), null, List.of(), List.of());
+  }
+
+  // 첫 인사 없이 연 채팅. 채팅 번호만 있고 reply 는 null 입니다. (채팅 수정 1)
+  public static ChatReplyResponse opened(Long chatId) {
+    return of(chatId, null);
   }
 
   // 빠른 답 · 행동 버튼이 붙은 보통의 답 (상담 채팅)
