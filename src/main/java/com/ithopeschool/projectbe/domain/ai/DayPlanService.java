@@ -359,9 +359,10 @@ public class DayPlanService {
   // 학교 수업 시간을 피해야 하는 날이면 기본 수업 시간(08:00 ~ 16:30)을 busy 에 넣고 근거 문장을 돌려줍니다.
   // 넣지 않는 날은 null 입니다.
   //   - 학교를 등록하지 않았거나, 주말이거나
-  //   - 수업 시간과 겹치는 고정 일정이 이미 있거나 (학생이 넣은 학교 시간이 더 정확함)
-  //     학원처럼 저녁에만 고정 일정이 있는 학생은 수업 시간을 아직 안 피했으니 넣습니다.
-  //   - 그날 학사일정에 방학 · 휴업이 있으면 (방학식 날은 학교에 가니까 수업 있는 날로 봅니다)
+  //   - 고정 일정이 수업 시간의 절반 넘게 덮으면 (학생이 학교 시간을 직접 넣은 것이라 그게 더 정확함)
+  //     학원처럼 저녁에만 있거나, 16:00 ~ 18:00 처럼 수업 끝과 조금만 겹치는 일정은 학교 시간이 아니라서 넣습니다.
+  //     (전에는 조금만 겹쳐도 넣지 않아서, 평일 오전 9시에 카드가 들어갔습니다. 2026-10-22 QA)
+  //   - 그날 학사일정이 학교 안 가는 날이면 (isNoSchoolEvent: 방학 · 휴업 · 공휴일)
   private String classHoursLineOf(Long userId, LocalDate date, List<DayPlanRule.Span> busy) {
     String schoolCode =
         accountRepository.findByUserId(userId).map(Account::getSchoolCode).orElse(null);
@@ -373,16 +374,17 @@ public class DayPlanService {
       return null;
     }
     DayPlanRule.Span classHours = DayPlanRule.classHours();
+    int coveredMinutes = 0;
     for (DayPlanRule.Span span : busy) {
-      if (DayPlanRule.overlaps(span, classHours)) {
-        return null;
-      }
+      coveredMinutes += overlapMinutes(span, classHours);
+    }
+    if (coveredMinutes * 2 > classHours.end() - classHours.start()) {
+      return null;
     }
     for (SchoolEvent event :
         schoolEventRepository.findBySchoolCodeAndEventDateBetweenOrderByEventDateAscIdAsc(
             schoolCode, date, date)) {
-      String name = event.getName();
-      if (name.contains("휴업") || (name.contains("방학") && !name.contains("방학식"))) {
+      if (isNoSchoolEvent(event.getName())) {
         return null;
       }
     }
@@ -392,6 +394,36 @@ public class DayPlanService {
         + " ~ "
         + DayPlanRule.CLASS_END
         + ")을 피했어요. 시간표가 다르면 학교 시간을 고정 일정에 넣어 주세요";
+  }
+
+  // 두 시간 칸이 겹치는 분. 안 겹치면 0
+  //   16:00 ~ 18:00 과 08:00 ~ 16:30  →  30
+  static int overlapMinutes(DayPlanRule.Span a, DayPlanRule.Span b) {
+    return Math.max(0, Math.min(a.end(), b.end()) - Math.max(a.start(), b.start()));
+  }
+
+  // 학사일정 이름에 이 말이 들어 있으면 학교 안 가는 공휴일로 봅니다. (NEIS 학사일정에 쓰이는 이름, 2026-10-22 QA)
+  static final List<String> HOLIDAY_WORDS =
+      List.of(
+          "공휴일", "신정", "설날", "삼일절", "3·1절", "어린이날", "부처님", "석가탄신일", "현충일", "광복절", "추석", "개천절",
+          "한글날", "성탄절", "기독탄신일");
+
+  // 학교 안 가는 날의 학사일정인지
+  //   "재량휴업일" · "여름방학" · "추석" · "대체공휴일"  →  true
+  //   "방학식" (학교에 가는 날) · "중간고사"              →  false
+  static boolean isNoSchoolEvent(String name) {
+    if (name == null) {
+      return false;
+    }
+    if (name.contains("휴업") || (name.contains("방학") && !name.contains("방학식"))) {
+      return true;
+    }
+    for (String word : HOLIDAY_WORDS) {
+      if (name.contains(word)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // 학생이 알려 준 것(준비하는 것 · 오늘 과목 · 다른 방에서 오늘 한 이야기)을 AI 입력 줄로. 없으면 빈 목록
