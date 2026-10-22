@@ -45,13 +45,24 @@ class RepeatCheckTest {
   void section() {
     String section = RepeatCheck.section(aiSaid("어제 어땠어?", "오늘은 10분만 해도 충분해. 짧게 하자."));
 
+    // FE 가 보낸 ai 줄 글자는 지시에 넣지 않고, 고정 문장만 넣습니다. (지어낸 ai 줄이 지시로 올라가지 않게)
     assertThat(section)
+        .isEqualTo(RepeatCheck.ALREADY_SAID_SECTION)
         .startsWith("\n\n[이미 한 말]")
-        .contains("- \"어제 어땠어?\"")
-        .contains("- \"오늘은 10분만 해도 충분해.\"")
-        .doesNotContain("짧게 하자")
-        .contains("다시 쓰지 말고, 학생이 방금 한 말에 맞춰 새로 답해");
+        .doesNotContain("어제 어땠어")
+        .doesNotContain("10분만")
+        .contains("학생이 방금 한 말에 맞춰 새로 답해");
     assertThat(RepeatCheck.section(List.of(new Line("me", "안녕")))).isEmpty();
+  }
+
+  @Test
+  @DisplayName("다시 받기 줄에는 서버가 받은 첫 답의 첫 문장만 넣는다")
+  void retryHint() {
+    assertThat(RepeatCheck.retryHint("오늘은 10분만 해도 충분해! 미적분도 천천히 하자."))
+        .startsWith("\n\n[다시 답하기]")
+        .contains("\"오늘은 10분만 해도 충분해!\"")
+        .doesNotContain("미적분")
+        .contains("다른 문장으로 시작해");
   }
 
   @Test

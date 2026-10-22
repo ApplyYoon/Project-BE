@@ -867,11 +867,10 @@ class ChatServiceTest {
     ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
     verify(chatAiClient).turn(instructions.capture(), eq(AFTER_TEN_MINUTES.lines()));
     assertThat(instructions.getValue())
-        .startsWith(SCRIPT)
-        .contains("[이미 한 말]")
-        .contains("- \"어제 어땠어?\"")
-        .contains("- \"오늘은 10분만 해도 충분해.\"")
-        .contains("다시 쓰지 말고");
+        .isEqualTo(SCRIPT + RepeatCheck.ALREADY_SAID_SECTION)
+        // FE 가 보낸 ai 줄 글자는 지시에 들어가지 않습니다. (입력의 대화 기록에만 있음)
+        .doesNotContain("어제 어땠어")
+        .doesNotContain("10분만 해도 충분해");
     // 기억해 둔 대본에는 남지 않습니다.
     assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(SCRIPT);
   }
@@ -911,9 +910,35 @@ class ChatServiceTest {
     ChatReplyResponse response = service.send(CHAT_ID, AFTER_TEN_MINUTES);
 
     assertThat(response.reply()).isEqualTo(FRESH);
-    verify(chatAiClient, times(2)).turn(any(), anyList());
     // 처음 한 번(checkAiReady) + 다시 받기 한 번
     verify(gptUsageGuard, times(2)).tryUseText(USER_ID, GptUsageKind.CHAT);
+    // 다시 받을 때만 첫 답의 첫 문장을 알려 주는 줄이 지시 끝에 붙습니다.
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    verify(chatAiClient, times(2)).turn(instructions.capture(), anyList());
+    assertThat(instructions.getAllValues())
+        .containsExactly(
+            SCRIPT + RepeatCheck.ALREADY_SAID_SECTION,
+            SCRIPT + RepeatCheck.ALREADY_SAID_SECTION + RepeatCheck.retryHint(SAME_AGAIN));
+    assertThat(instructions.getAllValues().get(1)).contains("\"오늘은 10분만 해도 충분해!\"");
+  }
+
+  @Test
+  @DisplayName("첫 답이 정해 둔 말(SAFE_REPLY)로 바뀐 반복이면 다시 받기 줄 없이 다시 받는다")
+  void safeReplyRepeatHasNoHint() {
+    givenOpenChat();
+    ChatMessageRequest request =
+        new ChatMessageRequest(
+            List.of(new Line("ai", ChatService.SAFE_REPLY), new Line("me", "그냥 하기 싫어")));
+    given(chatAiClient.turn(any(), anyList()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("이것도 못 하다니 한심해.")))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(FRESH)));
+
+    assertThat(service.send(CHAT_ID, request).reply()).isEqualTo(FRESH);
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    verify(chatAiClient, times(2)).turn(instructions.capture(), anyList());
+    assertThat(instructions.getAllValues().get(1))
+        .isEqualTo(SCRIPT + RepeatCheck.ALREADY_SAID_SECTION)
+        .doesNotContain("[다시 답하기]");
   }
 
   @Test
