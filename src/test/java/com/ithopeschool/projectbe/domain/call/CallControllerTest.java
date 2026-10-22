@@ -177,6 +177,19 @@ class CallControllerTest {
   }
 
   @Test
+  @DisplayName("못 채운 이유 '미루다 보니'(procrastinated)도 받는다 (예전에는 빠져서 통화 시작이 400 이었음)")
+  void acceptsProcrastinated() throws Exception {
+    given(callService.startSession(any()))
+        .willReturn(new CallSessionResponse("ek_abc123", 1791700000000L, 300, "12"));
+
+    start(VALID.replace("\"phone\"", "\"procrastinated\"")).andExpect(status().isOk());
+
+    ArgumentCaptor<CallSessionRequest> captor = ArgumentCaptor.forClass(CallSessionRequest.class);
+    verify(callService).startSession(captor.capture());
+    assertThat(captor.getValue().card().yesterdayMissReason()).isEqualTo("procrastinated");
+  }
+
+  @Test
   @DisplayName("못 채운 이유·시작 시각에 정해진 모양이 아닌 글자를 넣으면 400 (지침에 엉뚱한 글이 들어가지 않게)")
   void rejectsFreeText() throws Exception {
     expectRejected(

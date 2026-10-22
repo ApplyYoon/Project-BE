@@ -122,7 +122,7 @@ public record CallSessionRequest(
           Integer yesterdayPlanMinutes,
       // 어제 계획을 못 채운 이유로 고른 것. FE 의 MissReason 과 같은 글자입니다. 안 골랐으면 null
       @Pattern(
-              regexp = "tired|event|phone|tooMuch|unwilling|sick|etc",
+              regexp = "tired|event|phone|tooMuch|unwilling|sick|procrastinated|etc",
               message = "yesterdayMissReason 은 정해진 값 중 하나여야 해요")
           String yesterdayMissReason,
       // 오늘 계획의 개수와 목표 시간 합계(분)
