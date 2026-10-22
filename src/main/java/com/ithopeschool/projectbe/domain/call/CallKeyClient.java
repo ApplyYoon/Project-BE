@@ -45,6 +45,27 @@ public class CallKeyClient {
   // 학생의 말을 글자로 바꾸는 모델입니다. 화면의 자막(내 말)에 씁니다.
   private static final String TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe";
 
+  // ■ 주변 소리를 학생 말로 잡지 않게 하는 설정 (통화 수정 5)
+  //   점검에서 학생이 말하지 않았는데 주변 소리가 말로 잡혀, AI 가 그 소리에 대답한 일이 있었습니다.
+  //   앱은 독서실·교실처럼 조용하지만 작은 소리(키보드·연필·의자)가 나는 곳에서 씁니다.
+  //   칸 이름과 값은 OpenAI 문서에서 확인했습니다. (2026-10-22 확인)
+  //
+  // https://developers.openai.com/api/reference/resources/realtime/subresources/client_secrets/methods/create
+
+  // 잡음 줄이기 종류. 마이크가 입 가까이 있을 때 쓰는 값입니다. (멀리 있는 마이크용은 "far_field")
+  // 학생은 휴대폰을 얼굴 가까이 대거나 이어폰 마이크로 말하므로 near_field 를 고릅니다.
+  // 잡음 줄이기는 "말이 시작됐나" 를 판단하기 전에 소리를 먼저 거르므로, 주변 소리가 말로 잡히는 일이 줄어듭니다.
+  static final String NOISE_REDUCTION_TYPE = "near_field";
+
+  // 말 차례 감지 방식. 소리 크기만 보지 않고 "말의 뜻이 끝났나" 로 차례를 판단합니다.
+  // 고른 이유: 짧은 소음은 뜻이 있는 말이 아니어서 AI 가 대답을 서두르지 않고, 학생이 생각하느라 멈춰도 덜 끊습니다.
+  // server_vad(소리 크기 기준 threshold 를 높이는 안)를 고르지 않은 이유: 독서실에서는 학생도 작게 말해서, 기준을 높이면 학생 말까지 놓칩니다.
+  static final String TURN_DETECTION_TYPE = "semantic_vad";
+
+  // 대답을 얼마나 서두를지. low 는 학생이 말을 더 이을지 가장 오래 기다립니다. (OpenAI 문서: 최대 8초, 기본 auto 는 medium 과 같음)
+  // 대신 AI 의 대답이 조금 늦게 시작될 수 있습니다.
+  static final String TURN_DETECTION_EAGERNESS = "low";
+
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
   // FE 는 통화 연결 전체를 15초까지 기다립니다. 그 안에 마이크 허락·연결까지 해야 해서 짧게 잡습니다.
   private static final Duration READ_TIMEOUT = Duration.ofSeconds(6);
@@ -108,7 +129,16 @@ public class CallKeyClient {
                         "input",
                             Map.of(
                                 "transcription",
-                                Map.of("model", TRANSCRIBE_MODEL, "language", "ko")),
+                                Map.of("model", TRANSCRIBE_MODEL, "language", "ko"),
+                                // 주변 소리를 거르는 설정과 말 차례 감지 설정 (위의 상수 설명 참고)
+                                "noise_reduction",
+                                Map.of("type", NOISE_REDUCTION_TYPE),
+                                "turn_detection",
+                                Map.of(
+                                    "type",
+                                    TURN_DETECTION_TYPE,
+                                    "eagerness",
+                                    TURN_DETECTION_EAGERNESS)),
                         "output", Map.of("voice", voice))));
 
     try {

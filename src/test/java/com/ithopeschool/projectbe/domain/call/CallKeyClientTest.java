@@ -100,6 +100,27 @@ class CallKeyClientTest {
   }
 
   @Test
+  @DisplayName("주변 소리를 말로 잡지 않게 잡음 줄이기(near_field)와 말 차례 감지(semantic_vad, low)를 보낸다")
+  void sendsNoiseReductionAndTurnDetection() {
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.session.audio.input.noise_reduction.type").value("near_field"))
+        .andExpect(jsonPath("$.session.audio.input.turn_detection.type").value("semantic_vad"))
+        .andExpect(jsonPath("$.session.audio.input.turn_detection.eagerness").value("low"))
+        // semantic_vad 에는 없는 칸입니다. 섞어 보내면 OpenAI 가 거절할 수 있어 들어가지 않았는지 봅니다.
+        .andExpect(jsonPath("$.session.audio.input.turn_detection.threshold").doesNotExist())
+        .andExpect(
+            jsonPath("$.session.audio.input.turn_detection.silence_duration_ms").doesNotExist())
+        // 원래 보내던 자막 설정도 그대로 있어야 합니다.
+        .andExpect(
+            jsonPath("$.session.audio.input.transcription.model").value("gpt-4o-mini-transcribe"))
+        .andRespond(withSuccess(answerOf("ek_abc123", 1791700000L), MediaType.APPLICATION_JSON));
+
+    assertThat(clientWith(KEY, MODEL).createKey("지침", "user-hash")).isPresent();
+    openAi.verify();
+  }
+
+  @Test
   @DisplayName("목소리를 설정하지 않으면 기본 목소리(marin)를 쓴다")
   void usesDefaultVoice() {
     openAi
