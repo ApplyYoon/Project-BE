@@ -259,6 +259,31 @@ class ChatServiceTest {
   }
 
   @Test
+  @DisplayName("인사 없이 여는 채팅은 오늘 30번 열었으면 429 이고 채팅 기록을 만들지 않는다 (음성 통화는 세지 않음, 2026-10-22 QA)")
+  void startWithoutGreetingHasDailyOpenLimit() {
+    List<CallRecord> today = new ArrayList<>();
+    for (int i = 0; i < ChatService.MAX_CHAT_OPENS_PER_DAY; i++) {
+      today.add(new CallRecord(USER_ID, TODAY, NOW, null, CallChannel.CHAT));
+    }
+    // 음성 통화 기록은 채팅 여는 횟수에 넣지 않습니다.
+    today.add(new CallRecord(USER_ID, TODAY, NOW, null, CallChannel.VOICE));
+    given(
+            callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
+                USER_ID, TODAY))
+        .willReturn(today);
+
+    assertError(
+        () -> service.start(START, null, null, false),
+        ErrorCode.TOO_MANY_REQUESTS,
+        "오늘 채팅을 너무 많이 열었어요. 내일 다시 이야기해요");
+    verify(callRecordRepository, never()).save(any());
+
+    // 29번이면 엽니다.
+    today.remove(0);
+    assertThat(service.start(START, null, null, false).chatId()).isEqualTo("12");
+  }
+
+  @Test
   @DisplayName("AI 의 첫 인사를 못 받으면 503 이고 채팅 기록을 만들지 않는다")
   void startFailsWithoutFirstReply() {
     given(chatAiClient.turn(any(), anyList())).willReturn(Optional.empty());
@@ -967,6 +992,20 @@ class ChatServiceTest {
             SCRIPT + RepeatCheck.ALREADY_SAID_SECTION,
             SCRIPT + RepeatCheck.ALREADY_SAID_SECTION + RepeatCheck.retryHint(SAME_AGAIN));
     assertThat(instructions.getAllValues().get(1)).contains("\"오늘은 10분만 해도 충분해!\"");
+  }
+
+  @Test
+  @DisplayName("다시 받다가 AI 와 연결하지 못하면 에러 대신 첫 답을 돌려준다 (2026-10-22 QA)")
+  void repeatRetryFailureKeepsFirstReply() {
+    givenOpenChat();
+    given(chatAiClient.turn(any(), anyList()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(SAME_AGAIN)))
+        .willReturn(Optional.empty());
+
+    ChatReplyResponse response = service.send(CHAT_ID, AFTER_TEN_MINUTES);
+
+    assertThat(response.reply()).isEqualTo(SAME_AGAIN);
+    verify(chatAiClient, times(2)).turn(any(), anyList());
   }
 
   @Test
