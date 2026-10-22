@@ -721,6 +721,14 @@ class CallScriptTest {
             new CheckCall.Studied("수학", List.of(), 30, Instant.EPOCH, "나".repeat(150)));
     assertThat(longMemo).contains("- 학생 메모: " + "나".repeat(100) + "\n");
 
+    // 100번째 칸이 이모지의 앞 칸이면 이모지를 통째로 뺍니다. (깨진 글자가 대본에 남지 않게, 2026-10-22 QA)
+    String emojiMemo =
+        CallScript.studiedSection(
+            new CheckCall.Studied("수학", List.of(), 30, Instant.EPOCH, "나".repeat(99) + "😀끝"));
+    assertThat(emojiMemo).contains("- 학생 메모: " + "나".repeat(99) + "\n");
+    assertThat(CallScript.cutKeepingEmoji("공부😀", 3)).isEqualTo("공부");
+    assertThat(CallScript.cutKeepingEmoji("공부", 3)).isEqualTo("공부");
+
     String blankMemo =
         CallScript.studiedSection(new CheckCall.Studied("수학", List.of(), 30, Instant.EPOCH, "  "));
     assertThat(blankMemo).doesNotContain("- 학생 메모:");

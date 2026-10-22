@@ -42,7 +42,7 @@ public final class OtherRoomTalk {
       if (line.isEmpty() || CrisisText.hasCrisisText(List.of(line))) {
         continue;
       }
-      lines.add(line.length() > MAX_LINE_LENGTH ? line.substring(0, MAX_LINE_LENGTH) : line);
+      lines.add(CallScript.cutKeepingEmoji(line, MAX_LINE_LENGTH));
       if (lines.size() == MAX_LINES) {
         break;
       }

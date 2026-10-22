@@ -24,6 +24,9 @@ class OtherRoomTalkTest {
   @DisplayName("한 줄은 80자, 줄은 6개까지만 쓴다")
   void limitsLengthAndCount() {
     assertThat(OtherRoomTalk.clean(List.of("가".repeat(120)))).containsExactly("가".repeat(80));
+    // 80번째 칸이 이모지의 앞 칸이면 이모지를 통째로 뺍니다. (깨진 글자가 남지 않게, 2026-10-22 QA)
+    assertThat(OtherRoomTalk.clean(List.of("가".repeat(79) + "😀끝")))
+        .containsExactly("가".repeat(79));
 
     List<String> many = new ArrayList<>();
     for (int i = 1; i <= 9; i++) {

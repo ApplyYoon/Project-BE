@@ -99,6 +99,8 @@ public class ChatService {
   static final int MAX_ACTION_TOPIC_LENGTH = 30;
   // AI 가 짐작한 이유 값(tags)은 이만큼까지
   static final int MAX_TAGS = 3;
+  // 인사 없이 여는 채팅(greet=false)은 하루에 이만큼까지 (checkOpenLimit)
+  static final int MAX_CHAT_OPENS_PER_DAY = 30;
 
   private final CurrentUserProvider currentUserProvider;
   private final ChatAiClient chatAiClient;
@@ -135,6 +137,7 @@ public class ChatService {
   //   학생이 먼저 말을 쓰고 보내는 화면에서는 첫 인사가 화면에 나오지 않고 버려졌습니다.
   //   점검에서 그 인사를 만드는 데 8.5초가 걸려서, 첫 답까지 18초가 걸렸습니다.
   //   인사 없이 열면 GPT 를 부르지 않으니 하루 한도도 쓰지 않습니다. 응답의 reply 는 null 입니다.
+  //   대신 인사 없이 여는 것은 하루 30번까지입니다. (checkOpenLimit, 2026-10-22 QA)
   //   FE 는 받은 채팅 번호로 바로 말 보내기(POST /chats/{id}/messages)를 부르면 됩니다.
   public ChatReplyResponse start(
       CallSessionRequest request, Integer grade, Integer classNo, boolean greet) {
@@ -158,6 +161,7 @@ public class ChatService {
       checkAiReady(userId);
     } else {
       checkAiEnabled();
+      checkOpenLimit(userId, today);
     }
     CallService.Script script =
         callService.prepareScript(userId, request, now, today, CallChannel.CHAT);
@@ -304,10 +308,20 @@ public class ChatService {
     //     첫 답이 서버 고정 문구(SAFE_REPLY)면 알려 줄 것이 없어서 더하지 않습니다.
     //   - 두 번째 답도 반복이면 그대로 씁니다. (끝없이 다시 부르지 않게)
     //   - 두 답 모두 askNext 안에서 cleanTurn(깎아내리는 말 · 링크 검사)을 거친 뒤입니다. 위기 표현 검사는 이미 위에서 했습니다.
+    //   - 다시 받다가 AI 와 연결하지 못하면(503) 첫 답을 씁니다. 첫 답은 이미 검사를 거친 멀쩡한 답이라,
+    //     버리고 에러를 보여 주면 학생은 한도만 두 번 쓰고 답을 못 받습니다. (2026-10-22 QA)
     if (RepeatCheck.repeats(next.reply(), lines)
         && gptUsageGuard.tryUseText(userId, GptUsageKind.CHAT)) {
       String hint = SAFE_REPLY.equals(next.reply()) ? "" : RepeatCheck.retryHint(next.reply());
-      next = askNext(userId, chatId, room, instructions, lines, topic, image, alreadySaid + hint);
+      ChatAiClient.ChatTurn first = next;
+      try {
+        next = askNext(userId, chatId, room, instructions, lines, topic, image, alreadySaid + hint);
+      } catch (ApiException e) {
+        if (e.getErrorCode() != ErrorCode.SERVICE_UNAVAILABLE) {
+          throw e;
+        }
+        next = first;
+      }
     }
     return ChatReplyResponse.withButtons(
         chatId, next.reply(), next.quickReplies(), next.action(), next.tags(), next.sources());
@@ -377,6 +391,21 @@ public class ChatService {
   private void checkAiEnabled() {
     if (!chatAiClient.isEnabled()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 상담이 아직 켜져 있지 않아요");
+    }
+  }
+
+  // 인사 없이 여는 채팅은 하루 한도를 쓰지 않아서, 오늘 연 채팅 수로 따로 막습니다. 넘으면 429 입니다. (2026-10-22 QA)
+  // 막지 않으면 한 사람이 수백 번 열어 서버가 기억하는 대본(ChatScriptStore, 500개까지)을 가득 채우고,
+  // 가득 차면 전부 지워지므로 다른 학생의 채팅까지 끊깁니다.
+  private void checkOpenLimit(Long userId, LocalDate today) {
+    long openedToday =
+        callRecordRepository
+            .findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(userId, today)
+            .stream()
+            .filter(record -> record.getChannel() == CallChannel.CHAT)
+            .count();
+    if (openedToday >= MAX_CHAT_OPENS_PER_DAY) {
+      throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 채팅을 너무 많이 열었어요. 내일 다시 이야기해요");
     }
   }
 

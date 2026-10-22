@@ -401,6 +401,45 @@ class DayPlanServiceTest {
   }
 
   @Test
+  @DisplayName("16:00 학원처럼 수업 끝과 조금만 겹치는 일정이면 기본 수업 시간을 그대로 피한다 (2026-10-22 QA)")
+  void shortOverlapStillAvoidsClassHours() {
+    schoolRegistered();
+    given(fixedBlocks.findByUserIdOrderById(USER_ID))
+        .willReturn(List.of(fixed("학원", LocalTime.of(16, 0), LocalTime.of(18, 0))));
+    aiAnswers(null);
+
+    DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
+
+    // 전에는 30분 겹친다는 이유로 수업 시간을 빼서 08:00 부터 놓았습니다.
+    assertThat(response.drafts())
+        .extracting(DayPlanResponse.Draft::startTime)
+        .allMatch(start -> start.compareTo("18:00") >= 0);
+    assertThat(response.evidence()).anyMatch(line -> line.contains("학교 수업 시간"));
+  }
+
+  @Test
+  @DisplayName("학교 안 가는 날: 휴업 · 방학 · 공휴일 이름이면 true, 방학식 · 시험이면 false")
+  void noSchoolEvents() {
+    assertThat(DayPlanService.isNoSchoolEvent("재량휴업일")).isTrue();
+    assertThat(DayPlanService.isNoSchoolEvent("여름방학")).isTrue();
+    assertThat(DayPlanService.isNoSchoolEvent("추석")).isTrue();
+    assertThat(DayPlanService.isNoSchoolEvent("개천절")).isTrue();
+    assertThat(DayPlanService.isNoSchoolEvent("대체공휴일")).isTrue();
+    assertThat(DayPlanService.isNoSchoolEvent("방학식")).isFalse();
+    assertThat(DayPlanService.isNoSchoolEvent("2학기 중간고사")).isFalse();
+    assertThat(DayPlanService.isNoSchoolEvent(null)).isFalse();
+
+    assertThat(
+            DayPlanService.overlapMinutes(
+                new DayPlanRule.Span(16 * 60, 18 * 60), DayPlanRule.classHours()))
+        .isEqualTo(30);
+    assertThat(
+            DayPlanService.overlapMinutes(
+                new DayPlanRule.Span(19 * 60, 21 * 60), DayPlanRule.classHours()))
+        .isZero();
+  }
+
+  @Test
   @DisplayName("근거 첫 줄의 칸 설명: 길이가 같으면 한 번, 다르면 모두 적는다")
   void blocksText() {
     assertThat(
