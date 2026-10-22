@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 // 한도는 모두 설정(환경변수)에서 받습니다. (application.yml 의 app.ai)
 //   하루 통화 횟수         AI_CALL_DAILY_LIMIT_PER_USER     (처음 값 3번)
 //   하루 통화 시간         AI_CALL_DAILY_MINUTES_PER_USER   (처음 값 15분)
-//   통화 한 번 최대 길이   AI_CALL_MAX_SECONDS              (처음 값 300초 = 5분)
+//   통화 한 번 최대 길이   AI_CALL_MAX_SECONDS              (처음 값 180초 = 3분, 통화 수정 8)
 //   하루 글 호출 횟수      AI_DAILY_LIMIT_PER_USER          (처음 값 20번, 통화 요약 + 코치 + 계획 초안 + 상담 채팅의 답을 합쳐서)
 //   하루 작은 AI 기능 횟수 AI_ASSIST_DAILY_LIMIT_PER_USER   (처음 값 40번, 체크리스트 추천 등을 합쳐서. 이슈 #237)
 //
@@ -57,7 +57,7 @@ public class GptUsageGuard {
       Clock clock,
       @Value("${app.ai.call-daily-limit-per-user:3}") int callDailyLimit,
       @Value("${app.ai.call-daily-minutes-per-user:15}") int callDailyMinutes,
-      @Value("${app.ai.call-max-seconds:300}") int maxCallSeconds,
+      @Value("${app.ai.call-max-seconds:180}") int maxCallSeconds,
       @Value("${app.ai.daily-limit-per-user:20}") int textDailyLimit,
       @Value("${app.ai.assist-daily-limit-per-user:40}") int assistDailyLimit,
       @Value("${app.ai.cost-won-per-call-minute:80}") int costWonPerCallMinute,
@@ -76,7 +76,7 @@ public class GptUsageGuard {
   // 지금 통화를 하나 더 걸면, 그 통화를 최대 몇 초까지 해도 되는지 돌려줍니다. 0 이면 오늘은 더 걸 수 없습니다.
   //   오늘 3번 다 걸었음                      →  0
   //   오늘 13분 썼음 (한도 15분)               →  120  (남은 2분만)
-  //   오늘 5분 썼음                            →  300  (한 번 최대 길이 5분)
+  //   오늘 5분 썼음                            →  180  (한 번 최대 길이 3분)
   @Transactional(readOnly = true)
   public int allowedCallSeconds(Long userId) {
     List<GptUsage> todayCalls =
@@ -103,8 +103,8 @@ public class GptUsageGuard {
 
   // 통화가 끝났을 때 통화 시간과 비용을 채웁니다. 이미 채웠으면(마무리를 다시 부름) 그대로 둡니다.
   // 통화 시간은 시작 ~ 끝입니다.
-  //   ⚠️ 5분(AI_CALL_MAX_SECONDS)으로 자르지 않습니다. 통화를 끊는 것은 FE 라서, 브라우저를 고쳐 쓰면 더 길게 통화할 수 있습니다.
-  //      그런 통화를 5분으로 적으면 실제 비용이 숨고 하루 한도도 안 지켜집니다. (docs/DEPLOY.md)
+  //   ⚠️ 3분(AI_CALL_MAX_SECONDS)으로 자르지 않습니다. 통화를 끊는 것은 FE 라서, 브라우저를 고쳐 쓰면 더 길게 통화할 수 있습니다.
+  //      그런 통화를 3분으로 적으면 실제 비용이 숨고 하루 한도도 안 지켜집니다. (docs/DEPLOY.md)
   //      대신 OpenAI 가 통화를 끊는 최대 길이(60분)로만 자릅니다. 마무리를 몇 시간 뒤에 불러도 그 이상은 통화했을 수 없어서입니다.
   // 비용은 분당 비용 × 통화한 분이고, 원 단위로 올림합니다.
   @Transactional

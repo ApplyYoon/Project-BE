@@ -86,17 +86,42 @@ class CallReviewTest {
   }
 
   @Test
-  @DisplayName("글은 앞뒤 빈칸을 지우고, 비었거나 너무 길면 비운다 (요약 300 · 근거 100 · 약속 50자)")
-  void textsAreTrimmedAndLimited() {
+  @DisplayName("글은 앞뒤 빈칸을 지우고, 비었으면 비운다. 요약 300 · 근거 100자를 넘으면 비우지 않고 줄인다")
+  void textsAreTrimmedAndCut() {
     assertThat(CallReview.from(raw("  요약  ", null, null, "A", "B")).summary()).isEqualTo("요약");
     assertThat(CallReview.from(raw("   ", null, null, "A", "B")).summary()).isNull();
     assertThat(CallReview.from(raw("가".repeat(300), null, null, "A", "B")).summary()).hasSize(300);
-    assertThat(CallReview.from(raw("가".repeat(301), null, null, "A", "B")).summary()).isNull();
-    assertThat(
-            CallReview.from(raw("요약", "PLANNING_FALLACY", "가".repeat(101), "A", "B"))
-                .foundEvidence())
-        .isNull();
+
+    String longSummary = CallReview.from(raw("가".repeat(301), null, null, "A", "B")).summary();
+    assertThat(longSummary).hasSize(300).endsWith("…");
+
+    String longEvidence =
+        CallReview.from(raw("요약", "PLANNING_FALLACY", "가".repeat(101), "A", "B")).foundEvidence();
+    assertThat(longEvidence).hasSize(100).endsWith("…");
+  }
+
+  @Test
+  @DisplayName("약속은 50자를 넘으면 줄이지 않고 비운다 (자르면 학생이 정한 약속의 뜻이 바뀜)")
+  void longPromisesAreDropped() {
     assertThat(CallReview.from(raw("요약", null, null, "가".repeat(51), "B")).promiseIf()).isNull();
+  }
+
+  @Test
+  @DisplayName("요약이 넘치면 끝의 '이해도: …' 는 남기고 앞의 내용을 줄인다 (확인 통화)")
+  void longSummaryKeepsUnderstanding() {
+    String summary =
+        CallReview.from(raw("나".repeat(350) + " 이해도: 조금 헷갈림", null, null, "A", "B")).summary();
+
+    assertThat(summary).hasSize(300).endsWith("… 이해도: 조금 헷갈림").startsWith("나나나");
+  }
+
+  @Test
+  @DisplayName("이모지 가운데에서 자르지 않는다 (깨진 글자가 DB 에 들어가지 않게)")
+  void cutDoesNotSplitEmoji() {
+    // "😀" 는 자바 글자 2칸. 앞에 "가" 98자를 두면 99번째 칸이 이모지의 앞 칸이라 거기서 자르면 깨집니다.
+    String cut = CallReview.cut("가".repeat(98) + "😀😀😀", 100);
+
+    assertThat(cut).isEqualTo("가".repeat(98) + "…");
   }
 
   @Test

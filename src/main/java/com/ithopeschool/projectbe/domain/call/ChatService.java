@@ -38,6 +38,7 @@ import org.springframework.stereotype.Service;
 //
 //   1. 채팅 열기 (start)     통화와 같은 순서로 대본을 만들고(CallService.prepareScript, 학생 카드는 DB),
 //                           오늘 학교 정보(시간표 · 급식 · 학사일정)를 붙여 AI 의 첫 인사를 받는다
+//                           greet 이 false 면 첫 인사 없이 채팅 번호만 만든다 (채팅 수정 1)
 //   2. 말 보내기 (send)      학생의 말을 위기 표현 검사 → 걸리면 GPT 를 부르지 않고 정해 둔 안내로 답한다
 //                           채팅은 끝내지 않고 이어 갈 수 있다 (2026-10-18). 보호 조치는 이 채팅에서 한 번만 한다
 //                           아니면 지금까지의 대화를 주고 AI 의 다음 말을 받는다
@@ -57,6 +58,9 @@ import org.springframework.stereotype.Service;
 //   - 열 때: 학년 · 교육과정 버전 · 오늘 과목으로 [교육과정] · [찾아보기] 칸을 붙이고 교육과정을 기억합니다. (CurriculumService)
 //   - 말마다: 학생의 마지막 말로 고른 성취기준 몇 줄([관련 성취기준])을 그 한 번의 답에만 붙입니다. (가벼운 RAG)
 //   - 말마다: 오늘 검색 한도가 남았으면 웹 검색 도구를 붙이고, 답에 붙은 출처(sources)를 검사해 돌려줍니다. (TutorWebSearch)
+//
+// 같은 말 되풀이 막기 (채팅 수정 3): 말 보내기마다 "직전에 한 말을 되풀이하지 마" 라는 고정 [이미 한 말] 칸을 붙이고,
+// 그래도 새 답이 직전 AI 답 3개와 같은 구절이면 한 번만 다시 받습니다. 세 방 모두 같습니다. (RepeatCheck)
 //
 // AI 의 답은 한 번마다 GPT 글 호출 하루 한도(GptUsageGuard, 이슈 #33)를 하나씩 씁니다.
 // 모든 메서드는 로그인한 사람의 번호(CurrentUserProvider)로 시작하고, 내 채팅만 찾습니다. 남의 채팅 번호는 404 입니다.
@@ -95,6 +99,8 @@ public class ChatService {
   static final int MAX_ACTION_TOPIC_LENGTH = 30;
   // AI 가 짐작한 이유 값(tags)은 이만큼까지
   static final int MAX_TAGS = 3;
+  // 인사 없이 여는 채팅(greet=false)은 하루에 이만큼까지 (checkOpenLimit)
+  static final int MAX_CHAT_OPENS_PER_DAY = 30;
 
   private final CurrentUserProvider currentUserProvider;
   private final ChatAiClient chatAiClient;
@@ -124,6 +130,17 @@ public class ChatService {
   // 채팅을 엽니다. grade · classNo 를 주면 그 반의 오늘 시간표도 대본에 넣습니다.
   // request.about 이 있으면 그 주제로 엽니다. ("코치랑 이야기하기", 2026-10-18)
   public ChatReplyResponse start(CallSessionRequest request, Integer grade, Integer classNo) {
+    return start(request, grade, classNo, true);
+  }
+
+  // greet 이 false 면 AI 의 첫 인사를 받지 않고 채팅 번호만 만듭니다. (채팅 수정 1)
+  //   학생이 먼저 말을 쓰고 보내는 화면에서는 첫 인사가 화면에 나오지 않고 버려졌습니다.
+  //   점검에서 그 인사를 만드는 데 8.5초가 걸려서, 첫 답까지 18초가 걸렸습니다.
+  //   인사 없이 열면 GPT 를 부르지 않으니 하루 한도도 쓰지 않습니다. 응답의 reply 는 null 입니다.
+  //   대신 인사 없이 여는 것은 하루 30번까지입니다. (checkOpenLimit, 2026-10-22 QA)
+  //   FE 는 받은 채팅 번호로 바로 말 보내기(POST /chats/{id}/messages)를 부르면 됩니다.
+  public ChatReplyResponse start(
+      CallSessionRequest request, Integer grade, Integer classNo, boolean greet) {
     // 로그인하지 않은 요청은 여기서 401 이 나갑니다. 아무나 불러서 GPT 비용을 쓰게 두면 안 됩니다.
     Long userId = currentUserProvider.getCurrentUserId();
     Instant now = clock.instant();
@@ -139,7 +156,13 @@ public class ChatService {
     // 방은 고르지 않았으면 코치입니다. 주제와 방이 어울리지 않아도(예: 틀린 문제를 코치 방에서) 그대로 엽니다.
     ChatRoom room = ChatRoom.from(request.room()).orElse(ChatRoom.COACH);
 
-    checkAiReady(userId);
+    // 하루 한도는 첫 인사를 받을 때만 씁니다. 인사 없이 열어도 AI 가 꺼진 서버면 여기서 503 으로 알립니다.
+    if (greet) {
+      checkAiReady(userId);
+    } else {
+      checkAiEnabled();
+      checkOpenLimit(userId, today);
+    }
     CallService.Script script =
         callService.prepareScript(userId, request, now, today, CallChannel.CHAT);
 
@@ -176,23 +199,30 @@ public class ChatService {
             + room.section()
             + curriculumPart
             + topicPart;
-    ChatAiClient.ChatTurn first =
-        room == ChatRoom.TUTOR
-            ? askTutor(
-                userId,
-                // 주제(틀린 문제 등)로 열었으면 그 사실 줄로 성취기준을 고릅니다.
-                instructions
-                    + curriculumService.standardsSection(
-                        curriculum, about == null ? "" : String.join(" ", about.lines())),
-                List.of(),
-                topic,
-                null)
-            : askAi(instructions, List.of(), topic);
+    // 인사 없이 열면 first 는 null 입니다.
+    ChatAiClient.ChatTurn first = null;
+    if (greet) {
+      first =
+          room == ChatRoom.TUTOR
+              ? askTutor(
+                  userId,
+                  // 주제(틀린 문제 등)로 열었으면 그 사실 줄로 성취기준을 고릅니다.
+                  instructions
+                      + curriculumService.standardsSection(
+                          curriculum, about == null ? "" : String.join(" ", about.lines())),
+                  List.of(),
+                  topic,
+                  null)
+              : askAi(instructions, List.of(), topic);
+    }
     // AI 의 첫 인사를 받은 뒤에 기록을 만듭니다. 못 받았으면 채팅이 열리지 않은 것이라 기록도 남기지 않습니다.
     CallRecord record =
         callRecordRepository.save(
             new CallRecord(userId, today, now, script.biasQuestion(), CallChannel.CHAT));
     chatScriptStore.save(record.getId(), userId, instructions, topic, room, curriculum);
+    if (first == null) {
+      return ChatReplyResponse.opened(record.getId());
+    }
     return ChatReplyResponse.withButtons(
         record.getId(),
         first.reply(),
@@ -250,10 +280,14 @@ public class ChatService {
       return replyToCrisis(chat, userId);
     }
 
+    // 기억해 둔 대본 끝에 [다른 방에서 오늘 한 이야기] 칸을 붙입니다. 이번 한 번의 답에만 쓰고 기억해 둔 대본은 그대로입니다.
+    // 다른 방 이야기가 없으면 빈 글자라 대본이 바뀌지 않습니다. (OtherRoomTalk, 2026-10-22)
     String instructions =
         chatScriptStore
-            .find(chatId, userId)
-            .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "채팅이 오래되어 끝났어요. 새로 시작해 주세요"));
+                .find(chatId, userId)
+                .orElseThrow(
+                    () -> new ApiException(ErrorCode.CONFLICT, "채팅이 오래되어 끝났어요. 새로 시작해 주세요"))
+            + OtherRoomTalk.chatSection(request.otherRooms());
     // 주제 없이 연 채팅이면 null 이고, 그러면 tags 는 빈 목록입니다.
     ChatTopic topic = chatScriptStore.findTopic(chatId, userId).orElse(null);
     // 사진은 모양 · 크기부터 봅니다(틀리면 400). AI 한도를 쓰기 전에 거릅니다.
@@ -264,7 +298,46 @@ public class ChatService {
     checkAiReady(userId);
     // 방을 잊었으면 코치로 봅니다. 사진 규칙 · 성취기준 칸은 이번 한 번의 답에만 붙이고 기억해 둔 대본에는 남기지 않습니다.
     ChatRoom room = chatScriptStore.findRoom(chatId, userId).orElse(ChatRoom.COACH);
-    ChatAiClient.ChatTurn next;
+    // [이미 한 말] 칸은 고정 문장이라 FE 가 보낸 글자가 지시에 들어가지 않습니다. (RepeatCheck.section)
+    String alreadySaid = RepeatCheck.section(lines);
+    ChatAiClient.ChatTurn next =
+        askNext(userId, chatId, room, instructions, lines, topic, image, alreadySaid);
+    // 직전 AI 답 3개와 같은 구절이면 딱 한 번만 다시 받습니다. (RepeatCheck, 채팅 수정 3)
+    //   - 다시 받는 것도 GPT 한 번이라 하루 한도를 씁니다. 한도가 없으면 다시 부르지 않고 첫 답을 씁니다.
+    //   - 다시 받을 때는 첫 답의 첫 문장을 알려 주는 줄(retryHint)을 더합니다. 같은 지시면 같은 답이 또 나오기 쉬워서입니다.
+    //     첫 답이 서버 고정 문구(SAFE_REPLY)면 알려 줄 것이 없어서 더하지 않습니다.
+    //   - 두 번째 답도 반복이면 그대로 씁니다. (끝없이 다시 부르지 않게)
+    //   - 두 답 모두 askNext 안에서 cleanTurn(깎아내리는 말 · 링크 검사)을 거친 뒤입니다. 위기 표현 검사는 이미 위에서 했습니다.
+    //   - 다시 받다가 AI 와 연결하지 못하면(503) 첫 답을 씁니다. 첫 답은 이미 검사를 거친 멀쩡한 답이라,
+    //     버리고 에러를 보여 주면 학생은 한도만 두 번 쓰고 답을 못 받습니다. (2026-10-22 QA)
+    if (RepeatCheck.repeats(next.reply(), lines)
+        && gptUsageGuard.tryUseText(userId, GptUsageKind.CHAT)) {
+      String hint = SAFE_REPLY.equals(next.reply()) ? "" : RepeatCheck.retryHint(next.reply());
+      ChatAiClient.ChatTurn first = next;
+      try {
+        next = askNext(userId, chatId, room, instructions, lines, topic, image, alreadySaid + hint);
+      } catch (ApiException e) {
+        if (e.getErrorCode() != ErrorCode.SERVICE_UNAVAILABLE) {
+          throw e;
+        }
+        next = first;
+      }
+    }
+    return ChatReplyResponse.withButtons(
+        chatId, next.reply(), next.quickReplies(), next.action(), next.tags(), next.sources());
+  }
+
+  // 말 보내기의 AI 답 한 번. 방 · 사진에 따라 부르는 길을 고르고, 끝에 alreadySaid 칸([이미 한 말] · [다시 답하기])을 붙입니다.
+  // 사진 규칙 · 성취기준 · alreadySaid 칸은 이번 한 번의 답에만 붙이고 기억해 둔 대본에는 남기지 않습니다.
+  private ChatAiClient.ChatTurn askNext(
+      Long userId,
+      Long chatId,
+      ChatRoom room,
+      String instructions,
+      List<CallFinishRequest.Line> lines,
+      ChatTopic topic,
+      String image,
+      String alreadySaid) {
     if (room == ChatRoom.TUTOR) {
       // 과목 쌤: 학생의 마지막 말로 성취기준을 고르고, 검색 한도가 남았으면 웹 검색 도구를 붙입니다.
       String standards =
@@ -272,14 +345,13 @@ public class ChatService {
               chatScriptStore.findCurriculum(chatId, userId).orElse(null),
               lines.get(lines.size() - 1).text());
       String imageRule = image == null ? "" : room.imageRule();
-      next = askTutor(userId, instructions + standards + imageRule, lines, topic, image);
-    } else if (image == null) {
-      next = askAi(instructions, lines, topic);
-    } else {
-      next = askAiWithImage(instructions + room.imageRule(), lines, topic, image);
+      return askTutor(
+          userId, instructions + standards + imageRule + alreadySaid, lines, topic, image);
     }
-    return ChatReplyResponse.withButtons(
-        chatId, next.reply(), next.quickReplies(), next.action(), next.tags(), next.sources());
+    if (image == null) {
+      return askAi(instructions + alreadySaid, lines, topic);
+    }
+    return askAiWithImage(instructions + room.imageRule() + alreadySaid, lines, topic, image);
   }
 
   // 위기 표현이 감지됐을 때. 보호 조치(관리 한도 0 · 회복 메시지)는 이 채팅에서 처음 감지했을 때 한 번만 합니다.
@@ -309,11 +381,31 @@ public class ChatService {
 
   // AI 를 쓸 수 있는 서버인지, 오늘 한도가 남았는지 봅니다. 한도가 남았으면 한 번을 씁니다.
   private void checkAiReady(Long userId) {
+    checkAiEnabled();
+    if (!gptUsageGuard.tryUseText(userId, GptUsageKind.CHAT)) {
+      throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 AI 사용량을 다 썼어요. 내일 다시 이야기해요");
+    }
+  }
+
+  // AI 를 쓸 수 있는 서버인지만 봅니다. 한도는 쓰지 않습니다. (인사 없이 채팅 열기)
+  private void checkAiEnabled() {
     if (!chatAiClient.isEnabled()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 상담이 아직 켜져 있지 않아요");
     }
-    if (!gptUsageGuard.tryUseText(userId, GptUsageKind.CHAT)) {
-      throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 AI 사용량을 다 썼어요. 내일 다시 이야기해요");
+  }
+
+  // 인사 없이 여는 채팅은 하루 한도를 쓰지 않아서, 오늘 연 채팅 수로 따로 막습니다. 넘으면 429 입니다. (2026-10-22 QA)
+  // 막지 않으면 한 사람이 수백 번 열어 서버가 기억하는 대본(ChatScriptStore, 500개까지)을 가득 채우고,
+  // 가득 차면 전부 지워지므로 다른 학생의 채팅까지 끊깁니다.
+  private void checkOpenLimit(Long userId, LocalDate today) {
+    long openedToday =
+        callRecordRepository
+            .findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(userId, today)
+            .stream()
+            .filter(record -> record.getChannel() == CallChannel.CHAT)
+            .count();
+    if (openedToday >= MAX_CHAT_OPENS_PER_DAY) {
+      throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 채팅을 너무 많이 열었어요. 내일 다시 이야기해요");
     }
   }
 

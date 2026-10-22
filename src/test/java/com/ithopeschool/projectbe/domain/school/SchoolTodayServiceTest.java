@@ -229,6 +229,70 @@ class SchoolTodayServiceTest {
   }
 
   @Test
+  @DisplayName("토 · 일에는 다음 월요일 시간표와 월 · 화 급식을 넣고 schoolDay 로 알린다 (2026-10-22)")
+  void weekendShowsMonday() {
+    hasSchool(SCHOOL);
+    hasSavedOfficeCode();
+    given(neisClient.hasApiKey()).willReturn(true);
+    // 2026-10-24 (토) 12:00 한국 시간
+    given(clock.instant()).willReturn(Instant.parse("2026-10-24T03:00:00Z"));
+    LocalDate saturday = LocalDate.of(2026, 10, 24);
+    LocalDate monday = LocalDate.of(2026, 10, 26);
+    given(neisClient.fetchMeals("J10", SCHOOL, monday))
+        .willReturn(Optional.of(List.of(lunch(monday, "제육볶음"))));
+    given(neisClient.fetchMeals("J10", SCHOOL, monday.plusDays(1)))
+        .willReturn(Optional.of(List.of(lunch(monday.plusDays(1), "카레"))));
+    given(neisClient.fetchTimetable("J10", SCHOOL, 2, 1, monday))
+        .willReturn(Optional.of(List.of(new NeisClient.NeisPeriod(1, "미적분Ⅰ"))));
+
+    SchoolTodayResponse response = service.getMyToday(2, 1);
+
+    assertThat(response.date()).isEqualTo(saturday);
+    assertThat(response.schoolDay()).isEqualTo(monday);
+    assertThat(response.timetable()).containsExactly(new SchoolTodayResponse.Period(1, "미적분Ⅰ"));
+    assertThat(response.meals())
+        .extracting(SchoolTodayResponse.Meal::date)
+        .containsExactly(monday, monday.plusDays(1));
+    verify(neisClient, never()).fetchMeals("J10", SCHOOL, saturday);
+    // 주말에는 시간표가 월요일 것이라 "오늘 배운 과목" 으로 쓰지 않습니다.
+    assertThat(service.todaySubjects(2, 1)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("보여 줄 날: 평일은 그날, 토 · 일은 다음 월요일 · 대본의 날 이름은 오늘 또는 '월요일(10/26)'")
+  void schoolDayRules() {
+    LocalDate friday = LocalDate.of(2026, 10, 23);
+    LocalDate monday = LocalDate.of(2026, 10, 26);
+    assertThat(SchoolTodayService.schoolDayOf(friday)).isEqualTo(friday);
+    assertThat(SchoolTodayService.schoolDayOf(friday.plusDays(1))).isEqualTo(monday);
+    assertThat(SchoolTodayService.schoolDayOf(friday.plusDays(2))).isEqualTo(monday);
+    assertThat(SchoolTodayService.schoolDayOf(monday)).isEqualTo(monday);
+
+    assertThat(SchoolTodayService.dayNameOf(monday, monday)).isEqualTo("오늘");
+    assertThat(SchoolTodayService.dayNameOf(friday.plusDays(1), monday)).isEqualTo("월요일(10/26)");
+  }
+
+  @Test
+  @DisplayName("대본 줄: 주말이면 '오늘' 대신 '월요일(10/26)' 시간표 · 급식으로 적는다")
+  void weekendScriptLines() {
+    LocalDate saturday = LocalDate.of(2026, 10, 24);
+    LocalDate monday = LocalDate.of(2026, 10, 26);
+    SchoolTodayResponse weekend =
+        SchoolTodayResponse.of(
+            saturday,
+            SCHOOL,
+            "한국디지털미디어고등학교",
+            List.of(new SchoolTodayResponse.Period(1, "미적분Ⅰ")),
+            false,
+            List.of(new SchoolTodayResponse.Meal(monday, "중식", List.of("흑미밥", "제육볶음"))),
+            List.of(),
+            monday);
+
+    assertThat(SchoolTodayService.linesOf(weekend, 2))
+        .containsExactly("- 월요일(10/26) 시간표: 1교시 미적분Ⅰ", "- 월요일(10/26) 중식: 흑미밥, 제육볶음");
+  }
+
+  @Test
   @DisplayName("키가 없는데 5줄이 꽉 차서 오면 뒤 교시가 잘렸을 수 있다고 알린다")
   void timetablePartialWithoutKey() {
     hasSchool(SCHOOL);

@@ -1,7 +1,7 @@
 package com.ithopeschool.projectbe.domain.call.dto;
 
 // AI 통화를 시작할 때의 응답 모양입니다. (FE src/lib/realtimeCall.ts)
-//   { "value": "ek_…", "expiresAt": 1791700000000, "maxCallSeconds": 300, "callId": "12" }
+//   { "value": "ek_…", "expiresAt": 1791700000000, "maxCallSeconds": 180, "callId": "12" }
 //
 // value 는 "임시 키" 입니다. 진짜 GPT 키(sk-…)가 아니라, 이번 통화에만 잠깐 쓰고 버리는 출입증입니다.
 // 브라우저는 이 값으로 OpenAI 에 직접 연결합니다. 진짜 키는 서버 밖으로 나가지 않습니다.

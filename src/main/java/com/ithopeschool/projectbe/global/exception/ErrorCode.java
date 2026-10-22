@@ -24,6 +24,7 @@ public enum ErrorCode {
   // ⚠️ 서버 코드가 직접 던질 때만 나갑니다. Spring 이 던지는 일반 403 에는 이 이름을 쓰지 않습니다. (fromStatus 참고)
   CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "동의 문구에 동의한 뒤에 저장할 수 있어요"),
   // 오늘 공부를 하나 끝내야 열리는 확인 통화를 공부 전에 걸려고 함 (2026-10-18, CheckCall)
+  // 2026-10-22 에 통화의 공부 조건을 빼서 지금은 서버가 던지지 않습니다. FE 가 이 이름을 알고 있어서 남겨 두었습니다.
   // ⚠️ 서버 코드가 직접 던질 때만 나갑니다. (CONSENT_REQUIRED 와 같은 이유로 fromStatus 가 건너뜁니다)
   CALL_LOCKED(HttpStatus.FORBIDDEN, "오늘 공부 하나를 끝내면 확인 통화가 열려요"),
   // 정해 둔 횟수를 넘게 부름 (하루 통화 횟수 등)

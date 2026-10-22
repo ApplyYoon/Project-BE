@@ -8,58 +8,47 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-// "확인 통화" 의 문 규칙입니다. (2026-10-18)
-// 사용자: "공부를 하게 하고, 완료한 조건으로 통화할 수 있게"
-// AI 음성 통화는 오늘 공부를 하나 끝내야 열립니다. 통화에서는 방금 공부한 것을 학생이 말로 설명하고,
+// "확인 통화" 규칙입니다. (2026-10-18)
+// 오늘 끝낸 공부가 있으면 통화에서 방금 공부한 것을 학생이 말로 설명하고,
 // 코치가 질문 2~3개로 이해했는지 확인합니다. (CallScript.studiedSection)
-// 채팅은 이 문이 없습니다. 힘들 때 말할 곳은 언제나 열려 있어야 하기 때문입니다.
+//
+// ■ 통화는 공부를 안 했어도 걸 수 있습니다. (2026-10-22 사용자 "AI 전화 조건 제거")
+//   처음(2026-10-18)에는 "오늘 공부를 하나 끝내야 열림" 조건이 있었는데 뺐습니다.
+//   지금은 통화가 늘 열리고, 아래 규칙은 "어떤 공부로 확인 통화를 할지" 고르는 데만 씁니다.
+//   끝낸 공부가 없으면 보통 통화([통화 순서])로 시작합니다. 하루 통화 횟수 · 시간 한도는 그대로입니다. (GptUsageGuard)
 //
 // ■ 오늘 끝낸 공부로 치는 것
 //   - 공부 기록(STUDY)만. 노는 기록(PLAY)은 빼요.
 //   - 타이머(NORMAL) · 오프라인(OFFLINE)만. 끝난 뒤 사후 입력(SELF_REPORT)은 빼요. (앱이 잰 것이 아니라서)
 //     옛 기록은 mode 가 비어 있고 타이머로 봅니다. (SessionMode 설명)
-//   - 순공시간(StudyTime)이 10분 이상. 1~2분 켰다 끈 것으로 통화를 여는 것을 막으려는 숫자입니다.
+//   - 순공시간(StudyTime)이 10분 이상. 1~2분 켰다 끈 것은 확인할 거리가 없어서입니다.
 //   - "오늘" 은 새벽 4시 기준으로 오늘 시작한 기록입니다. (DayRule, 찾는 것은 CheckCallService)
-//
-// ■ 예외: 최근 7일 안에 위기 표현이 감지됐거나 보호 조치 중인 학생은 문 없이 열립니다.
-//   그 통화는 공부 확인이 아니라 위로하는 통화입니다. (CallService.CRISIS_CARE_DAYS)
 //
 // 값만 계산하는 도구라서 객체를 만들 일이 없습니다.
 public final class CheckCall {
 
-  // 이만큼(분) 넘게 공부한 기록이 있어야 열립니다.
+  // 이만큼(분) 넘게 공부한 기록만 확인 통화의 공부로 칩니다.
   public static final int MIN_STUDY_MINUTES = 10;
-  // 문이 닫혔을 때 FE 에 보여 줄 문장
-  public static final String LOCKED_MESSAGE = "오늘 공부 하나를 끝내면 확인 통화가 열려요";
-  // 문이 닫힌 이유 (FE 가 잠금 화면에서 봅니다)
-  public static final String NO_STUDY_TODAY = "NO_STUDY_TODAY";
 
   private static final long MILLIS_PER_MINUTE = 60_000;
 
   private CheckCall() {}
 
   // 방금 공부한 것 하나. title 은 카드 제목이고, 카드 없이 켠 옛 기록이면 null 입니다.
-  public record Studied(String title, List<String> checklist, int minutes, Instant endedAt) {}
+  // memo 는 종료 팝업에 학생이 쓴 2~3줄 요약(proofSummary)입니다. 안 썼으면 null 입니다. (통화 수정 2)
+  public record Studied(
+      String title, List<String> checklist, int minutes, Instant endedAt, String memo) {}
 
-  // 문 열림 여부
-  //   open    : 통화를 걸 수 있으면 true
-  //   studied : 오늘 가장 최근에 끝낸 공부. 위로 통화로 열렸으면 null 일 수 있습니다.
-  //   reason  : 닫혔을 때 이유 (NO_STUDY_TODAY). 열렸으면 null
+  // 통화 문
+  //   open    : 통화를 걸 수 있으면 true. 조건을 뺀 뒤(2026-10-22)로는 늘 true 입니다.
+  //   studied : 오늘 가장 최근에 끝낸 공부. 없으면 null 이고, 그러면 보통 통화입니다.
+  //   reason  : 닫혔을 때 이유. 지금은 닫히지 않아서 늘 null 입니다.
+  //   open · reason 은 FE 가 이미 읽는 모양이라 남겨 두었습니다. (GET /realtime/check-call)
   public record Gate(boolean open, Studied studied, String reason) {
 
-    // 오늘 공부를 끝내서 열림
+    // 열림. studied 는 null 이어도 됩니다.
     public static Gate open(Studied studied) {
       return new Gate(true, studied, null);
-    }
-
-    // 위로하는 통화라서 공부 없이도 열림
-    public static Gate care() {
-      return new Gate(true, null, null);
-    }
-
-    // 닫힘
-    public static Gate locked() {
-      return new Gate(false, null, NO_STUDY_TODAY);
     }
   }
 

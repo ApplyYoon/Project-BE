@@ -10,6 +10,8 @@ import static org.mockito.Mockito.verify;
 
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
+import com.ithopeschool.projectbe.domain.auth.Account;
+import com.ithopeschool.projectbe.domain.auth.AccountRepository;
 import com.ithopeschool.projectbe.domain.card.Card;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.card.ChecklistItem;
@@ -24,6 +26,8 @@ import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
 import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
+import com.ithopeschool.projectbe.domain.school.SchoolEvent;
+import com.ithopeschool.projectbe.domain.school.SchoolEventRepository;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -60,6 +64,8 @@ class DayPlanServiceTest {
   private final GoalRepository goals = mock(GoalRepository.class);
   private final BlockLengthService blockLength = mock(BlockLengthService.class);
   private final AiClient aiClient = mock(AiClient.class);
+  private final AccountRepository accounts = mock(AccountRepository.class);
+  private final SchoolEventRepository schoolEvents = mock(SchoolEventRepository.class);
   private final DayPlanService service =
       new DayPlanService(
           currentUserProvider,
@@ -71,7 +77,9 @@ class DayPlanServiceTest {
           goals,
           blockLength,
           aiClient,
-          CLOCK);
+          CLOCK,
+          accounts,
+          schoolEvents);
 
   private static OnboardingAnswer answer(LocalTime sleep, LocalTime wake, Chronotype chronotype) {
     OnboardingAnswer.Values values = new OnboardingAnswer.Values();
@@ -90,6 +98,19 @@ class DayPlanServiceTest {
         LocalTime.of(8, 0),
         LocalTime.of(16, 30),
         Instant.EPOCH);
+  }
+
+  private static FixedBlock fixed(String title, LocalTime start, LocalTime end) {
+    return new FixedBlock(USER_ID, title, List.of(1, 2, 3, 4, 5), start, end, Instant.EPOCH);
+  }
+
+  // 학교(성일정보고)를 등록한 계정
+  private void schoolRegistered() {
+    given(accounts.findByUserId(USER_ID))
+        .willReturn(
+            Optional.of(
+                new Account(
+                    USER_ID, "a@b.c", "hash", "민", "7530560", "성일정보고", false, Instant.EPOCH)));
   }
 
   private static Card card(String title, LocalDate date, LocalTime start, int minutes) {
@@ -132,6 +153,11 @@ class DayPlanServiceTest {
     given(cards.findCandidatesOn(eq(USER_ID), any())).willReturn(List.of());
     given(cards.findByUserIdOrderById(USER_ID)).willReturn(List.of());
     given(goals.findByUserIdOrderById(USER_ID)).willReturn(List.of(wordBook()));
+    given(accounts.findByUserId(USER_ID)).willReturn(Optional.empty());
+    given(
+            schoolEvents.findBySchoolCodeAndEventDateBetweenOrderByEventDateAscIdAsc(
+                any(), any(), any()))
+        .willReturn(List.of());
   }
 
   @Test
@@ -146,18 +172,22 @@ class DayPlanServiceTest {
     DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
 
     // 총량 120분(기본) − 그날 카드 60분 = 60분 → 50분 칸 하나 (남은 10분은 30분보다 짧아서 버림)
-    assertThat(response.totalMinutes()).isEqualTo(60);
+    // totalMinutes 는 실제로 놓은 칸의 합입니다.
+    assertThat(response.totalMinutes()).isEqualTo(50);
     assertThat(response.drafts())
         .containsExactly(
             new DayPlanResponse.Draft(MONDAY, "16:40", 50, "영단어 30쪽", List.of("1 ~ 30쪽 외우기"), "4"));
+    // 첫 줄은 최종 결과, 그다음 시간 이유 → 한 칸 길이 → 목표 순서 → 양을 정한 자세한 이유
     assertThat(response.evidence())
-        .contains(
+        .containsExactly(
+            "그날 이미 있는 카드를 빼고 60분이 남아, 30분이 안 되는 10분은 빼서 50분 한 칸이 됐어요",
+            "취침 23:00 · 기상 07:00 이라 수면 시간(최소 6시간)과 일어난 뒤 1시간을 빼고 08:00 ~ 23:00 사이에 짰어요",
             "고정 일정 「학교」 08:00 ~ 16:30 을 피했어요",
             "그날 이미 있는 카드 1장의 앞뒤 10분을 비웠어요",
-            "그날 이미 있는 카드 60분을 뺐어요",
-            "취침 23:00 · 기상 07:00 이라 수면 시간(최소 6시간)과 일어난 뒤 1시간을 빼고 08:00 ~ 23:00 사이에 짰어요",
-            "남은 10분은 30분보다 짧아서 칸을 만들지 않았어요",
-            "D-day 가 가까운 목표를 더 많이 넣었어요");
+            "아직 공부 기록이 적어서 50분으로 잡았어요",
+            "D-day 가 가까운 목표를 더 많이 넣었어요",
+            "아직 기록이 적어서 하루 120분으로 잡았어요",
+            "그날 이미 있는 카드 60분을 뺐어요");
 
     ArgumentCaptor<AiQuestion> question = ArgumentCaptor.forClass(AiQuestion.class);
     verify(aiClient)
@@ -223,21 +253,27 @@ class DayPlanServiceTest {
     assertThat(response.drafts().get(0))
         .isEqualTo(
             new DayPlanResponse.Draft(MONDAY, "07:00", 50, "수학 문제집", List.of("수학 문제집"), null));
+    assertThat(response.totalMinutes()).isEqualTo(100);
     assertThat(response.evidence())
-        .contains(
-            "그날 고정 일정이 없어요. 학교 · 학원 시간을 고정 일정에 넣으면 피해서 짜요",
+        .containsExactly(
+            "기본으로 하루 120분을 잡아, 30분이 안 되는 20분은 빼서 50분 두 칸이 됐어요",
             "취침 · 기상 시각을 아직 몰라서 07:00 ~ 00:00 사이에 짰어요. 관리 설정에서 넣으면 맞춰 짜요",
-            "진행 중인 목표가 없어서 최근 카드로 채웠어요");
+            "그날 고정 일정이 없어요. 학교 · 학원 시간을 고정 일정에 넣으면 피해서 짜요",
+            "아직 공부 기록이 적어서 50분으로 잡았어요",
+            "진행 중인 목표가 없어서 최근 카드로 채웠어요",
+            "아직 기록이 적어서 하루 120분으로 잡았어요");
   }
 
   @Test
-  @DisplayName("오늘이면 지금 시각 뒤부터 놓는다 (토요일이라 학교 없음)")
+  @DisplayName("오늘이면 지금 시각 뒤부터 놓고, 근거도 늦춘 뒤의 범위를 말한다 (토요일이라 학교 없음)")
   void todayStartsFromNow() {
     aiAnswers(null);
 
     DayPlanResponse response = service.suggest(new DayPlanRequest(TODAY));
 
     assertThat(response.drafts().get(0).startTime()).isEqualTo("12:00");
+    assertThat(response.evidence().get(1))
+        .isEqualTo("오늘은 지금 시각 뒤부터 취침 23:00 전까지, 12:00 ~ 23:00 사이에 짰어요");
   }
 
   @Test
@@ -249,7 +285,8 @@ class DayPlanServiceTest {
     DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
 
     assertThat(response.drafts()).isEmpty();
-    assertThat(response.evidence()).contains("그날은 이미 충분히 계획했어요");
+    assertThat(response.totalMinutes()).isZero();
+    assertThat(response.evidence().get(0)).isEqualTo("그날은 이미 충분히 계획했어요");
   }
 
   @Test
@@ -263,7 +300,7 @@ class DayPlanServiceTest {
   }
 
   @Test
-  @DisplayName("컨디션이 2 이하면 총량을 60% 로 줄여 가볍게 짜고 근거에 적는다 · 준비하는 것과 과목을 AI 입력에 넣는다")
+  @DisplayName("컨디션이 2 이하면 총량을 60% 로 줄여(10분 단위) 가볍게 짜고 첫 줄에 적는다 · 준비하는 것과 과목을 AI 입력에 넣는다")
   void lowConditionMakesLighterPlan() {
     aiAnswers(null);
 
@@ -273,12 +310,148 @@ class DayPlanServiceTest {
             new DayPlanRequest(
                 MONDAY, new DayPlanRequest.Focus("SUNEUNG", null), List.of("미적분Ⅰ"), 2));
 
-    assertThat(lighter.totalMinutes()).isEqualTo(usual.totalMinutes() * 60 / 100);
-    assertThat(lighter.evidence()).anyMatch(line -> line.contains("가볍게 짰어요"));
+    // 평소: 120분 → 50분 두 칸 (100분) / 컨디션 2: 120분의 60% = 72 → 70분 → 50분 한 칸 (남은 20분은 뺌)
+    assertThat(usual.totalMinutes()).isEqualTo(100);
+    assertThat(usual.evidence().get(0))
+        .isEqualTo("기본으로 하루 120분을 잡아, 30분이 안 되는 20분은 빼서 50분 두 칸이 됐어요");
+    assertThat(lighter.totalMinutes()).isEqualTo(50);
+    assertThat(lighter.evidence().get(0))
+        .isEqualTo("오늘 컨디션이 낮아 70분으로 줄여, 30분이 안 되는 20분은 빼서 50분 한 칸이 됐어요");
     assertThat(
             DayPlanService.extraLinesOf(
                 new DayPlanRequest(
                     MONDAY, new DayPlanRequest.Focus("CONTEST", "정보올림피아드"), List.of("미적분Ⅰ"), 3)))
         .containsExactly("준비하는 것: 대회 · 자격증 — 정보올림피아드", "오늘 배운 과목: 미적분Ⅰ");
+  }
+
+  @Test
+  @DisplayName("다른 방에서 오늘 한 이야기를 보내면 AI 입력 끝에 한 줄로 붙인다 (위기 표현이 있는 줄은 뺌)")
+  void otherRoomTalkGoesIntoAiInput() {
+    DayPlanRequest request =
+        new DayPlanRequest(
+            MONDAY, null, null, null, List.of("상담: 미적분 극한이 헷갈려", "상담: 다 싫고 죽고 싶어", "과목 쌤: 곱의 미분법"));
+
+    assertThat(DayPlanService.extraLinesOf(request))
+        .containsExactly("다른 방에서 오늘 한 이야기: 상담: 미적분 극한이 헷갈려 / 과목 쌤: 곱의 미분법");
+    assertThat(DayPlanService.extraLinesOf(new DayPlanRequest(MONDAY))).isEmpty();
+  }
+
+  @Test
+  @DisplayName("학교를 등록했고 평일이면, 학원(저녁 고정 일정)만 있어도 기본 수업 시간을 피해 16:40 부터 놓는다")
+  void schoolDayAvoidsClassHours() {
+    schoolRegistered();
+    given(fixedBlocks.findByUserIdOrderById(USER_ID))
+        .willReturn(List.of(fixed("학원", LocalTime.of(19, 0), LocalTime.of(21, 0))));
+    aiAnswers(null);
+
+    DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
+
+    assertThat(response.drafts())
+        .extracting(DayPlanResponse.Draft::startTime)
+        .containsExactly("16:40", "17:40");
+    assertThat(response.evidence())
+        .contains("학교 수업 시간(평일 08:00 ~ 16:30)을 피했어요. 시간표가 다르면 학교 시간을 고정 일정에 넣어 주세요");
+  }
+
+  @Test
+  @DisplayName("학교를 등록했어도 주말이면 수업 시간을 넣지 않는다")
+  void weekendHasNoClassHours() {
+    schoolRegistered();
+    given(fixedBlocks.findByUserIdOrderById(USER_ID)).willReturn(List.of());
+    aiAnswers(null);
+
+    // 10-18 은 일요일 (오늘이 아니라 기상 07:00 + 1시간 = 08:00 부터)
+    DayPlanResponse response = service.suggest(new DayPlanRequest(TODAY.plusDays(1)));
+
+    assertThat(response.drafts().get(0).startTime()).isEqualTo("08:00");
+    assertThat(response.evidence()).noneMatch(line -> line.contains("학교 수업 시간"));
+  }
+
+  @Test
+  @DisplayName("수업 시간과 겹치는 고정 일정이 있으면 기본 수업 시간을 넣지 않고 학생이 넣은 시간만 피한다")
+  void ownSchoolBlockWins() {
+    schoolRegistered();
+    given(fixedBlocks.findByUserIdOrderById(USER_ID))
+        .willReturn(List.of(fixed("수업", LocalTime.of(9, 0), LocalTime.of(15, 0))));
+    aiAnswers(null);
+
+    DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
+
+    // 08:00 ~ 08:50 이 비어 있음 (기본 수업 시간 08:00 ~ 16:30 을 넣었다면 16:40 부터였음)
+    assertThat(response.drafts())
+        .extracting(DayPlanResponse.Draft::startTime)
+        .containsExactly("08:00", "15:10");
+    assertThat(response.evidence()).noneMatch(line -> line.contains("학교 수업 시간"));
+  }
+
+  @Test
+  @DisplayName("그날 학사일정에 휴업이 있으면 수업이 없는 날로 본다")
+  void holidayHasNoClassHours() {
+    schoolRegistered();
+    given(fixedBlocks.findByUserIdOrderById(USER_ID)).willReturn(List.of());
+    given(
+            schoolEvents.findBySchoolCodeAndEventDateBetweenOrderByEventDateAscIdAsc(
+                "7530560", MONDAY, MONDAY))
+        .willReturn(List.of(new SchoolEvent("7530560", MONDAY, "재량휴업일", "", "")));
+    aiAnswers(null);
+
+    DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
+
+    assertThat(response.drafts().get(0).startTime()).isEqualTo("08:00");
+  }
+
+  @Test
+  @DisplayName("16:00 학원처럼 수업 끝과 조금만 겹치는 일정이면 기본 수업 시간을 그대로 피한다 (2026-10-22 QA)")
+  void shortOverlapStillAvoidsClassHours() {
+    schoolRegistered();
+    given(fixedBlocks.findByUserIdOrderById(USER_ID))
+        .willReturn(List.of(fixed("학원", LocalTime.of(16, 0), LocalTime.of(18, 0))));
+    aiAnswers(null);
+
+    DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
+
+    // 전에는 30분 겹친다는 이유로 수업 시간을 빼서 08:00 부터 놓았습니다.
+    assertThat(response.drafts())
+        .extracting(DayPlanResponse.Draft::startTime)
+        .allMatch(start -> start.compareTo("18:00") >= 0);
+    assertThat(response.evidence()).anyMatch(line -> line.contains("학교 수업 시간"));
+  }
+
+  @Test
+  @DisplayName("학교 안 가는 날: 휴업 · 방학 · 공휴일 이름이면 true, 방학식 · 시험이면 false")
+  void noSchoolEvents() {
+    assertThat(DayPlanService.isNoSchoolEvent("재량휴업일")).isTrue();
+    assertThat(DayPlanService.isNoSchoolEvent("여름방학")).isTrue();
+    assertThat(DayPlanService.isNoSchoolEvent("추석")).isTrue();
+    assertThat(DayPlanService.isNoSchoolEvent("개천절")).isTrue();
+    assertThat(DayPlanService.isNoSchoolEvent("대체공휴일")).isTrue();
+    assertThat(DayPlanService.isNoSchoolEvent("방학식")).isFalse();
+    assertThat(DayPlanService.isNoSchoolEvent("2학기 중간고사")).isFalse();
+    assertThat(DayPlanService.isNoSchoolEvent(null)).isFalse();
+
+    assertThat(
+            DayPlanService.overlapMinutes(
+                new DayPlanRule.Span(16 * 60, 18 * 60), DayPlanRule.classHours()))
+        .isEqualTo(30);
+    assertThat(
+            DayPlanService.overlapMinutes(
+                new DayPlanRule.Span(19 * 60, 21 * 60), DayPlanRule.classHours()))
+        .isZero();
+  }
+
+  @Test
+  @DisplayName("근거 첫 줄의 칸 설명: 길이가 같으면 한 번, 다르면 모두 적는다")
+  void blocksText() {
+    assertThat(
+            DayPlanService.blocksTextOf(
+                List.of(new DayPlanRule.Placed(1000, 50), new DayPlanRule.Placed(1060, 50))))
+        .isEqualTo("50분 두 칸");
+    assertThat(
+            DayPlanService.blocksTextOf(
+                List.of(
+                    new DayPlanRule.Placed(1000, 50),
+                    new DayPlanRule.Placed(1060, 50),
+                    new DayPlanRule.Placed(1120, 40))))
+        .isEqualTo("50 · 50 · 40분 세 칸");
   }
 }

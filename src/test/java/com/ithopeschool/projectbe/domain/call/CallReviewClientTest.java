@@ -123,4 +123,12 @@ class CallReviewClientTest {
 
     assertThat(clientWith(KEY, MODEL).review("지침", "자막", SCHEMA)).isEmpty();
   }
+
+  @Test
+  @DisplayName("OpenAI 가 400 으로 거절해도 빈 값이다 (모델 이름 · 칸 모양이 틀린 경우)")
+  void rejectedMeansEmpty() {
+    openAi.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST));
+
+    assertThat(clientWith(KEY, MODEL).review("지침", "자막", SCHEMA)).isEmpty();
+  }
 }

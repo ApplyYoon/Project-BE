@@ -2,6 +2,9 @@ package com.ithopeschool.projectbe.domain.ai;
 
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
+import com.ithopeschool.projectbe.domain.auth.Account;
+import com.ithopeschool.projectbe.domain.auth.AccountRepository;
+import com.ithopeschool.projectbe.domain.call.OtherRoomTalk;
 import com.ithopeschool.projectbe.domain.card.Card;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.fixedblock.FixedBlock;
@@ -18,6 +21,8 @@ import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
 import com.ithopeschool.projectbe.domain.psychtest.PsychScore;
 import com.ithopeschool.projectbe.domain.psychtest.PsychTest;
 import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
+import com.ithopeschool.projectbe.domain.school.SchoolEvent;
+import com.ithopeschool.projectbe.domain.school.SchoolEventRepository;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
 import com.ithopeschool.projectbe.domain.session.StudyTime;
@@ -26,6 +31,7 @@ import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import com.ithopeschool.projectbe.global.time.DayRule;
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -46,6 +52,7 @@ import org.springframework.stereotype.Service;
 //   2. 서버 DB 에서 재료를 모읍니다. (FE 가 보낸 값은 쓰지 않음)
 //      - 처음 설문: 기상 · 취침 시각, 아침형 / 저녁형, 하루 공부 가능 시간
 //      - 고정 일정(학교 · 학원) 중 그날 요일에 있는 것, 그날 이미 있는 카드
+//      - 학교를 등록했으면 평일 기본 수업 시간 (수업 시간과 겹치는 고정 일정이 없고, 방학 · 휴업이 아닌 날)
 //      - 최근 14일 공부 기록(하루 총량), 내 한 칸 길이(BlockLengthService), 심리검사의 계획 낙관
 //      - 진행 중인 목표(D-day · 완주형 하루 분량)와 최근 카드 제목
 //   3. 코드가 숫자 · 시각을 정합니다. (DayPlanRule) 총량 → 공부할 수 있는 시간 → 빈 시간 → 칸 놓기 → 칸마다 목표
@@ -66,6 +73,9 @@ public class DayPlanService {
   // 이 컨디션(1~5) 이하면 가벼운 계획 (총량을 LIGHTER_PERCENT % 로)
   static final int LOW_CONDITION = 2;
   static final int LIGHTER_PERCENT = 60;
+  // 근거 첫 줄에서 칸 수를 세는 말 (칸은 12개까지, DayPlanRule.MAX_BLOCKS)
+  private static final List<String> COUNT_WORDS =
+      List.of("한", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉", "열", "열한", "열두");
 
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
@@ -79,6 +89,9 @@ public class DayPlanService {
   private final BlockLengthService blockLengthService;
   private final AiClient aiClient;
   private final Clock clock;
+  // 학교를 등록했는지(수업 시간을 피할지)와 그날 학사일정(방학 · 휴업)을 봅니다.
+  private final AccountRepository accountRepository;
+  private final SchoolEventRepository schoolEventRepository;
 
   public DayPlanResponse suggest(DayPlanRequest request) {
     Long userId = currentUserProvider.getCurrentUserId();
@@ -90,7 +103,8 @@ public class DayPlanService {
       throw new ApiException(
           ErrorCode.VALIDATION_ERROR, "오늘부터 " + MAX_DAYS_AHEAD + "일 안의 날짜를 보내 주세요");
     }
-    List<String> evidence = new ArrayList<>();
+    // 시간 이유(공부할 수 있는 시간 · 수업 · 고정 일정 · 그날 카드 · 저녁형)의 근거 문장들. 응답의 순서는 evidenceOf 에 있습니다.
+    List<String> timeLines = new ArrayList<>();
 
     // 2) 재료
     Optional<OnboardingAnswer> onboarding =
@@ -121,7 +135,7 @@ public class DayPlanService {
             new DayPlanRule.Span(
                 DayPlanRule.dayMinutesOf(block.getStartTime()),
                 DayPlanRule.dayMinutesOf(block.getEndTime())));
-        evidence.add(
+        timeLines.add(
             "고정 일정 「"
                 + block.getTitle()
                 + "」 "
@@ -131,8 +145,11 @@ public class DayPlanService {
                 + " 을 피했어요");
       }
     }
-    if (busy.isEmpty()) {
-      evidence.add("그날 고정 일정이 없어요. 학교 · 학원 시간을 고정 일정에 넣으면 피해서 짜요");
+    String classHoursLine = classHoursLineOf(userId, date, busy);
+    if (classHoursLine != null) {
+      timeLines.add(classHoursLine);
+    } else if (busy.isEmpty()) {
+      timeLines.add("그날 고정 일정이 없어요. 학교 · 학원 시간을 고정 일정에 넣으면 피해서 짜요");
     }
     int alreadyPlanned = 0;
     int dayCards = 0;
@@ -148,52 +165,48 @@ public class DayPlanService {
       }
     }
     if (dayCards > 0) {
-      evidence.add("그날 이미 있는 카드 " + dayCards + "장의 앞뒤 10분을 비웠어요");
+      timeLines.add("그날 이미 있는 카드 " + dayCards + "장의 앞뒤 10분을 비웠어요");
     }
 
     // 3) 숫자 · 시각
     BlockLength.Choice block = blockLengthService.choose(userId);
-    evidence.add(0, block.evidence());
     DayPlanRule.Total total =
         DayPlanRule.totalMinutesOf(
             dailyMinutesOf(userId, today), selfDaily, planOptimismHigh, alreadyPlanned);
-    evidence.addAll(1, total.evidence());
+    int target = total.minutes();
     // 오늘 컨디션이 낮다고 했으면(1~2) 총량을 60% 로 줄여 가벼운 계획을 짭니다. (2026-10-18 계획 핑퐁)
     // 학생은 코치 대화에서 [더 늘려 줘] 로 다시 늘릴 수 있습니다. (DayPlanReviseService)
     // 한 칸 길이는 그대로 두고 총량만 줄이므로, 칸 수가 줄어듭니다. (한 칸은 30분 이상, StudyBlock)
-    if (request.condition() != null
-        && request.condition() <= LOW_CONDITION
-        && total.minutes() >= DayPlanRule.MIN_BLOCK) {
-      int lighter = Math.max(DayPlanRule.MIN_BLOCK, total.minutes() * LIGHTER_PERCENT / 100);
-      evidence.add("오늘 컨디션이 낮다고 해서 " + total.minutes() + "분 대신 " + lighter + "분으로 가볍게 짰어요");
-      total = new DayPlanRule.Total(lighter, total.evidence());
+    boolean lighter =
+        request.condition() != null
+            && request.condition() <= LOW_CONDITION
+            && target >= DayPlanRule.MIN_BLOCK;
+    if (lighter) {
+      // 총량처럼 10분 단위로 반올림합니다.   120분의 60% = 72 → 70
+      int reduced = target * LIGHTER_PERCENT / 100;
+      target = Math.max(DayPlanRule.MIN_BLOCK, (int) Math.round(reduced / 10.0) * 10);
     }
-    if (total.minutes() < DayPlanRule.MIN_BLOCK) {
-      evidence.add("그날은 이미 충분히 계획했어요");
-      return new DayPlanResponse(date, block.minutes(), total.minutes(), List.of(), evidence);
+    if (target < DayPlanRule.MIN_BLOCK) {
+      return emptyPlan(date, block, "그날은 이미 충분히 계획했어요", timeLines, total);
     }
 
+    // 오늘이면 지금 시각 뒤부터 짭니다. 근거 문장은 늦춘 뒤의 실제 범위를 말합니다.
     DayPlanRule.Span window = DayPlanRule.studyWindowOf(sleep, wake);
-    evidence.add(windowEvidence(sleep, wake, window));
-    if (date.equals(today)) {
-      window = new DayPlanRule.Span(Math.max(window.start(), nowDayMinutes()), window.end());
+    boolean fromNow = date.equals(today) && nowDayMinutes() > window.start();
+    if (fromNow) {
+      window = new DayPlanRule.Span(nowDayMinutes(), window.end());
     }
+    timeLines.add(0, windowEvidence(sleep, wake, window, fromNow));
     List<DayPlanRule.Span> free = DayPlanRule.freeSlotsOf(window, busy);
-    List<DayPlanRule.Placed> placed =
-        DayPlanRule.placeBlocks(free, block.minutes(), total.minutes(), night);
+    List<DayPlanRule.Placed> placed = DayPlanRule.placeBlocks(free, block.minutes(), target, night);
     if (night) {
-      evidence.add("저녁형이라고 해서 늦은 시간부터 채웠어요");
+      timeLines.add("저녁형이라고 해서 늦은 시간부터 채웠어요");
     }
     if (placed.isEmpty()) {
-      evidence.add("그날은 카드를 넣을 빈 시간이 없어요");
-      return new DayPlanResponse(date, block.minutes(), total.minutes(), List.of(), evidence);
+      return emptyPlan(date, block, "그날은 카드를 넣을 빈 시간이 없어요", timeLines, total);
     }
-    int left = total.minutes() - placed.stream().mapToInt(DayPlanRule.Placed::minutes).sum();
-    if (left >= DayPlanRule.MIN_BLOCK) {
-      evidence.add("빈 시간이 모자라서 " + left + "분은 넣지 못했어요");
-    } else if (left > 0) {
-      evidence.add("남은 " + left + "분은 " + DayPlanRule.MIN_BLOCK + "분보다 짧아서 칸을 만들지 않았어요");
-    }
+    int placedMinutes = placed.stream().mapToInt(DayPlanRule.Placed::minutes).sum();
+    String headline = headlineOf(total, target, lighter, alreadyPlanned > 0, placed);
 
     // 칸마다 목표
     List<Goal> activeGoals = new ArrayList<>();
@@ -215,7 +228,9 @@ public class DayPlanService {
       goalsById.put(id, goal);
     }
     List<DayPlanRule.GoalInfo> rotation = DayPlanRule.goalRotation(goalInfos, placed.size());
-    evidence.add(rotation.isEmpty() ? "진행 중인 목표가 없어서 최근 카드로 채웠어요" : "D-day 가 가까운 목표를 더 많이 넣었어요");
+    String goalLine =
+        rotation.isEmpty() ? "진행 중인 목표가 없어서 최근 카드로 채웠어요" : "D-day 가 가까운 목표를 더 많이 넣었어요";
+    List<String> evidence = evidenceOf(headline, timeLines, block, goalLine, total);
 
     // 4) 글 (AI, 안 되면 기본 글)
     List<Card> myCards = cardRepository.findByUserIdOrderById(userId);
@@ -257,10 +272,161 @@ public class DayPlanService {
               texts.get(i).checklist(),
               goal == null ? null : goal.id()));
     }
-    return new DayPlanResponse(date, block.minutes(), total.minutes(), drafts, evidence);
+    return new DayPlanResponse(date, block.minutes(), placedMinutes, drafts, evidence);
   }
 
-  // 학생이 알려 준 것(준비하는 것 · 오늘 과목)을 AI 입력 줄로. 없으면 빈 목록
+  // 놓을 칸이 없을 때의 응답. totalMinutes 는 놓은 칸이 없으니 0 입니다.
+  private static DayPlanResponse emptyPlan(
+      LocalDate date,
+      BlockLength.Choice block,
+      String headline,
+      List<String> timeLines,
+      DayPlanRule.Total total) {
+    return new DayPlanResponse(
+        date, block.minutes(), 0, List.of(), evidenceOf(headline, timeLines, block, null, total));
+  }
+
+  // 응답의 근거 문장 순서. FE 는 앞의 몇 줄만 보여 주므로 최종 결과와 가까운 것부터 둡니다.
+  //   1. 최종 결과 한 문장 (headlineOf)
+  //   2. 시간 이유: 공부할 수 있는 시간 범위 → 수업 시간 · 고정 일정 → 그날 카드 → 저녁형
+  //   3. 한 칸 길이 → 4. 목표 순서 (없으면 뺌) → 5. 하루 양을 정한 자세한 이유 (DayPlanRule.totalMinutesOf)
+  private static List<String> evidenceOf(
+      String headline,
+      List<String> timeLines,
+      BlockLength.Choice block,
+      String goalLine,
+      DayPlanRule.Total total) {
+    List<String> evidence = new ArrayList<>();
+    evidence.add(headline);
+    evidence.addAll(timeLines);
+    evidence.add(block.evidence());
+    if (goalLine != null) {
+      evidence.add(goalLine);
+    }
+    evidence.addAll(total.evidence());
+    return evidence;
+  }
+
+  // 근거 첫 줄: 최종 결과를 한 문장으로. 총량 → 컨디션 → 남은 시간 버림을 최종 숫자로 합칩니다.
+  //   "최근 평균으로 하루 120분을 잡아 50분 두 칸이 됐어요"
+  //   "오늘 컨디션이 낮아 70분으로 줄여, 30분이 안 되는 20분은 빼서 50분 한 칸이 됐어요"
+  //   "그날 이미 있는 카드를 빼고 60분이 남아, 30분이 안 되는 10분은 빼서 50분 한 칸이 됐어요"
+  static String headlineOf(
+      DayPlanRule.Total total,
+      int target,
+      boolean lighter,
+      boolean hasDayCards,
+      List<DayPlanRule.Placed> placed) {
+    String amount;
+    if (lighter) {
+      amount = "오늘 컨디션이 낮아 " + target + "분으로 줄여";
+    } else if (hasDayCards) {
+      amount = "그날 이미 있는 카드를 빼고 " + target + "분이 남아";
+    } else {
+      amount = total.basis() + " 하루 " + target + "분을 잡아";
+    }
+    int left = target - placed.stream().mapToInt(DayPlanRule.Placed::minutes).sum();
+    String dropped = "";
+    if (left >= DayPlanRule.MIN_BLOCK) {
+      dropped = ", 빈 시간이 모자라 " + left + "분은 못 넣고";
+    } else if (left > 0) {
+      dropped = ", " + DayPlanRule.MIN_BLOCK + "분이 안 되는 " + left + "분은 빼서";
+    }
+    return amount + dropped + " " + blocksTextOf(placed) + "이 됐어요";
+  }
+
+  // 놓은 칸을 짧게   [50, 50] → "50분 두 칸",  [50, 50, 40] → "50 · 50 · 40분 세 칸"
+  static String blocksTextOf(List<DayPlanRule.Placed> placed) {
+    List<String> lengths = new ArrayList<>();
+    boolean sameLength = true;
+    for (DayPlanRule.Placed spot : placed) {
+      lengths.add(String.valueOf(spot.minutes()));
+      if (spot.minutes() != placed.get(0).minutes()) {
+        sameLength = false;
+      }
+    }
+    // 길이가 모두 같으면 한 번만 씁니다.
+    if (sameLength) {
+      lengths = List.of(lengths.get(0));
+    }
+    String count =
+        placed.size() <= COUNT_WORDS.size()
+            ? COUNT_WORDS.get(placed.size() - 1)
+            : String.valueOf(placed.size());
+    return String.join(" · ", lengths) + "분 " + count + " 칸";
+  }
+
+  // 학교 수업 시간을 피해야 하는 날이면 기본 수업 시간(08:00 ~ 16:30)을 busy 에 넣고 근거 문장을 돌려줍니다.
+  // 넣지 않는 날은 null 입니다.
+  //   - 학교를 등록하지 않았거나, 주말이거나
+  //   - 고정 일정이 수업 시간의 절반 넘게 덮으면 (학생이 학교 시간을 직접 넣은 것이라 그게 더 정확함)
+  //     학원처럼 저녁에만 있거나, 16:00 ~ 18:00 처럼 수업 끝과 조금만 겹치는 일정은 학교 시간이 아니라서 넣습니다.
+  //     (전에는 조금만 겹쳐도 넣지 않아서, 평일 오전 9시에 카드가 들어갔습니다. 2026-10-22 QA)
+  //   - 그날 학사일정이 학교 안 가는 날이면 (isNoSchoolEvent: 방학 · 휴업 · 공휴일)
+  private String classHoursLineOf(Long userId, LocalDate date, List<DayPlanRule.Span> busy) {
+    String schoolCode =
+        accountRepository.findByUserId(userId).map(Account::getSchoolCode).orElse(null);
+    if (schoolCode == null || schoolCode.isBlank()) {
+      return null;
+    }
+    DayOfWeek day = date.getDayOfWeek();
+    if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
+      return null;
+    }
+    DayPlanRule.Span classHours = DayPlanRule.classHours();
+    int coveredMinutes = 0;
+    for (DayPlanRule.Span span : busy) {
+      coveredMinutes += overlapMinutes(span, classHours);
+    }
+    if (coveredMinutes * 2 > classHours.end() - classHours.start()) {
+      return null;
+    }
+    for (SchoolEvent event :
+        schoolEventRepository.findBySchoolCodeAndEventDateBetweenOrderByEventDateAscIdAsc(
+            schoolCode, date, date)) {
+      if (isNoSchoolEvent(event.getName())) {
+        return null;
+      }
+    }
+    busy.add(classHours);
+    return "학교 수업 시간(평일 "
+        + DayPlanRule.CLASS_START
+        + " ~ "
+        + DayPlanRule.CLASS_END
+        + ")을 피했어요. 시간표가 다르면 학교 시간을 고정 일정에 넣어 주세요";
+  }
+
+  // 두 시간 칸이 겹치는 분. 안 겹치면 0
+  //   16:00 ~ 18:00 과 08:00 ~ 16:30  →  30
+  static int overlapMinutes(DayPlanRule.Span a, DayPlanRule.Span b) {
+    return Math.max(0, Math.min(a.end(), b.end()) - Math.max(a.start(), b.start()));
+  }
+
+  // 학사일정 이름에 이 말이 들어 있으면 학교 안 가는 공휴일로 봅니다. (NEIS 학사일정에 쓰이는 이름, 2026-10-22 QA)
+  static final List<String> HOLIDAY_WORDS =
+      List.of(
+          "공휴일", "신정", "설날", "삼일절", "3·1절", "어린이날", "부처님", "석가탄신일", "현충일", "광복절", "추석", "개천절",
+          "한글날", "성탄절", "기독탄신일");
+
+  // 학교 안 가는 날의 학사일정인지
+  //   "재량휴업일" · "여름방학" · "추석" · "대체공휴일"  →  true
+  //   "방학식" (학교에 가는 날) · "중간고사"              →  false
+  static boolean isNoSchoolEvent(String name) {
+    if (name == null) {
+      return false;
+    }
+    if (name.contains("휴업") || (name.contains("방학") && !name.contains("방학식"))) {
+      return true;
+    }
+    for (String word : HOLIDAY_WORDS) {
+      if (name.contains(word)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 학생이 알려 준 것(준비하는 것 · 오늘 과목 · 다른 방에서 오늘 한 이야기)을 AI 입력 줄로. 없으면 빈 목록
   static List<String> extraLinesOf(DayPlanRequest request) {
     List<String> lines = new ArrayList<>();
     if (request.focus() != null) {
@@ -269,6 +435,8 @@ public class DayPlanService {
     if (!request.subjects().isEmpty()) {
       lines.add("오늘 배운 과목: " + String.join(", ", request.subjects()));
     }
+    // 위기 표현이 있는 줄은 빼고, 6줄 · 80자로 줄여서 한 줄로 붙입니다. (OtherRoomTalk)
+    OtherRoomTalk.planLine(request.otherRooms()).ifPresent(lines::add);
     return lines;
   }
 
@@ -300,10 +468,16 @@ public class DayPlanService {
     return (minutes + 9) / 10 * 10;
   }
 
-  // 공부할 수 있는 시간의 근거 문장
-  private static String windowEvidence(LocalTime sleep, LocalTime wake, DayPlanRule.Span window) {
+  // 공부할 수 있는 시간의 근거 문장. window 는 실제로 쓴 범위입니다. (오늘이면 지금 시각으로 늦춘 뒤의 것)
+  // fromNow: 오늘이라 시작을 지금 시각으로 늦췄는지
+  private static String windowEvidence(
+      LocalTime sleep, LocalTime wake, DayPlanRule.Span window, boolean fromNow) {
     String range =
         DayPlanRule.timeTextOf(window.start()) + " ~ " + DayPlanRule.timeTextOf(window.end());
+    if (fromNow) {
+      String end = sleep == null || wake == null ? "" : "취침 " + sleep + " 전까지, ";
+      return "오늘은 지금 시각 뒤부터 " + end + range + " 사이에 짰어요";
+    }
     if (sleep == null || wake == null) {
       return "취침 · 기상 시각을 아직 몰라서 " + range + " 사이에 짰어요. 관리 설정에서 넣으면 맞춰 짜요";
     }

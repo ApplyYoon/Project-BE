@@ -28,13 +28,17 @@ public class ChatController {
 
   // 채팅 기록을 하나 만들기는 하지만, 응답의 중심이 "AI 의 첫 말" 이라 말 보내기와 같이 200 으로 답합니다.
   // grade · classNo 를 주면 그 반의 오늘 시간표도 대본에 넣습니다. (반은 서버에 저장하지 않고 FE 가 보냅니다)
-  @Operation(summary = "상담 채팅 열기 (통화와 같은 대본 + 오늘 학교 정보 · 숫자는 서버 기록 · AI 의 첫 인사 · 배포 서버에서만 켜짐)")
+  // greet=false 면 AI 의 첫 인사 없이 채팅 번호만 만듭니다. 학생이 먼저 말을 보내는 화면에서 씁니다. (채팅 수정 1)
+  @Operation(
+      summary =
+          "상담 채팅 열기 (통화와 같은 대본 + 오늘 학교 정보 · 숫자는 서버 기록 · AI 의 첫 인사(greet=false 면 생략) · 배포 서버에서만 켜짐)")
   @PostMapping
   public ChatReplyResponse start(
       @Valid @RequestBody CallSessionRequest request,
       @RequestParam(required = false) Integer grade,
-      @RequestParam(required = false) Integer classNo) {
-    return chatService.start(request, grade, classNo);
+      @RequestParam(required = false) Integer classNo,
+      @RequestParam(defaultValue = "true") boolean greet) {
+    return chatService.start(request, grade, classNo, greet);
   }
 
   @Operation(summary = "상담 채팅에 말 보내기 (지금까지의 대화 전체를 보냄 · 위기 표현이면 도움 안내 · 대화는 저장 안 함)")

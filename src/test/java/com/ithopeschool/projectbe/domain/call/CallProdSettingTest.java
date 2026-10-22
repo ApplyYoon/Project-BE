@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.Environment;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -29,11 +30,18 @@ class CallProdSettingTest {
     // 확인 통화 문(2026-10-18)도 Controller 가 쓰니 가짜로 둡니다.
     @MockitoBean private CheckCallService checkCallService;
     @Autowired private CallKeyClient callKeyClient;
+    @Autowired private Environment environment;
 
     @Test
     @DisplayName("통화가 켜진다")
     void callIsOn() {
       assertThat(callKeyClient.isEnabled()).isTrue();
+    }
+
+    @Test
+    @DisplayName("AI_CALL_MAX_SECONDS 를 넣지 않으면 통화 한 번 최대 길이는 180초(3분)다 (통화 수정 8)")
+    void callMaxSecondsDefaultsToThreeMinutes() {
+      assertThat(environment.getProperty("app.ai.call-max-seconds", Integer.class)).isEqualTo(180);
     }
   }
 
