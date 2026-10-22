@@ -119,6 +119,11 @@ class ChatServiceTest {
     return new ChatMessageRequest(lines);
   }
 
+  // 말 보내기의 지시문은 끝에 직전 AI 답의 [이미 한 말] 칸이 붙습니다. (RepeatCheck.section)
+  private static String alreadySaid(String script, ChatMessageRequest request) {
+    return script + RepeatCheck.section(request.lines());
+  }
+
   // 열려 있는 내 채팅 하나를 DB 에 둡니다.
   private CallRecord givenOpenChat() {
     CallRecord chat = new CallRecord(USER_ID, TODAY, NOW, null, CallChannel.CHAT);
@@ -245,7 +250,7 @@ class ChatServiceTest {
   void sendsAMessage() {
     givenOpenChat();
     ChatMessageRequest request = said("폰 보다가 늦게 시작했어");
-    given(chatAiClient.turn(SCRIPT, request.lines()))
+    given(chatAiClient.turn(alreadySaid(SCRIPT, request), request.lines()))
         .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("그때 폰은 어디 있었어?")));
 
     ChatReplyResponse response = service.send(CHAT_ID, request);
@@ -284,7 +289,7 @@ class ChatServiceTest {
     service.send(CHAT_ID, said("죽고 싶어"));
 
     ChatMessageRequest next = said("죽고 싶어", "그냥 오늘 너무 힘들었어");
-    given(chatAiClient.turn(SCRIPT + ChatService.CRISIS_FOLLOW_UP, next.lines()))
+    given(chatAiClient.turn(alreadySaid(SCRIPT + ChatService.CRISIS_FOLLOW_UP, next), next.lines()))
         .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("많이 힘들었구나. 무슨 일이 있었어?")));
     ChatReplyResponse response = service.send(CHAT_ID, next);
 
@@ -373,7 +378,7 @@ class ChatServiceTest {
   void sendsCleanedButtons() {
     givenOpenChat();
     ChatMessageRequest request = said("오늘 좀 피곤해");
-    given(chatAiClient.turn(SCRIPT, request.lines()))
+    given(chatAiClient.turn(alreadySaid(SCRIPT, request), request.lines()))
         .willReturn(
             Optional.of(
                 new ChatAiClient.ChatTurn(
@@ -524,7 +529,7 @@ class ChatServiceTest {
     givenOpenChat();
     chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, ChatTopic.CARD_FAIL);
     ChatMessageRequest request = said("어제 미루다가 그냥 잤어");
-    given(chatAiClient.turn(SCRIPT, request.lines()))
+    given(chatAiClient.turn(alreadySaid(SCRIPT, request), request.lines()))
         .willReturn(
             Optional.of(
                 new ChatAiClient.ChatTurn(
@@ -544,7 +549,7 @@ class ChatServiceTest {
   void noTopicMeansNoTags() {
     givenOpenChat();
     ChatMessageRequest request = said("폰 봤어");
-    given(chatAiClient.turn(SCRIPT, request.lines()))
+    given(chatAiClient.turn(alreadySaid(SCRIPT, request), request.lines()))
         .willReturn(
             Optional.of(new ChatAiClient.ChatTurn("그랬구나", List.of(), null, List.of("phone"))));
 
@@ -686,7 +691,10 @@ class ChatServiceTest {
     ChatMessageRequest request = new ChatMessageRequest(said("이 문제 어디서 틀렸어?").lines(), IMAGE);
     given(
             chatAiClient.turnForTutor(
-                SCRIPT + ChatRoom.TUTOR.imageRule(), request.lines(), IMAGE, true))
+                alreadySaid(SCRIPT + ChatRoom.TUTOR.imageRule(), request),
+                request.lines(),
+                IMAGE,
+                true))
         .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("3번 문제 맞지? 어디까지 풀었어?")));
 
     ChatReplyResponse response = service.send(CHAT_ID, request);
@@ -702,7 +710,9 @@ class ChatServiceTest {
   void sendWithImageWhenRoomIsLost() {
     givenOpenChat();
     ChatMessageRequest request = new ChatMessageRequest(said("이거 내 계획표야").lines(), IMAGE);
-    given(chatAiClient.turnWithImage(SCRIPT + ChatRoom.COACH.imageRule(), request.lines(), IMAGE))
+    given(
+            chatAiClient.turnWithImage(
+                alreadySaid(SCRIPT + ChatRoom.COACH.imageRule(), request), request.lines(), IMAGE))
         .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("계획표 봤어!")));
 
     assertThat(service.send(CHAT_ID, request).reply()).isEqualTo("계획표 봤어!");
@@ -713,7 +723,7 @@ class ChatServiceTest {
   void sendWithoutImage() {
     givenOpenChat();
     ChatMessageRequest request = said("폰 봤어");
-    given(chatAiClient.turn(SCRIPT, request.lines()))
+    given(chatAiClient.turn(alreadySaid(SCRIPT, request), request.lines()))
         .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("그랬구나")));
 
     service.send(CHAT_ID, request);
@@ -758,7 +768,9 @@ class ChatServiceTest {
         List.of(
             new ChatReplyResponse.Source("함수의 극한 - 위키백과", "https://ko.wikipedia.org/wiki/극한"),
             new ChatReplyResponse.Source("광고", "https://ads.example.com/x"));
-    given(chatAiClient.turnForTutor(SCRIPT + STANDARDS, request.lines(), null, true))
+    given(
+            chatAiClient.turnForTutor(
+                alreadySaid(SCRIPT + STANDARDS, request), request.lines(), null, true))
         .willReturn(
             Optional.of(
                 new ChatAiClient.ChatTurn(
@@ -788,11 +800,11 @@ class ChatServiceTest {
     ChatAiClient.ChatTurn searched =
         new ChatAiClient.ChatTurn("찾아봤어.", List.of(), null, List.of(), List.of(), true);
     ChatAiClient.ChatTurn notSearched = ChatAiClient.ChatTurn.textOnly("알고 있는 걸로 말할게.");
-    given(chatAiClient.turnForTutor(SCRIPT, request.lines(), null, true))
+    given(chatAiClient.turnForTutor(alreadySaid(SCRIPT, request), request.lines(), null, true))
         .willReturn(Optional.of(notSearched))
         .willReturn(Optional.of(searched))
         .willReturn(Optional.of(searched));
-    given(chatAiClient.turnForTutor(SCRIPT, request.lines(), null, false))
+    given(chatAiClient.turnForTutor(alreadySaid(SCRIPT, request), request.lines(), null, false))
         .willReturn(Optional.of(notSearched));
 
     service.send(CHAT_ID, request); // 검색 안 함 → 세지 않음
@@ -800,8 +812,10 @@ class ChatServiceTest {
     service.send(CHAT_ID, request); // 2번 (한도)
     service.send(CHAT_ID, request); // 도구 없이
 
-    verify(chatAiClient, times(3)).turnForTutor(SCRIPT, request.lines(), null, true);
-    verify(chatAiClient, times(1)).turnForTutor(SCRIPT, request.lines(), null, false);
+    verify(chatAiClient, times(3))
+        .turnForTutor(alreadySaid(SCRIPT, request), request.lines(), null, true);
+    verify(chatAiClient, times(1))
+        .turnForTutor(alreadySaid(SCRIPT, request), request.lines(), null, false);
   }
 
   @Test
@@ -825,6 +839,142 @@ class ChatServiceTest {
 
     assertThat(response.reply()).isEqualTo("왜 0 이라고 생각했어?");
     assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(script);
+  }
+
+  // ---- 같은 말 되풀이 막기 (채팅 수정 3) ----
+
+  // 코치가 "오늘은 10분만 해도 충분해." 로 답한 뒤 학생이 다른 이야기를 한 대화
+  private static final ChatMessageRequest AFTER_TEN_MINUTES =
+      new ChatMessageRequest(
+          List.of(
+              new Line("ai", "어제 어땠어?"),
+              new Line("me", "너무 피곤했어"),
+              new Line("ai", "오늘은 10분만 해도 충분해. 피곤하면 짧게 하자."),
+              new Line("me", "미적분 때문에 불안해")));
+
+  private static final String SAME_AGAIN = "오늘은 10분만 해도 충분해! 미적분도 천천히 하자.";
+  private static final String FRESH = "미적분이 불안하구나. 어느 단원이 제일 걱정돼?";
+
+  @Test
+  @DisplayName("말 보내기의 지시문 끝에 직전 AI 답의 첫 문장을 [이미 한 말] 칸으로 붙인다")
+  void sendAddsAlreadySaid() {
+    givenOpenChat();
+    given(chatAiClient.turn(any(), anyList()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(FRESH)));
+
+    service.send(CHAT_ID, AFTER_TEN_MINUTES);
+
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    verify(chatAiClient).turn(instructions.capture(), eq(AFTER_TEN_MINUTES.lines()));
+    assertThat(instructions.getValue())
+        .startsWith(SCRIPT)
+        .contains("[이미 한 말]")
+        .contains("- \"어제 어땠어?\"")
+        .contains("- \"오늘은 10분만 해도 충분해.\"")
+        .contains("다시 쓰지 말고");
+    // 기억해 둔 대본에는 남지 않습니다.
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(SCRIPT);
+  }
+
+  @Test
+  @DisplayName("계획 · 과목 쌤 방에도 [이미 한 말] 칸을 붙인다")
+  void allRoomsGetAlreadySaid() {
+    givenOpenChat();
+    chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, null, ChatRoom.TUTOR);
+    given(chatAiClient.turnForTutor(any(), anyList(), any(), eq(true)))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(FRESH)));
+
+    service.send(CHAT_ID, AFTER_TEN_MINUTES);
+
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    verify(chatAiClient)
+        .turnForTutor(instructions.capture(), eq(AFTER_TEN_MINUTES.lines()), eq(null), eq(true));
+    assertThat(instructions.getValue()).contains("[이미 한 말]");
+
+    // 계획 방은 상담 방과 같은 길(turn)로 갑니다.
+    chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, null, ChatRoom.PLANNER);
+    given(chatAiClient.turn(any(), anyList()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(FRESH)));
+    service.send(CHAT_ID, AFTER_TEN_MINUTES);
+    verify(chatAiClient).turn(instructions.capture(), eq(AFTER_TEN_MINUTES.lines()));
+    assertThat(instructions.getValue()).contains("[이미 한 말]");
+  }
+
+  @Test
+  @DisplayName("새 답이 직전 AI 답과 같은 구절이면 한도를 하나 더 쓰고 딱 한 번 다시 받는다")
+  void repeatAsksOnceMore() {
+    givenOpenChat();
+    given(chatAiClient.turn(any(), anyList()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(SAME_AGAIN)))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(FRESH)));
+
+    ChatReplyResponse response = service.send(CHAT_ID, AFTER_TEN_MINUTES);
+
+    assertThat(response.reply()).isEqualTo(FRESH);
+    verify(chatAiClient, times(2)).turn(any(), anyList());
+    // 처음 한 번(checkAiReady) + 다시 받기 한 번
+    verify(gptUsageGuard, times(2)).tryUseText(USER_ID, GptUsageKind.CHAT);
+  }
+
+  @Test
+  @DisplayName("반복이 아니면 다시 부르지 않는다")
+  void noRepeatAsksOnce() {
+    givenOpenChat();
+    given(chatAiClient.turn(any(), anyList()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(FRESH)));
+
+    assertThat(service.send(CHAT_ID, AFTER_TEN_MINUTES).reply()).isEqualTo(FRESH);
+    verify(chatAiClient, times(1)).turn(any(), anyList());
+    verify(gptUsageGuard, times(1)).tryUseText(USER_ID, GptUsageKind.CHAT);
+  }
+
+  @Test
+  @DisplayName("반복이어도 오늘 한도가 없으면 다시 부르지 않고 첫 답을 쓴다")
+  void repeatWithoutQuotaKeepsFirst() {
+    givenOpenChat();
+    // 처음 한 번은 쓸 수 있고, 다시 받으려 할 때는 한도가 없습니다.
+    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.CHAT)).willReturn(true, false);
+    given(chatAiClient.turn(any(), anyList()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(SAME_AGAIN)));
+
+    assertThat(service.send(CHAT_ID, AFTER_TEN_MINUTES).reply()).isEqualTo(SAME_AGAIN);
+    verify(chatAiClient, times(1)).turn(any(), anyList());
+  }
+
+  @Test
+  @DisplayName("두 번째 답도 반복이면 그대로 쓴다 (세 번째는 부르지 않음)")
+  void secondRepeatIsKept() {
+    givenOpenChat();
+    String sameTwice = "오늘은 10분만 해도 충분해. 진짜야.";
+    given(chatAiClient.turn(any(), anyList()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(SAME_AGAIN)))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(sameTwice)));
+
+    assertThat(service.send(CHAT_ID, AFTER_TEN_MINUTES).reply()).isEqualTo(sameTwice);
+    verify(chatAiClient, times(2)).turn(any(), anyList());
+  }
+
+  @Test
+  @DisplayName("다시 받은 답도 깎아내리는 말 검사를 거친다")
+  void retriedReplyIsStillChecked() {
+    givenOpenChat();
+    given(chatAiClient.turn(any(), anyList()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(SAME_AGAIN)))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("이것도 못 하다니 한심해.")));
+
+    assertThat(service.send(CHAT_ID, AFTER_TEN_MINUTES).reply()).isEqualTo(ChatService.SAFE_REPLY);
+  }
+
+  @Test
+  @DisplayName("위기 표현이 있으면 반복 검사 없이 정해 둔 안내로 답한다 (AI 를 부르지 않음)")
+  void crisisComesBeforeRepeatCheck() {
+    givenOpenChat();
+    ChatMessageRequest request =
+        new ChatMessageRequest(
+            List.of(new Line("ai", ChatService.CHAT_CRISIS_REPLY), new Line("me", "죽고 싶어")));
+
+    assertThat(service.send(CHAT_ID, request).reply()).isEqualTo(ChatService.CHAT_CRISIS_REPLY);
+    verify(chatAiClient, never()).turn(any(), anyList());
   }
 
   @Test
