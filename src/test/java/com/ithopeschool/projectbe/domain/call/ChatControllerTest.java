@@ -110,6 +110,20 @@ class ChatControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("speaker 는 ai 또는 me 예요"));
 
+    // 다른 방 이야기(otherRooms)는 12줄 · 한 줄 200자까지 (2026-10-22)
+    String thirteen = String.join(",", Collections.nCopies(13, "\"상담: 응\""));
+    postJson(
+            "/api/v1/chats/12/messages",
+            "{\"lines\":[" + line + "],\"otherRooms\":[" + thirteen + "]}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("다른 방 이야기(otherRooms)는 12줄까지 보낼 수 있어요"));
+    String longLine = "\"" + "가".repeat(201) + "\"";
+    postJson(
+            "/api/v1/chats/12/messages",
+            "{\"lines\":[" + line + "],\"otherRooms\":[" + longLine + "]}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("다른 방 이야기 한 줄은 200자 이하로 보내 주세요"));
+
     verifyNoInteractions(chatService);
   }
 
