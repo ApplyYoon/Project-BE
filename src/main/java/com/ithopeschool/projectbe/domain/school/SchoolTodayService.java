@@ -68,11 +68,13 @@ public class SchoolTodayService {
 
   // 내 학교의 오늘 정보. 학교를 안 골랐으면 school 이 null 입니다.
   // grade · classNo 를 둘 다 주면 그 반의 오늘 시간표도 넣습니다. 둘 다 안 주면 시간표는 null 입니다.
+  // 토 · 일에는 시간표 · 급식을 다음 월요일 것으로 넣습니다. (schoolDayOf, 응답의 schoolDay)
   public SchoolTodayResponse getMyToday(Integer grade, Integer classNo) {
     checkClass(grade, classNo);
     Long userId = currentUserProvider.getCurrentUserId();
     Instant now = clock.instant();
     LocalDate today = DayRule.dateOf(now);
+    LocalDate schoolDay = schoolDayOf(today);
     Optional<Account> account = accountRepository.findByUserId(userId);
     String schoolCode = account.map(Account::getSchoolCode).orElse(null);
     if (schoolCode == null || schoolCode.isBlank()) {
@@ -86,10 +88,10 @@ public class SchoolTodayService {
       // 지난 날의 급식 · 시간표는 메모리에서 지웁니다. (메모리가 계속 늘지 않게)
       savedMeals.values().removeIf(saved -> saved.day().isBefore(today));
       savedTimetables.values().removeIf(saved -> saved.day().isBefore(today));
-      meals.addAll(mealsOf(officeCode.get(), schoolCode, today, now));
-      meals.addAll(mealsOf(officeCode.get(), schoolCode, today.plusDays(1), now));
+      meals.addAll(mealsOf(officeCode.get(), schoolCode, schoolDay, now));
+      meals.addAll(mealsOf(officeCode.get(), schoolCode, schoolDay.plusDays(1), now));
       if (grade != null) {
-        timetable.addAll(timetableOf(officeCode.get(), schoolCode, grade, classNo, today, now));
+        timetable.addAll(timetableOf(officeCode.get(), schoolCode, grade, classNo, schoolDay, now));
       }
     }
     // 키가 없는데 5줄이 꽉 차서 왔으면 6 · 7교시가 잘렸을 수 있습니다.
@@ -120,21 +122,36 @@ public class SchoolTodayService {
         timetable,
         timetablePartial,
         meals,
-        events);
+        events,
+        schoolDay);
+  }
+
+  // 시간표 · 급식을 보여 줄 날입니다. 평일이면 오늘, 토 · 일이면 다음 월요일입니다. (2026-10-22)
+  // 주말에 열면 빈 칸("오늘은 수업이 없어요") 대신 월요일 것을 미리 보여 줍니다. 시연도 주말에 할 수 있게요.
+  // 평일 공휴일 · 방학은 바꾸지 않습니다. (그날은 지금처럼 비어 있음)
+  //   10-24(토) → 10-26(월)  /  10-25(일) → 10-26(월)  /  10-23(금) → 10-23(금)
+  static LocalDate schoolDayOf(LocalDate today) {
+    return switch (today.getDayOfWeek()) {
+      case SATURDAY -> today.plusDays(2);
+      case SUNDAY -> today.plusDays(1);
+      default -> today;
+    };
   }
 
   // 예약 작업 school-daily 가 쓰는 "오늘 · 내일 급식 미리 받기"입니다. 로그인한 학생 없이 학교 번호로만 부릅니다.
   // 받아 둔 지 6시간이 안 된 날은 NEIS 를 부르지 않습니다. (아침에 처음 여는 학생이 기다리지 않게)
+  // 토 · 일에는 "오늘" 화면과 같게 다음 월요일 · 화요일 급식을 받아 둡니다. (schoolDayOf)
   public void prefetchMeals(String schoolCode) {
     Instant now = clock.instant();
     LocalDate today = DayRule.dateOf(now);
+    LocalDate schoolDay = schoolDayOf(today);
     Optional<String> officeCode = findOfficeCode(schoolCode);
     if (officeCode.isEmpty()) {
       return;
     }
     savedMeals.values().removeIf(saved -> saved.day().isBefore(today));
-    mealsOf(officeCode.get(), schoolCode, today, now);
-    mealsOf(officeCode.get(), schoolCode, today.plusDays(1), now);
+    mealsOf(officeCode.get(), schoolCode, schoolDay, now);
+    mealsOf(officeCode.get(), schoolCode, schoolDay.plusDays(1), now);
   }
 
   // AI 코치 채팅의 대본에 넣을 "오늘 학교" 줄들입니다. 학교를 안 골랐거나 아무것도 없으면 빈 목록입니다. (ChatService)
@@ -175,7 +192,8 @@ public class SchoolTodayService {
     }
     SchoolTodayResponse today = getMyToday(grade, classNo);
     List<String> subjects = new ArrayList<>();
-    if (today.timetable() != null) {
+    // 주말에는 시간표가 다음 월요일 것이라 "오늘 배운 과목" 이 아닙니다. 빈 목록을 돌려줍니다.
+    if (today.timetable() != null && today.date().equals(today.schoolDay())) {
       for (SchoolTodayResponse.Period period : today.timetable()) {
         if (period.subject() != null && !subjects.contains(period.subject())) {
           subjects.add(period.subject());
@@ -189,24 +207,30 @@ public class SchoolTodayService {
   //   - 오늘 시간표: 1교시 미적분Ⅰ, 2교시 문학 (5교시까지만 알아)
   //   - 오늘 중식: 흑미밥, 나주곰탕, 배추김치
   //   - 다가오는 학사일정: 11월 2일 2학기 2차 정기시험(시험, 14일 남음)
+  // 주말이면 시간표 · 급식이 다음 월요일 것이라 "오늘" 대신 "월요일(10/26)" 로 적습니다. AI 가 오늘 일로 말하지 않게요.
+  //   - 월요일(10/26) 시간표: 1교시 미적분Ⅰ, … / - 월요일(10/26) 중식: …
   static List<String> linesOf(SchoolTodayResponse today, Integer grade) {
     List<String> lines = new ArrayList<>();
     if (today.school() == null) {
       return lines;
     }
+    LocalDate schoolDay = today.schoolDay() == null ? today.date() : today.schoolDay();
+    String dayName = dayNameOf(today.date(), schoolDay);
     if (today.timetable() != null && !today.timetable().isEmpty()) {
       List<String> periods = new ArrayList<>();
       for (SchoolTodayResponse.Period period : today.timetable()) {
         periods.add(period.period() + "교시 " + cut(period.subject(), 20));
       }
       lines.add(
-          "- 오늘 시간표: "
+          "- "
+              + dayName
+              + " 시간표: "
               + String.join(", ", periods)
               + (today.timetablePartial() ? " (5교시까지만 알아)" : ""));
     }
     for (SchoolTodayResponse.Meal meal : today.meals()) {
-      // 대본에는 오늘 급식만 넣습니다. 메뉴는 앞에서부터 5개까지
-      if (!meal.date().equals(today.date())) {
+      // 대본에는 그날(평일은 오늘, 주말은 월요일) 급식만 넣습니다. 메뉴는 앞에서부터 5개까지
+      if (!meal.date().equals(schoolDay)) {
         continue;
       }
       List<String> dishes = new ArrayList<>();
@@ -216,7 +240,7 @@ public class SchoolTodayService {
         }
         dishes.add(cut(dish, 20));
       }
-      lines.add("- 오늘 " + meal.kind() + ": " + String.join(", ", dishes));
+      lines.add("- " + dayName + " " + meal.kind() + ": " + String.join(", ", dishes));
     }
     List<String> events = new ArrayList<>();
     for (SchoolTodayResponse.Event event : today.events()) {
@@ -241,6 +265,15 @@ public class SchoolTodayService {
       lines.add("- 다가오는 학사일정: " + String.join(" / ", events));
     }
     return lines;
+  }
+
+  // 대본에 적는 날 이름. 같은 날이면 "오늘", 아니면 "월요일(10/26)" 처럼 요일과 날짜
+  static String dayNameOf(LocalDate today, LocalDate day) {
+    if (day.equals(today)) {
+      return "오늘";
+    }
+    String weekday = "월화수목금토일".charAt(day.getDayOfWeek().getValue() - 1) + "요일";
+    return weekday + "(" + day.getMonthValue() + "/" + day.getDayOfMonth() + ")";
   }
 
   private static String cut(String text, int max) {
