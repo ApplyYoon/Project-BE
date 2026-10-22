@@ -58,6 +58,9 @@ import org.springframework.stereotype.Service;
 //   - 말마다: 학생의 마지막 말로 고른 성취기준 몇 줄([관련 성취기준])을 그 한 번의 답에만 붙입니다. (가벼운 RAG)
 //   - 말마다: 오늘 검색 한도가 남았으면 웹 검색 도구를 붙이고, 답에 붙은 출처(sources)를 검사해 돌려줍니다. (TutorWebSearch)
 //
+// 같은 말 되풀이 막기 (채팅 수정 3): 말 보내기마다 "직전에 한 말을 되풀이하지 마" 라는 고정 [이미 한 말] 칸을 붙이고,
+// 그래도 새 답이 직전 AI 답 3개와 같은 구절이면 한 번만 다시 받습니다. 세 방 모두 같습니다. (RepeatCheck)
+//
 // AI 의 답은 한 번마다 GPT 글 호출 하루 한도(GptUsageGuard, 이슈 #33)를 하나씩 씁니다.
 // 모든 메서드는 로그인한 사람의 번호(CurrentUserProvider)로 시작하고, 내 채팅만 찾습니다. 남의 채팅 번호는 404 입니다.
 //
@@ -264,7 +267,36 @@ public class ChatService {
     checkAiReady(userId);
     // 방을 잊었으면 코치로 봅니다. 사진 규칙 · 성취기준 칸은 이번 한 번의 답에만 붙이고 기억해 둔 대본에는 남기지 않습니다.
     ChatRoom room = chatScriptStore.findRoom(chatId, userId).orElse(ChatRoom.COACH);
-    ChatAiClient.ChatTurn next;
+    // [이미 한 말] 칸은 고정 문장이라 FE 가 보낸 글자가 지시에 들어가지 않습니다. (RepeatCheck.section)
+    String alreadySaid = RepeatCheck.section(lines);
+    ChatAiClient.ChatTurn next =
+        askNext(userId, chatId, room, instructions, lines, topic, image, alreadySaid);
+    // 직전 AI 답 3개와 같은 구절이면 딱 한 번만 다시 받습니다. (RepeatCheck, 채팅 수정 3)
+    //   - 다시 받는 것도 GPT 한 번이라 하루 한도를 씁니다. 한도가 없으면 다시 부르지 않고 첫 답을 씁니다.
+    //   - 다시 받을 때는 첫 답의 첫 문장을 알려 주는 줄(retryHint)을 더합니다. 같은 지시면 같은 답이 또 나오기 쉬워서입니다.
+    //     첫 답이 서버 고정 문구(SAFE_REPLY)면 알려 줄 것이 없어서 더하지 않습니다.
+    //   - 두 번째 답도 반복이면 그대로 씁니다. (끝없이 다시 부르지 않게)
+    //   - 두 답 모두 askNext 안에서 cleanTurn(깎아내리는 말 · 링크 검사)을 거친 뒤입니다. 위기 표현 검사는 이미 위에서 했습니다.
+    if (RepeatCheck.repeats(next.reply(), lines)
+        && gptUsageGuard.tryUseText(userId, GptUsageKind.CHAT)) {
+      String hint = SAFE_REPLY.equals(next.reply()) ? "" : RepeatCheck.retryHint(next.reply());
+      next = askNext(userId, chatId, room, instructions, lines, topic, image, alreadySaid + hint);
+    }
+    return ChatReplyResponse.withButtons(
+        chatId, next.reply(), next.quickReplies(), next.action(), next.tags(), next.sources());
+  }
+
+  // 말 보내기의 AI 답 한 번. 방 · 사진에 따라 부르는 길을 고르고, 끝에 alreadySaid 칸([이미 한 말] · [다시 답하기])을 붙입니다.
+  // 사진 규칙 · 성취기준 · alreadySaid 칸은 이번 한 번의 답에만 붙이고 기억해 둔 대본에는 남기지 않습니다.
+  private ChatAiClient.ChatTurn askNext(
+      Long userId,
+      Long chatId,
+      ChatRoom room,
+      String instructions,
+      List<CallFinishRequest.Line> lines,
+      ChatTopic topic,
+      String image,
+      String alreadySaid) {
     if (room == ChatRoom.TUTOR) {
       // 과목 쌤: 학생의 마지막 말로 성취기준을 고르고, 검색 한도가 남았으면 웹 검색 도구를 붙입니다.
       String standards =
@@ -272,14 +304,13 @@ public class ChatService {
               chatScriptStore.findCurriculum(chatId, userId).orElse(null),
               lines.get(lines.size() - 1).text());
       String imageRule = image == null ? "" : room.imageRule();
-      next = askTutor(userId, instructions + standards + imageRule, lines, topic, image);
-    } else if (image == null) {
-      next = askAi(instructions, lines, topic);
-    } else {
-      next = askAiWithImage(instructions + room.imageRule(), lines, topic, image);
+      return askTutor(
+          userId, instructions + standards + imageRule + alreadySaid, lines, topic, image);
     }
-    return ChatReplyResponse.withButtons(
-        chatId, next.reply(), next.quickReplies(), next.action(), next.tags(), next.sources());
+    if (image == null) {
+      return askAi(instructions + alreadySaid, lines, topic);
+    }
+    return askAiWithImage(instructions + room.imageRule() + alreadySaid, lines, topic, image);
   }
 
   // 위기 표현이 감지됐을 때. 보호 조치(관리 한도 0 · 회복 메시지)는 이 채팅에서 처음 감지했을 때 한 번만 합니다.
