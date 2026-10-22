@@ -1,7 +1,6 @@
 package com.ithopeschool.projectbe.domain.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -11,7 +10,6 @@ import com.ithopeschool.projectbe.domain.card.Card;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.card.ChecklistItem;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
-import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.domain.session.SessionMode;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
@@ -42,16 +40,12 @@ class CheckCallServiceTest {
   private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
   private final StudySessionRepository studySessionRepository = mock(StudySessionRepository.class);
   private final CardRepository cardRepository = mock(CardRepository.class);
-  private final CallRecordRepository callRecordRepository = mock(CallRecordRepository.class);
-  private final SafetyService safetyService = mock(SafetyService.class);
 
   private final CheckCallService service =
       new CheckCallService(
           currentUserProvider,
           studySessionRepository,
           cardRepository,
-          callRecordRepository,
-          safetyService,
           Clock.fixed(NOW, ZoneOffset.UTC));
 
   @BeforeEach
@@ -121,18 +115,14 @@ class CheckCallServiceTest {
   }
 
   @Test
-  @DisplayName("10분이 안 되는 공부 · 사후 입력 · 노는 기록만 있으면 닫힌다 (NO_STUDY_TODAY)")
-  void locksWithoutCountedStudy() {
+  @DisplayName("10분이 안 되는 공부 · 사후 입력 · 노는 기록만 있으면 끝낸 공부 없이 열린다 (공부 조건 제거, 2026-10-22)")
+  void opensWithoutCountedStudy() {
     givenTodaySessions(
         session(9, SessionMode.NORMAL, PlanKind.STUDY, null),
         session(60, SessionMode.SELF_REPORT, PlanKind.STUDY, null),
         session(60, SessionMode.NORMAL, PlanKind.PLAY, null));
-    given(
-            callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
-                any(), any()))
-        .willReturn(List.of());
 
-    assertThat(service.gateOf(USER_ID, TODAY)).isEqualTo(CheckCall.Gate.locked());
+    assertThat(service.gateOf(USER_ID, TODAY)).isEqualTo(CheckCall.Gate.open(null));
   }
 
   @Test
@@ -150,30 +140,19 @@ class CheckCallServiceTest {
   }
 
   @Test
-  @DisplayName("공부가 없어도 보호 조치 중이면 위로 통화로 열린다 (studied 없음)")
-  void opensForCareWhenSafetyActive() {
+  @DisplayName("오늘 공부 기록이 하나도 없어도 열린다 (studied 없음, 이유도 없음)")
+  void opensWithNoSessionsToday() {
     givenTodaySessions();
-    given(safetyService.isActive(USER_ID)).willReturn(true);
 
-    assertThat(service.gateOf(USER_ID, TODAY)).isEqualTo(CheckCall.Gate.care());
+    CheckCall.Gate gate = service.gateOf(USER_ID, TODAY);
+
+    assertThat(gate.open()).isTrue();
+    assertThat(gate.studied()).isNull();
+    assertThat(gate.reason()).isNull();
   }
 
   @Test
-  @DisplayName("공부가 없어도 최근 7일 안에 위기 표현이 감지된 통화가 있으면 열린다")
-  void opensForCareAfterRecentCrisis() {
-    givenTodaySessions();
-    CallRecord crisisCall = new CallRecord(USER_ID, TODAY.minusDays(6), NOW, null);
-    crisisCall.finishWithCrisis(NOW);
-    given(
-            callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
-                USER_ID, TODAY.minusDays(6)))
-        .willReturn(List.of(crisisCall));
-
-    assertThat(service.gateOf(USER_ID, TODAY).open()).isTrue();
-  }
-
-  @Test
-  @DisplayName("GET check-call 응답: 끝난 시각은 밀리초 숫자, 닫히면 이유")
+  @DisplayName("GET check-call 응답: 끝난 시각은 밀리초 숫자, 공부가 없어도 open 은 true")
   void checkResponse() {
     givenTodaySessions(session(40, SessionMode.NORMAL, PlanKind.STUDY, null));
     assertThat(service.check())
@@ -184,11 +163,7 @@ class CheckCallServiceTest {
                 null));
 
     givenTodaySessions();
-    given(
-            callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
-                any(), any()))
-        .willReturn(List.of());
-    assertThat(service.check()).isEqualTo(new CheckCallResponse(false, null, "NO_STUDY_TODAY"));
+    assertThat(service.check()).isEqualTo(new CheckCallResponse(true, null, null));
   }
 
   @Test

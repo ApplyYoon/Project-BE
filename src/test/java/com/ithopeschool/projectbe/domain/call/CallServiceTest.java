@@ -784,14 +784,14 @@ class CallServiceTest {
           "미적분 3단원", List.of("개념 정리", "예제 10문제"), 40, NOW.minusSeconds(600), null);
 
   @Test
-  @DisplayName("확인 통화: 오늘 끝낸 공부가 없으면 403 CALL_LOCKED 이고, 임시 키도 기록도 만들지 않는다")
-  void lockedWithoutStudy() {
-    given(checkCallService.gateOf(USER_ID, TODAY)).willReturn(CheckCall.Gate.locked());
+  @DisplayName("오늘 끝낸 공부가 없어도 통화가 시작되고, [방금 공부한 것] 없이 보통 통화로 한다 (공부 조건 제거, 2026-10-22)")
+  void startsWithoutStudy() {
+    given(checkCallService.gateOf(USER_ID, TODAY)).willReturn(CheckCall.Gate.open(null));
 
-    assertError(
-        () -> callService.startSession(REQUEST), ErrorCode.CALL_LOCKED, "오늘 공부 하나를 끝내면 확인 통화가 열려요");
-    verify(callKeyClient, never()).createKey(any(), any());
-    verify(callRecordRepository, never()).save(any());
+    callService.startSession(REQUEST);
+
+    assertThat(sentInstructions()).doesNotContain("[방금 공부한 것]");
+    verify(callRecordRepository).save(any());
   }
 
   @Test
