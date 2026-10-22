@@ -17,6 +17,7 @@ import java.util.List;
 //
 // ■ 공부할 수 있는 시간 (studyWindowOf) — 수면 보호 시간(최소 6시간, FE 의 getSleepWindow)과 일어난 뒤 1시간을 뺀 나머지
 // ■ 빈 시간 (freeSlotsOf) — 고정 일정(학교 · 학원)과 그날 카드의 앞뒤로 10분씩 여유를 두고 뺀 나머지
+//   학교를 등록했는데 그날(평일) 수업 시간과 겹치는 고정 일정이 없으면, 기본 수업 시간(classHours)도 뺍니다.
 // ■ 칸 놓기 (placeBlocks) — 빈 시간에 한 칸 길이로 채우고, 칸 사이도 10분 띄웁니다. 저녁형은 늦은 시간부터 채웁니다.
 //   한 칸은 30분 이상입니다(StudyBlock). 남은 시간이 30분보다 짧으면 칸을 더 놓지 않습니다. (총량은 칸 수로 맞춤)
 // ■ 목표 순서 (goalRotation) — D-day 가 가까운 목표부터, 14일 안이면 한 바퀴에 두 번
@@ -43,12 +44,16 @@ public final class DayPlanRule {
   static final int SOON_DAYS = 14;
   // 한 번에 만드는 칸의 최대 수
   static final int MAX_BLOCKS = 12;
+  // 학교를 등록했는데 수업 시간을 고정 일정에 안 넣은 학생의 평일 기본 수업 시간 (고정 일정 주석의 학교 예시와 같음)
+  static final LocalTime CLASS_START = LocalTime.of(8, 0);
+  static final LocalTime CLASS_END = LocalTime.of(16, 30);
 
   static final int DAY_START = 4 * 60;
   static final int DAY_END = DAY_START + 24 * 60;
 
   // 하루 총량(이미 있는 카드를 뺀 것)과 그 근거 문장들
-  public record Total(int minutes, List<String> evidence) {}
+  // basis: 총량을 어디서 정했는지 짧게 ("최근 평균으로" · "처음 설문대로" · "기본으로"). 근거 첫 줄에 씁니다.
+  public record Total(int minutes, String basis, List<String> evidence) {}
 
   // 하루 안의 시간 하나 [start, end) — 하루 시작 기준 분
   public record Span(int start, int end) {
@@ -72,6 +77,7 @@ public final class DayPlanRule {
       List<Integer> dailyMinutes, Integer selfDaily, boolean planOptimismHigh, int alreadyPlanned) {
     List<String> evidence = new ArrayList<>();
     double total;
+    String basis;
     if (dailyMinutes.size() >= MIN_STUDY_DAYS) {
       int sum = 0;
       for (int minutes : dailyMinutes) {
@@ -79,12 +85,15 @@ public final class DayPlanRule {
       }
       int average = (int) Math.round((double) sum / dailyMinutes.size());
       total = average * GROW;
+      basis = "최근 평균으로";
       evidence.add("최근 14일 공부한 " + dailyMinutes.size() + "일의 평균이 " + average + "분이라 조금 더 잡았어요");
     } else if (selfDaily != null) {
       total = selfDaily;
+      basis = "처음 설문대로";
       evidence.add("처음 설문에서 하루 " + selfDaily + "분 공부할 수 있다고 해서 그만큼 잡았어요");
     } else {
       total = DEFAULT_TOTAL;
+      basis = "기본으로";
       evidence.add("아직 기록이 적어서 하루 " + DEFAULT_TOTAL + "분으로 잡았어요");
     }
     if (planOptimismHigh) {
@@ -95,7 +104,17 @@ public final class DayPlanRule {
     if (alreadyPlanned > 0) {
       evidence.add("그날 이미 있는 카드 " + alreadyPlanned + "분을 뺐어요");
     }
-    return new Total(Math.max(0, rounded - alreadyPlanned), evidence);
+    return new Total(Math.max(0, rounded - alreadyPlanned), basis, evidence);
+  }
+
+  // 평일 기본 수업 시간 (하루 시작 기준 분)   08:00 ~ 16:30 → [480, 990)
+  public static Span classHours() {
+    return new Span(dayMinutesOf(CLASS_START), dayMinutesOf(CLASS_END));
+  }
+
+  // 두 시간이 조금이라도 겹치는지   [08:00, 16:30) 와 [16:00, 18:00) → true,  [19:00, 21:00) → false
+  public static boolean overlaps(Span a, Span b) {
+    return a.start() < b.end() && b.start() < a.end();
   }
 
   // 시각을 하루 시작 기준 분으로   04:00 → 240,  00:00 → 1440,  03:59 → 1679
