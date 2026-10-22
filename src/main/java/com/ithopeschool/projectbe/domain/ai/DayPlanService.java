@@ -4,6 +4,7 @@ import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.auth.Account;
 import com.ithopeschool.projectbe.domain.auth.AccountRepository;
+import com.ithopeschool.projectbe.domain.call.OtherRoomTalk;
 import com.ithopeschool.projectbe.domain.card.Card;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.fixedblock.FixedBlock;
@@ -393,7 +394,7 @@ public class DayPlanService {
         + ")을 피했어요. 시간표가 다르면 학교 시간을 고정 일정에 넣어 주세요";
   }
 
-  // 학생이 알려 준 것(준비하는 것 · 오늘 과목)을 AI 입력 줄로. 없으면 빈 목록
+  // 학생이 알려 준 것(준비하는 것 · 오늘 과목 · 다른 방에서 오늘 한 이야기)을 AI 입력 줄로. 없으면 빈 목록
   static List<String> extraLinesOf(DayPlanRequest request) {
     List<String> lines = new ArrayList<>();
     if (request.focus() != null) {
@@ -402,6 +403,8 @@ public class DayPlanService {
     if (!request.subjects().isEmpty()) {
       lines.add("오늘 배운 과목: " + String.join(", ", request.subjects()));
     }
+    // 위기 표현이 있는 줄은 빼고, 6줄 · 80자로 줄여서 한 줄로 붙입니다. (OtherRoomTalk)
+    OtherRoomTalk.planLine(request.otherRooms()).ifPresent(lines::add);
     return lines;
   }
 

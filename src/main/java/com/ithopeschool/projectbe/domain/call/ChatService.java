@@ -276,10 +276,14 @@ public class ChatService {
       return replyToCrisis(chat, userId);
     }
 
+    // 기억해 둔 대본 끝에 [다른 방에서 오늘 한 이야기] 칸을 붙입니다. 이번 한 번의 답에만 쓰고 기억해 둔 대본은 그대로입니다.
+    // 다른 방 이야기가 없으면 빈 글자라 대본이 바뀌지 않습니다. (OtherRoomTalk, 2026-10-22)
     String instructions =
         chatScriptStore
-            .find(chatId, userId)
-            .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "채팅이 오래되어 끝났어요. 새로 시작해 주세요"));
+                .find(chatId, userId)
+                .orElseThrow(
+                    () -> new ApiException(ErrorCode.CONFLICT, "채팅이 오래되어 끝났어요. 새로 시작해 주세요"))
+            + OtherRoomTalk.chatSection(request.otherRooms());
     // 주제 없이 연 채팅이면 null 이고, 그러면 tags 는 빈 목록입니다.
     ChatTopic topic = chatScriptStore.findTopic(chatId, userId).orElse(null);
     // 사진은 모양 · 크기부터 봅니다(틀리면 400). AI 한도를 쓰기 전에 거릅니다.

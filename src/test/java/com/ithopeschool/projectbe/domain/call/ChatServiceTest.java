@@ -287,6 +287,26 @@ class ChatServiceTest {
   }
 
   @Test
+  @DisplayName("다른 방 이야기를 같이 보내면 그 한 번의 답에만 [다른 방에서 오늘 한 이야기] 칸을 붙이고, 기억해 둔 대본은 그대로다")
+  void sendsWithOtherRooms() {
+    givenOpenChat();
+    List<String> otherRooms = List.of("상담: 미적분 극한이 헷갈려", "과목 쌤: 곱의 미분법 알려 줘");
+    ChatMessageRequest request =
+        new ChatMessageRequest(said("오늘 계획 짜 줘").lines(), null, otherRooms);
+    String withOtherRooms =
+        SCRIPT + OtherRoomTalk.chatSection(otherRooms) + RepeatCheck.section(request.lines());
+    given(chatAiClient.turn(withOtherRooms, request.lines()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("미적분 극한부터 넣어 볼까?")));
+
+    ChatReplyResponse response = service.send(CHAT_ID, request);
+
+    assertThat(response.reply()).isEqualTo("미적분 극한부터 넣어 볼까?");
+    assertThat(withOtherRooms).contains("[다른 방에서 오늘 한 이야기]").contains("- 상담: 미적분 극한이 헷갈려");
+    // 다음 말에는 그때 FE 가 보낸 다른 방 이야기를 새로 붙입니다. 기억해 둔 대본에는 남기지 않습니다.
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(SCRIPT);
+  }
+
+  @Test
   @DisplayName("학생의 말에 위기 표현이 있으면 GPT 를 부르지 않고 도움 안내로 답하고, 채팅은 끝내지 않는다")
   void crisisKeepsTheChatOpen() {
     CallRecord chat = givenOpenChat();

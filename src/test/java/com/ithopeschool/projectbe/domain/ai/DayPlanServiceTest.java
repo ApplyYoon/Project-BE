@@ -325,6 +325,18 @@ class DayPlanServiceTest {
   }
 
   @Test
+  @DisplayName("다른 방에서 오늘 한 이야기를 보내면 AI 입력 끝에 한 줄로 붙인다 (위기 표현이 있는 줄은 뺌)")
+  void otherRoomTalkGoesIntoAiInput() {
+    DayPlanRequest request =
+        new DayPlanRequest(
+            MONDAY, null, null, null, List.of("상담: 미적분 극한이 헷갈려", "상담: 다 싫고 죽고 싶어", "과목 쌤: 곱의 미분법"));
+
+    assertThat(DayPlanService.extraLinesOf(request))
+        .containsExactly("다른 방에서 오늘 한 이야기: 상담: 미적분 극한이 헷갈려 / 과목 쌤: 곱의 미분법");
+    assertThat(DayPlanService.extraLinesOf(new DayPlanRequest(MONDAY))).isEmpty();
+  }
+
+  @Test
   @DisplayName("학교를 등록했고 평일이면, 학원(저녁 고정 일정)만 있어도 기본 수업 시간을 피해 16:40 부터 놓는다")
   void schoolDayAvoidsClassHours() {
     schoolRegistered();
