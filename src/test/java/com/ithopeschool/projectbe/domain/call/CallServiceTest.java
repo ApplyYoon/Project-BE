@@ -780,7 +780,8 @@ class CallServiceTest {
   // ---- 확인 통화 (2026-10-18) ----
 
   private static final CheckCall.Studied STUDIED =
-      new CheckCall.Studied("미적분 3단원", List.of("개념 정리", "예제 10문제"), 40, NOW.minusSeconds(600));
+      new CheckCall.Studied(
+          "미적분 3단원", List.of("개념 정리", "예제 10문제"), 40, NOW.minusSeconds(600), null);
 
   @Test
   @DisplayName("확인 통화: 오늘 끝낸 공부가 없으면 403 CALL_LOCKED 이고, 임시 키도 기록도 만들지 않는다")

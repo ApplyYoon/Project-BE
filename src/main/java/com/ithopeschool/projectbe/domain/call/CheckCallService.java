@@ -59,7 +59,8 @@ public class CheckCallService {
     return CheckCall.Gate.locked();
   }
 
-  // 오늘(새벽 4시 기준) 시작한 기록 중 끝낸 공부로 치는 것의 가장 최근 것. 카드가 있으면 제목 · 체크리스트도 붙입니다.
+  // 오늘(새벽 4시 기준) 시작한 기록 중 끝낸 공부로 치는 것의 가장 최근 것.
+  // 카드가 있으면 제목 · 체크리스트도, 종료 팝업에 쓴 요약이 있으면 메모로 붙입니다.
   private Optional<CheckCall.Studied> studiedToday(Long userId, LocalDate today) {
     List<StudySession> sessions =
         studySessionRepository.findStartedBetween(
@@ -80,7 +81,11 @@ public class CheckCallService {
       }
     }
     return new CheckCall.Studied(
-        title, checklist, CheckCall.minutesOf(session), session.getEndedAt());
+        title,
+        checklist,
+        CheckCall.minutesOf(session),
+        session.getEndedAt(),
+        session.getProofSummary());
   }
 
   // 위로 기간인지. 통화가 위로하는 통화로 바뀌는 조건과 같습니다. (CallService.careLevelFor 의 1번)

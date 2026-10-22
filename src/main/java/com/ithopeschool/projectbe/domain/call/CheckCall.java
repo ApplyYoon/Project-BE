@@ -39,7 +39,9 @@ public final class CheckCall {
   private CheckCall() {}
 
   // 방금 공부한 것 하나. title 은 카드 제목이고, 카드 없이 켠 옛 기록이면 null 입니다.
-  public record Studied(String title, List<String> checklist, int minutes, Instant endedAt) {}
+  // memo 는 종료 팝업에 학생이 쓴 2~3줄 요약(proofSummary)입니다. 안 썼으면 null 입니다. (통화 수정 2)
+  public record Studied(
+      String title, List<String> checklist, int minutes, Instant endedAt, String memo) {}
 
   // 문 열림 여부
   //   open    : 통화를 걸 수 있으면 true

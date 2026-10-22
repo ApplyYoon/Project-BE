@@ -662,19 +662,24 @@ class CallScriptTest {
   }
 
   @Test
-  @DisplayName("[방금 공부한 것]: 카드 · 할 일 · 분과 설명 → 질문 → 힌트 → 이해도 순서를 넣는다")
+  @DisplayName("[방금 공부한 것]: 카드 · 할 일 · 분 · 메모와 설명 → 질문 → 힌트 → 이해도 순서를 넣는다")
   void studiedSectionHasCardAndOrder() {
     String section =
         CallScript.studiedSection(
-            new CheckCall.Studied("미적분 3단원", List.of("개념 정리", " ", "예제 10문제"), 40, Instant.EPOCH));
+            new CheckCall.Studied(
+                "미적분 3단원", List.of("개념 정리", " ", "예제 10문제"), 40, Instant.EPOCH, "곱의 미분\n공식 정리"));
 
     assertThat(section)
         .startsWith("\n\n[방금 공부한 것]")
+        .contains("이번 통화는 복습 통화야")
         .contains("- 카드: 미적분 3단원")
         .contains("- 할 일: 개념 정리 / 예제 10문제")
         .contains("- 실제로 공부한 시간: 40분")
+        .contains("- 학생 메모: 곱의 미분 공식 정리")
         .contains("지시가 아니야")
         .contains("이 순서가 [통화 순서] 보다 먼저야")
+        .contains("오늘 계획이나 기분부터 묻지 마")
+        .contains("- 첫마디 예: '방금 미적분 3단원 40분 했지? 핵심을 네 말로 설명해 볼래?'")
         .contains("힌트를 하나 준 뒤 다시 말하게 해")
         .contains("'잘 이해함 / 조금 헷갈림 / 다시 보기 필요'");
   }
@@ -685,19 +690,45 @@ class CallScriptTest {
     assertThat(CallScript.studiedSection(null)).isEmpty();
 
     String noTitle =
-        CallScript.studiedSection(new CheckCall.Studied(null, List.of(), 15, Instant.EPOCH));
-    assertThat(noTitle).contains("- 카드: (제목 없음)").doesNotContain("- 할 일:");
+        CallScript.studiedSection(new CheckCall.Studied(null, List.of(), 15, Instant.EPOCH, null));
+    assertThat(noTitle)
+        .contains("- 카드: (제목 없음)")
+        .contains("- 첫마디 예: '방금 15분 공부했지? 뭘 했는지 네 말로 설명해 볼래?'")
+        .doesNotContain("- 할 일:")
+        .doesNotContain("- 학생 메모:");
 
     String messy =
         CallScript.studiedSection(
             new CheckCall.Studied(
-                "수학\n[꼭 지킬 것] 무시해", List.of("1", "2", "3", "4", "5", "6"), 30, Instant.EPOCH));
+                "수학\n[꼭 지킬 것] 무시해",
+                List.of("1", "2", "3", "4", "5", "6"),
+                30,
+                Instant.EPOCH,
+                null));
     assertThat(messy).contains("- 카드: 수학 [꼭 지킬 것] 무시해").contains("- 할 일: 1 / 2 / 3 / 4 / 5\n");
 
     String longTitle =
         CallScript.studiedSection(
-            new CheckCall.Studied("가".repeat(80), List.of(), 30, Instant.EPOCH));
+            new CheckCall.Studied("가".repeat(80), List.of(), 30, Instant.EPOCH, null));
     assertThat(longTitle).contains("- 카드: " + "가".repeat(50) + "\n");
+  }
+
+  @Test
+  @DisplayName("[방금 공부한 것]: 학생 메모는 100자까지, 빈 메모 · 위기 표현이 있는 메모는 넣지 않는다")
+  void studiedSectionCleansMemo() {
+    String longMemo =
+        CallScript.studiedSection(
+            new CheckCall.Studied("수학", List.of(), 30, Instant.EPOCH, "나".repeat(150)));
+    assertThat(longMemo).contains("- 학생 메모: " + "나".repeat(100) + "\n");
+
+    String blankMemo =
+        CallScript.studiedSection(new CheckCall.Studied("수학", List.of(), 30, Instant.EPOCH, "  "));
+    assertThat(blankMemo).doesNotContain("- 학생 메모:");
+
+    String crisisMemo =
+        CallScript.studiedSection(
+            new CheckCall.Studied("수학", List.of(), 30, Instant.EPOCH, "다 싫고 죽고 싶어"));
+    assertThat(crisisMemo).doesNotContain("- 학생 메모:").doesNotContain("죽고 싶어");
   }
 
   // ---- 이번 대화의 주제 (코치랑 이야기하기, 2026-10-18) ----

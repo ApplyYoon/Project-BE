@@ -22,7 +22,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -103,7 +105,19 @@ class CheckCallServiceTest {
     assertThat(gate.studied())
         .isEqualTo(
             new CheckCall.Studied(
-                "미적분 3단원", List.of("개념 정리", "예제 10문제"), 40, SEVEN_PM.plusSeconds(2400)));
+                "미적분 3단원", List.of("개념 정리", "예제 10문제"), 40, SEVEN_PM.plusSeconds(2400), null));
+  }
+
+  @Test
+  @DisplayName("종료 팝업에 쓴 2~3줄 요약이 있으면 학생 메모로 같이 돌려준다 (통화 수정 2)")
+  void opensWithEndReportMemo() {
+    StudySession session = session(11, SessionMode.NORMAL, PlanKind.STUDY, null);
+    session.recordEndReport(Map.of(), null, null, null, "곱의 미분 공식 정리", Set.of());
+    givenTodaySessions(session);
+
+    CheckCall.Gate gate = service.gateOf(USER_ID, TODAY);
+
+    assertThat(gate.studied().memo()).isEqualTo("곱의 미분 공식 정리");
   }
 
   @Test
