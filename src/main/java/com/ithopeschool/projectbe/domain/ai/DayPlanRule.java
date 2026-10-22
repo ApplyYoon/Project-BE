@@ -17,6 +17,7 @@ import java.util.List;
 //
 // ■ 공부할 수 있는 시간 (studyWindowOf) — 수면 보호 시간(최소 6시간, FE 의 getSleepWindow)과 일어난 뒤 1시간을 뺀 나머지
 // ■ 빈 시간 (freeSlotsOf) — 고정 일정(학교 · 학원)과 그날 카드의 앞뒤로 10분씩 여유를 두고 뺀 나머지
+//   학교를 등록했는데 그날(평일) 수업 시간과 겹치는 고정 일정이 없으면, 기본 수업 시간(classHours)도 뺍니다.
 // ■ 칸 놓기 (placeBlocks) — 빈 시간에 한 칸 길이로 채우고, 칸 사이도 10분 띄웁니다. 저녁형은 늦은 시간부터 채웁니다.
 //   한 칸은 30분 이상입니다(StudyBlock). 남은 시간이 30분보다 짧으면 칸을 더 놓지 않습니다. (총량은 칸 수로 맞춤)
 // ■ 목표 순서 (goalRotation) — D-day 가 가까운 목표부터, 14일 안이면 한 바퀴에 두 번
@@ -43,6 +44,9 @@ public final class DayPlanRule {
   static final int SOON_DAYS = 14;
   // 한 번에 만드는 칸의 최대 수
   static final int MAX_BLOCKS = 12;
+  // 학교를 등록했는데 수업 시간을 고정 일정에 안 넣은 학생의 평일 기본 수업 시간 (고정 일정 주석의 학교 예시와 같음)
+  static final LocalTime CLASS_START = LocalTime.of(8, 0);
+  static final LocalTime CLASS_END = LocalTime.of(16, 30);
 
   static final int DAY_START = 4 * 60;
   static final int DAY_END = DAY_START + 24 * 60;
@@ -96,6 +100,16 @@ public final class DayPlanRule {
       evidence.add("그날 이미 있는 카드 " + alreadyPlanned + "분을 뺐어요");
     }
     return new Total(Math.max(0, rounded - alreadyPlanned), evidence);
+  }
+
+  // 평일 기본 수업 시간 (하루 시작 기준 분)   08:00 ~ 16:30 → [480, 990)
+  public static Span classHours() {
+    return new Span(dayMinutesOf(CLASS_START), dayMinutesOf(CLASS_END));
+  }
+
+  // 두 시간이 조금이라도 겹치는지   [08:00, 16:30) 와 [16:00, 18:00) → true,  [19:00, 21:00) → false
+  public static boolean overlaps(Span a, Span b) {
+    return a.start() < b.end() && b.start() < a.end();
   }
 
   // 시각을 하루 시작 기준 분으로   04:00 → 240,  00:00 → 1440,  03:59 → 1679

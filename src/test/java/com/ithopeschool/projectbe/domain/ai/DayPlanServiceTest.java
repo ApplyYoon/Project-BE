@@ -10,6 +10,8 @@ import static org.mockito.Mockito.verify;
 
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
+import com.ithopeschool.projectbe.domain.auth.Account;
+import com.ithopeschool.projectbe.domain.auth.AccountRepository;
 import com.ithopeschool.projectbe.domain.card.Card;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.card.ChecklistItem;
@@ -24,6 +26,8 @@ import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
 import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
+import com.ithopeschool.projectbe.domain.school.SchoolEvent;
+import com.ithopeschool.projectbe.domain.school.SchoolEventRepository;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -60,6 +64,8 @@ class DayPlanServiceTest {
   private final GoalRepository goals = mock(GoalRepository.class);
   private final BlockLengthService blockLength = mock(BlockLengthService.class);
   private final AiClient aiClient = mock(AiClient.class);
+  private final AccountRepository accounts = mock(AccountRepository.class);
+  private final SchoolEventRepository schoolEvents = mock(SchoolEventRepository.class);
   private final DayPlanService service =
       new DayPlanService(
           currentUserProvider,
@@ -71,7 +77,9 @@ class DayPlanServiceTest {
           goals,
           blockLength,
           aiClient,
-          CLOCK);
+          CLOCK,
+          accounts,
+          schoolEvents);
 
   private static OnboardingAnswer answer(LocalTime sleep, LocalTime wake, Chronotype chronotype) {
     OnboardingAnswer.Values values = new OnboardingAnswer.Values();
@@ -90,6 +98,19 @@ class DayPlanServiceTest {
         LocalTime.of(8, 0),
         LocalTime.of(16, 30),
         Instant.EPOCH);
+  }
+
+  private static FixedBlock fixed(String title, LocalTime start, LocalTime end) {
+    return new FixedBlock(USER_ID, title, List.of(1, 2, 3, 4, 5), start, end, Instant.EPOCH);
+  }
+
+  // 학교(성일정보고)를 등록한 계정
+  private void schoolRegistered() {
+    given(accounts.findByUserId(USER_ID))
+        .willReturn(
+            Optional.of(
+                new Account(
+                    USER_ID, "a@b.c", "hash", "민", "7530560", "성일정보고", false, Instant.EPOCH)));
   }
 
   private static Card card(String title, LocalDate date, LocalTime start, int minutes) {
@@ -132,6 +153,11 @@ class DayPlanServiceTest {
     given(cards.findCandidatesOn(eq(USER_ID), any())).willReturn(List.of());
     given(cards.findByUserIdOrderById(USER_ID)).willReturn(List.of());
     given(goals.findByUserIdOrderById(USER_ID)).willReturn(List.of(wordBook()));
+    given(accounts.findByUserId(USER_ID)).willReturn(Optional.empty());
+    given(
+            schoolEvents.findBySchoolCodeAndEventDateBetweenOrderByEventDateAscIdAsc(
+                any(), any(), any()))
+        .willReturn(List.of());
   }
 
   @Test
@@ -280,5 +306,69 @@ class DayPlanServiceTest {
                 new DayPlanRequest(
                     MONDAY, new DayPlanRequest.Focus("CONTEST", "정보올림피아드"), List.of("미적분Ⅰ"), 3)))
         .containsExactly("준비하는 것: 대회 · 자격증 — 정보올림피아드", "오늘 배운 과목: 미적분Ⅰ");
+  }
+
+  @Test
+  @DisplayName("학교를 등록했고 평일이면, 학원(저녁 고정 일정)만 있어도 기본 수업 시간을 피해 16:40 부터 놓는다")
+  void schoolDayAvoidsClassHours() {
+    schoolRegistered();
+    given(fixedBlocks.findByUserIdOrderById(USER_ID))
+        .willReturn(List.of(fixed("학원", LocalTime.of(19, 0), LocalTime.of(21, 0))));
+    aiAnswers(null);
+
+    DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
+
+    assertThat(response.drafts())
+        .extracting(DayPlanResponse.Draft::startTime)
+        .containsExactly("16:40", "17:40");
+    assertThat(response.evidence())
+        .contains("학교 수업 시간(평일 08:00 ~ 16:30)을 피했어요. 시간표가 다르면 학교 시간을 고정 일정에 넣어 주세요");
+  }
+
+  @Test
+  @DisplayName("학교를 등록했어도 주말이면 수업 시간을 넣지 않는다")
+  void weekendHasNoClassHours() {
+    schoolRegistered();
+    given(fixedBlocks.findByUserIdOrderById(USER_ID)).willReturn(List.of());
+    aiAnswers(null);
+
+    // 10-18 은 일요일 (오늘이 아니라 기상 07:00 + 1시간 = 08:00 부터)
+    DayPlanResponse response = service.suggest(new DayPlanRequest(TODAY.plusDays(1)));
+
+    assertThat(response.drafts().get(0).startTime()).isEqualTo("08:00");
+    assertThat(response.evidence()).noneMatch(line -> line.contains("학교 수업 시간"));
+  }
+
+  @Test
+  @DisplayName("수업 시간과 겹치는 고정 일정이 있으면 기본 수업 시간을 넣지 않고 학생이 넣은 시간만 피한다")
+  void ownSchoolBlockWins() {
+    schoolRegistered();
+    given(fixedBlocks.findByUserIdOrderById(USER_ID))
+        .willReturn(List.of(fixed("수업", LocalTime.of(9, 0), LocalTime.of(15, 0))));
+    aiAnswers(null);
+
+    DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
+
+    // 08:00 ~ 08:50 이 비어 있음 (기본 수업 시간 08:00 ~ 16:30 을 넣었다면 16:40 부터였음)
+    assertThat(response.drafts())
+        .extracting(DayPlanResponse.Draft::startTime)
+        .containsExactly("08:00", "15:10");
+    assertThat(response.evidence()).noneMatch(line -> line.contains("학교 수업 시간"));
+  }
+
+  @Test
+  @DisplayName("그날 학사일정에 휴업이 있으면 수업이 없는 날로 본다")
+  void holidayHasNoClassHours() {
+    schoolRegistered();
+    given(fixedBlocks.findByUserIdOrderById(USER_ID)).willReturn(List.of());
+    given(
+            schoolEvents.findBySchoolCodeAndEventDateBetweenOrderByEventDateAscIdAsc(
+                "7530560", MONDAY, MONDAY))
+        .willReturn(List.of(new SchoolEvent("7530560", MONDAY, "재량휴업일", "", "")));
+    aiAnswers(null);
+
+    DayPlanResponse response = service.suggest(new DayPlanRequest(MONDAY));
+
+    assertThat(response.drafts().get(0).startTime()).isEqualTo("08:00");
   }
 }

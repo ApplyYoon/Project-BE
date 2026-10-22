@@ -2,6 +2,8 @@ package com.ithopeschool.projectbe.domain.ai;
 
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
+import com.ithopeschool.projectbe.domain.auth.Account;
+import com.ithopeschool.projectbe.domain.auth.AccountRepository;
 import com.ithopeschool.projectbe.domain.card.Card;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.fixedblock.FixedBlock;
@@ -18,6 +20,8 @@ import com.ithopeschool.projectbe.domain.psychtest.PsychScale;
 import com.ithopeschool.projectbe.domain.psychtest.PsychScore;
 import com.ithopeschool.projectbe.domain.psychtest.PsychTest;
 import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
+import com.ithopeschool.projectbe.domain.school.SchoolEvent;
+import com.ithopeschool.projectbe.domain.school.SchoolEventRepository;
 import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
 import com.ithopeschool.projectbe.domain.session.StudyTime;
@@ -26,6 +30,7 @@ import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import com.ithopeschool.projectbe.global.time.DayRule;
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -46,6 +51,7 @@ import org.springframework.stereotype.Service;
 //   2. 서버 DB 에서 재료를 모읍니다. (FE 가 보낸 값은 쓰지 않음)
 //      - 처음 설문: 기상 · 취침 시각, 아침형 / 저녁형, 하루 공부 가능 시간
 //      - 고정 일정(학교 · 학원) 중 그날 요일에 있는 것, 그날 이미 있는 카드
+//      - 학교를 등록했으면 평일 기본 수업 시간 (수업 시간과 겹치는 고정 일정이 없고, 방학 · 휴업이 아닌 날)
 //      - 최근 14일 공부 기록(하루 총량), 내 한 칸 길이(BlockLengthService), 심리검사의 계획 낙관
 //      - 진행 중인 목표(D-day · 완주형 하루 분량)와 최근 카드 제목
 //   3. 코드가 숫자 · 시각을 정합니다. (DayPlanRule) 총량 → 공부할 수 있는 시간 → 빈 시간 → 칸 놓기 → 칸마다 목표
@@ -79,6 +85,9 @@ public class DayPlanService {
   private final BlockLengthService blockLengthService;
   private final AiClient aiClient;
   private final Clock clock;
+  // 학교를 등록했는지(수업 시간을 피할지)와 그날 학사일정(방학 · 휴업)을 봅니다.
+  private final AccountRepository accountRepository;
+  private final SchoolEventRepository schoolEventRepository;
 
   public DayPlanResponse suggest(DayPlanRequest request) {
     Long userId = currentUserProvider.getCurrentUserId();
@@ -131,7 +140,10 @@ public class DayPlanService {
                 + " 을 피했어요");
       }
     }
-    if (busy.isEmpty()) {
+    String classHoursLine = classHoursLineOf(userId, date, busy);
+    if (classHoursLine != null) {
+      evidence.add(classHoursLine);
+    } else if (busy.isEmpty()) {
       evidence.add("그날 고정 일정이 없어요. 학교 · 학원 시간을 고정 일정에 넣으면 피해서 짜요");
     }
     int alreadyPlanned = 0;
@@ -258,6 +270,44 @@ public class DayPlanService {
               goal == null ? null : goal.id()));
     }
     return new DayPlanResponse(date, block.minutes(), total.minutes(), drafts, evidence);
+  }
+
+  // 학교 수업 시간을 피해야 하는 날이면 기본 수업 시간(08:00 ~ 16:30)을 busy 에 넣고 근거 문장을 돌려줍니다.
+  // 넣지 않는 날은 null 입니다.
+  //   - 학교를 등록하지 않았거나, 주말이거나
+  //   - 수업 시간과 겹치는 고정 일정이 이미 있거나 (학생이 넣은 학교 시간이 더 정확함)
+  //     학원처럼 저녁에만 고정 일정이 있는 학생은 수업 시간을 아직 안 피했으니 넣습니다.
+  //   - 그날 학사일정에 방학 · 휴업이 있으면 (방학식 날은 학교에 가니까 수업 있는 날로 봅니다)
+  private String classHoursLineOf(Long userId, LocalDate date, List<DayPlanRule.Span> busy) {
+    String schoolCode =
+        accountRepository.findByUserId(userId).map(Account::getSchoolCode).orElse(null);
+    if (schoolCode == null || schoolCode.isBlank()) {
+      return null;
+    }
+    DayOfWeek day = date.getDayOfWeek();
+    if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
+      return null;
+    }
+    DayPlanRule.Span classHours = DayPlanRule.classHours();
+    for (DayPlanRule.Span span : busy) {
+      if (DayPlanRule.overlaps(span, classHours)) {
+        return null;
+      }
+    }
+    for (SchoolEvent event :
+        schoolEventRepository.findBySchoolCodeAndEventDateBetweenOrderByEventDateAscIdAsc(
+            schoolCode, date, date)) {
+      String name = event.getName();
+      if (name.contains("휴업") || (name.contains("방학") && !name.contains("방학식"))) {
+        return null;
+      }
+    }
+    busy.add(classHours);
+    return "학교 수업 시간(평일 "
+        + DayPlanRule.CLASS_START
+        + " ~ "
+        + DayPlanRule.CLASS_END
+        + ")을 피했어요. 시간표가 다르면 학교 시간을 고정 일정에 넣어 주세요";
   }
 
   // 학생이 알려 준 것(준비하는 것 · 오늘 과목)을 AI 입력 줄로. 없으면 빈 목록
