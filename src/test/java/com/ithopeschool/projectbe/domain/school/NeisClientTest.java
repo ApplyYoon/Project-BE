@@ -279,6 +279,64 @@ class NeisClientTest {
   }
 
   @Test
+  @DisplayName("반 목록은 학년도 · 학년으로 받고 작은 번호부터 정리한다 (키가 있어 다 오면 complete, 숫자가 아닌 반은 버림)")
+  void fetchesClassesWithKey() {
+    NeisClient client = new NeisClient("secret-key", builder);
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/classInfo")))
+        .andExpect(queryParam("AY", "2026"))
+        .andExpect(queryParam("GRADE", "2"))
+        .andExpect(queryParam("pSize", "1000"))
+        .andRespond(
+            withSuccess(
+                """
+                {"classInfo":[{"head":[{"list_total_count":4}]},{"row":[
+                  {"CLASS_NM":"3"},{"CLASS_NM":"1"},{"CLASS_NM":"A"},{"CLASS_NM":"2"}
+                ]}]}
+                """,
+                MediaType.APPLICATION_JSON));
+
+    assertThat(client.fetchClasses("J10", "7530560", 2026, 2))
+        .contains(new NeisClient.NeisClasses(List.of(1, 2, 3), true));
+    neis.verify();
+  }
+
+  @Test
+  @DisplayName("키가 없어 5줄만 오면 전체 개수(list_total_count)로 1반부터 채우고 complete 는 false (분당고 2학년 12반)")
+  void fillsClassesByTotalWithoutKey() {
+    NeisClient client = new NeisClient("", builder);
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/classInfo")))
+        .andExpect(queryParam("pSize", "5"))
+        .andRespond(
+            withSuccess(
+                """
+                {"classInfo":[{"head":[{"list_total_count":12},{"RESULT":{"CODE":"INFO-000"}}]},{"row":[
+                  {"CLASS_NM":"1"},{"CLASS_NM":"10"},{"CLASS_NM":"11"},{"CLASS_NM":"12"},{"CLASS_NM":"2"}
+                ]}]}
+                """,
+                MediaType.APPLICATION_JSON));
+
+    NeisClient.NeisClasses classes = client.fetchClasses("J10", "7530126", 2026, 2).orElseThrow();
+    assertThat(classes.classNos()).containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
+    assertThat(classes.complete()).isFalse();
+    neis.verify();
+  }
+
+  @Test
+  @DisplayName("반 목록: 그 학년에 반이 없으면(INFO-200) 빈 목록, NEIS 가 멈추면 빈 값(실패)")
+  void classesNoDataAndFailure() {
+    NeisClient client = new NeisClient("", builder);
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/classInfo")))
+        .andRespond(withSuccess(NO_DATA, MediaType.APPLICATION_JSON));
+    neis.expect(requestTo(startsWith("https://open.neis.go.kr/hub/classInfo")))
+        .andRespond(withServerError());
+
+    assertThat(client.fetchClasses("J10", "7530560", 2026, 3))
+        .contains(new NeisClient.NeisClasses(List.of(), true));
+    assertThat(client.fetchClasses("J10", "7530560", 2026, 3)).isEmpty();
+    neis.verify();
+  }
+
+  @Test
   @DisplayName("학교 번호로 학교 종류를 찾고, 없는 번호면 빈 목록 (학교기본정보 HS_SC_NM · HS_GNRL_BUSNS_SC_NM)")
   void findsSchoolType() {
     NeisClient client = new NeisClient("", builder);

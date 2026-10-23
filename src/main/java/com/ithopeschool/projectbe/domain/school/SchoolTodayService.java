@@ -2,6 +2,7 @@ package com.ithopeschool.projectbe.domain.school;
 
 import com.ithopeschool.projectbe.domain.auth.Account;
 import com.ithopeschool.projectbe.domain.auth.AccountRepository;
+import com.ithopeschool.projectbe.domain.school.dto.SchoolClassesResponse;
 import com.ithopeschool.projectbe.domain.school.dto.SchoolTodayResponse;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -48,7 +49,10 @@ public class SchoolTodayService {
   // 키가 없을 때 NEIS 가 주는 시간표 줄 수. 이만큼 왔으면 뒤가 잘렸을 수 있습니다.
   static final int TIMETABLE_ROWS_WITHOUT_KEY = 5;
   // 반 번호로 받는 가장 큰 값 (주소의 값은 누구나 고칠 수 있어서 범위를 확인합니다)
+  // 실제로 있는 반은 학교마다 달라서 getMyClasses 로 NEIS 에 묻습니다. 이 값은 넘으면 안 되는 범위일 뿐입니다.
   static final int MAX_CLASS_NO = 30;
+  // 반 목록을 받아 두는 시간. 반은 학기 중에 거의 안 바뀝니다.
+  static final Duration CLASSES_KEEP_FOR = Duration.ofHours(24);
 
   private final CurrentUserProvider currentUserProvider;
   private final AccountRepository accountRepository;
@@ -65,6 +69,8 @@ public class SchoolTodayService {
   private final Map<String, SavedTimetable> savedTimetables = new ConcurrentHashMap<>();
   // 메모리에 둔 교육청 코드. 열쇠는 학교 번호. (학사일정을 한 번도 안 받은 학교에서만 씁니다)
   private final Map<String, String> officeCodes = new ConcurrentHashMap<>();
+  // 메모리에 둔 반 목록. 열쇠는 '학교번호|학년도|학년' (예: '7530560|2026|2')
+  private final Map<String, SavedClasses> savedClasses = new ConcurrentHashMap<>();
 
   // 내 학교의 오늘 정보. 학교를 안 골랐으면 school 이 null 입니다.
   // grade · classNo 를 둘 다 주면 그 반의 오늘 시간표도 넣습니다. 둘 다 안 주면 시간표는 null 입니다.
@@ -293,6 +299,54 @@ public class SchoolTodayService {
     }
   }
 
+  // 내 학교 한 학년의 반 번호 목록입니다. 설정의 반 고르기 칸이 이 목록만 보여 줍니다. (2026-10-23)
+  // 예전에는 1~30반을 다 보여 줘서, 없는 반(예: 30반)을 고르면 시간표가 늘 "수업이 없어요" 였습니다.
+  //   - 학교를 안 골랐으면 빈 목록입니다.
+  //   - 받은 목록은 메모리에 24시간 둡니다. (반은 학기 중에 거의 안 바뀝니다)
+  //   - NEIS 가 멈추고 받아 둔 것도 없으면 503 입니다. 화면은 그때 1~30반으로 돌아갑니다.
+  //   - 1 ~ MAX_CLASS_NO(30) 밖의 번호는 시간표를 물을 수 없어서 뺍니다.
+  public SchoolClassesResponse getMyClasses(Integer grade) {
+    if (grade == null || grade < 1 || grade > 3) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "학년은 1~3 이어야 해요");
+    }
+    Long userId = currentUserProvider.getCurrentUserId();
+    Instant now = clock.instant();
+    String schoolCode =
+        accountRepository.findByUserId(userId).map(Account::getSchoolCode).orElse(null);
+    if (schoolCode == null || schoolCode.isBlank()) {
+      return SchoolClassesResponse.noSchool(grade);
+    }
+
+    int year = schoolYearOf(DayRule.dateOf(now));
+    String key = schoolCode + "|" + year + "|" + grade;
+    SavedClasses saved = savedClasses.get(key);
+    if (saved == null || saved.fetchedAt().isBefore(now.minus(CLASSES_KEEP_FOR))) {
+      Optional<NeisClient.NeisClasses> fetched =
+          findOfficeCode(schoolCode)
+              .flatMap(officeCode -> neisClient.fetchClasses(officeCode, schoolCode, year, grade));
+      if (fetched.isPresent()) {
+        saved = new SavedClasses(now, fetched.get());
+        savedClasses.put(key, saved);
+      }
+    }
+    if (saved == null) {
+      throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "반 목록을 지금 받을 수 없어요. 잠시 뒤 다시 해 주세요");
+    }
+    List<Integer> classNos = new ArrayList<>();
+    for (int classNo : saved.classes().classNos()) {
+      if (classNo >= 1 && classNo <= MAX_CLASS_NO) {
+        classNos.add(classNo);
+      }
+    }
+    return SchoolClassesResponse.of(grade, classNos, saved.classes().complete());
+  }
+
+  // NEIS 의 학년도입니다. 새 학년도는 3월에 시작해서 1 · 2월은 지난해 학년도입니다.
+  //   2026-10-23 → 2026   2027-02-10 → 2026   2027-03-02 → 2027
+  static int schoolYearOf(LocalDate today) {
+    return today.getMonthValue() < 3 ? today.getYear() - 1 : today.getYear();
+  }
+
   // 교육청 코드: 학사일정을 받을 때 저장해 둔 것을 먼저 쓰고, 없으면 NEIS 에 한 번 묻고 메모리에 둡니다.
   private Optional<String> findOfficeCode(String schoolCode) {
     Optional<String> saved =
@@ -362,4 +416,7 @@ public class SchoolTodayService {
   // 메모리에 둔 하루치 한 반 시간표와 받은 시각
   private record SavedTimetable(
       LocalDate day, Instant fetchedAt, List<NeisClient.NeisPeriod> periods) {}
+
+  // 메모리에 둔 한 학년의 반 목록과 받은 시각
+  private record SavedClasses(Instant fetchedAt, NeisClient.NeisClasses classes) {}
 }
