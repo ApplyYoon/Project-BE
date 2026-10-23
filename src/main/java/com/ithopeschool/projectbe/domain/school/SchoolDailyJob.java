@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 //
 // 학교마다 하는 일
 //   1. NEIS 학사일정 새로 받기 — 받은 지 20시간이 안 됐으면 건너뜀 (SchoolEventService, school-events 작업과 같은 일)
-//   2. NEIS 오늘 · 내일 급식 미리 받기 — 메모리에 6시간 (SchoolTodayService)
+//   2. NEIS 오늘 · 다음 수업일 급식 미리 받기 — 메모리에 6시간 (SchoolTodayService)
 //   3. 학교 홈페이지 가정통신문 · 공지사항 제목 받기 — 메모리에 24시간 (SchoolNoticeService · SchoolHomepageCrawler)
 //   시간표는 하지 않습니다. 반을 서버가 몰라서(반은 학생 기기에만 있음) 미리 받을 수 없습니다.
 //

@@ -261,6 +261,38 @@ class SchoolTodayServiceTest {
   }
 
   @Test
+  @DisplayName("금요일에는 급식을 금 · 월 것으로 넣고 토요일은 부르지 않는다 (2026-10-23)")
+  void fridayShowsMondayMeals() {
+    hasSchool(SCHOOL);
+    hasSavedOfficeCode();
+    // 2026-10-23 (금) 21:00 한국 시간
+    given(clock.instant()).willReturn(Instant.parse("2026-10-23T12:00:00Z"));
+    LocalDate friday = LocalDate.of(2026, 10, 23);
+    LocalDate monday = LocalDate.of(2026, 10, 26);
+    given(neisClient.fetchMeals("J10", SCHOOL, friday))
+        .willReturn(Optional.of(List.of(lunch(friday, "돈가스"))));
+    given(neisClient.fetchMeals("J10", SCHOOL, monday))
+        .willReturn(Optional.of(List.of(lunch(monday, "제육볶음"))));
+
+    SchoolTodayResponse response = service.getMyToday(null, null);
+
+    assertThat(response.schoolDay()).isEqualTo(friday);
+    assertThat(response.meals())
+        .extracting(SchoolTodayResponse.Meal::date)
+        .containsExactly(friday, monday);
+    verify(neisClient, never()).fetchMeals("J10", SCHOOL, friday.plusDays(1));
+  }
+
+  @Test
+  @DisplayName("다음 수업일: 금 → 월, 월 → 화 (토 · 일은 건너뜀)")
+  void nextSchoolDayRules() {
+    LocalDate friday = LocalDate.of(2026, 10, 23);
+    LocalDate monday = LocalDate.of(2026, 10, 26);
+    assertThat(SchoolTodayService.nextSchoolDayAfter(friday)).isEqualTo(monday);
+    assertThat(SchoolTodayService.nextSchoolDayAfter(monday)).isEqualTo(monday.plusDays(1));
+  }
+
+  @Test
   @DisplayName("보여 줄 날: 평일은 그날, 토 · 일은 다음 월요일 · 대본의 날 이름은 오늘 또는 '월요일(10/26)'")
   void schoolDayRules() {
     LocalDate friday = LocalDate.of(2026, 10, 23);
