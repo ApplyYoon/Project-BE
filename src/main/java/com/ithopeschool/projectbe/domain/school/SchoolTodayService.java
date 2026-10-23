@@ -75,6 +75,7 @@ public class SchoolTodayService {
   // 내 학교의 오늘 정보. 학교를 안 골랐으면 school 이 null 입니다.
   // grade · classNo 를 둘 다 주면 그 반의 오늘 시간표도 넣습니다. 둘 다 안 주면 시간표는 null 입니다.
   // 토 · 일에는 시간표 · 급식을 다음 월요일 것으로 넣습니다. (schoolDayOf, 응답의 schoolDay)
+  // 급식은 그날과 다음 수업일 것입니다. 금요일이면 금 · 월입니다. (nextSchoolDayAfter)
   public SchoolTodayResponse getMyToday(Integer grade, Integer classNo) {
     checkClass(grade, classNo);
     Long userId = currentUserProvider.getCurrentUserId();
@@ -95,7 +96,7 @@ public class SchoolTodayService {
       savedMeals.values().removeIf(saved -> saved.day().isBefore(today));
       savedTimetables.values().removeIf(saved -> saved.day().isBefore(today));
       meals.addAll(mealsOf(officeCode.get(), schoolCode, schoolDay, now));
-      meals.addAll(mealsOf(officeCode.get(), schoolCode, schoolDay.plusDays(1), now));
+      meals.addAll(mealsOf(officeCode.get(), schoolCode, nextSchoolDayAfter(schoolDay), now));
       if (grade != null) {
         timetable.addAll(timetableOf(officeCode.get(), schoolCode, grade, classNo, schoolDay, now));
       }
@@ -144,9 +145,17 @@ public class SchoolTodayService {
     };
   }
 
-  // 예약 작업 school-daily 가 쓰는 "오늘 · 내일 급식 미리 받기"입니다. 로그인한 학생 없이 학교 번호로만 부릅니다.
+  // day 다음의 수업일입니다. 급식은 "보여 주는 날 + 다음 수업일" 두 날을 줍니다. (2026-10-23)
+  // 예전에는 그냥 다음 날이라, 금요일에는 다음 날이 토요일(급식 없음)이어서 금요일 급식만 보였습니다.
+  // 평일 공휴일 · 방학은 따지지 않습니다. (schoolDayOf 와 같음)
+  //   10-23(금) → 10-26(월)  /  10-26(월) → 10-27(화)
+  static LocalDate nextSchoolDayAfter(LocalDate day) {
+    return schoolDayOf(day.plusDays(1));
+  }
+
+  // 예약 작업 school-daily 가 쓰는 "보여 주는 날 · 다음 수업일 급식 미리 받기"입니다. 로그인한 학생 없이 학교 번호로만 부릅니다.
   // 받아 둔 지 6시간이 안 된 날은 NEIS 를 부르지 않습니다. (아침에 처음 여는 학생이 기다리지 않게)
-  // 토 · 일에는 "오늘" 화면과 같게 다음 월요일 · 화요일 급식을 받아 둡니다. (schoolDayOf)
+  // 토 · 일에는 "오늘" 화면과 같게 다음 월요일 · 화요일, 금요일에는 금 · 월 급식을 받아 둡니다. (schoolDayOf · nextSchoolDayAfter)
   public void prefetchMeals(String schoolCode) {
     Instant now = clock.instant();
     LocalDate today = DayRule.dateOf(now);
@@ -157,7 +166,7 @@ public class SchoolTodayService {
     }
     savedMeals.values().removeIf(saved -> saved.day().isBefore(today));
     mealsOf(officeCode.get(), schoolCode, schoolDay, now);
-    mealsOf(officeCode.get(), schoolCode, schoolDay.plusDays(1), now);
+    mealsOf(officeCode.get(), schoolCode, nextSchoolDayAfter(schoolDay), now);
   }
 
   // AI 코치 채팅의 대본에 넣을 "오늘 학교" 줄들입니다. 학교를 안 골랐거나 아무것도 없으면 빈 목록입니다. (ChatService)

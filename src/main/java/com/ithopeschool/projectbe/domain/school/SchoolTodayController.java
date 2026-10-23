@@ -21,7 +21,7 @@ public class SchoolTodayController {
 
   @Operation(
       summary =
-          "오늘 학교 정보 (NEIS 급식 오늘·내일 + 30일 안의 학사일정 + grade·classNo 를 주면 오늘 우리 반 시간표 · 6시간마다 새로 받음 · 학교를 안 골랐으면 school: null · 토큰 필요)")
+          "오늘 학교 정보 (NEIS 급식 오늘·다음 수업일 + 30일 안의 학사일정 + grade·classNo 를 주면 오늘 우리 반 시간표 · 6시간마다 새로 받음 · 학교를 안 골랐으면 school: null · 토큰 필요)")
   @GetMapping
   public SchoolTodayResponse today(
       @RequestParam(required = false) Integer grade,
