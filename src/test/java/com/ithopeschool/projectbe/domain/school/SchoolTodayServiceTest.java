@@ -3,6 +3,7 @@ package com.ithopeschool.projectbe.domain.school;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -14,6 +15,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.ithopeschool.projectbe.domain.auth.Account;
 import com.ithopeschool.projectbe.domain.auth.AccountRepository;
+import com.ithopeschool.projectbe.domain.school.dto.SchoolClassesResponse;
 import com.ithopeschool.projectbe.domain.school.dto.SchoolTodayResponse;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -311,6 +313,57 @@ class SchoolTodayServiceTest {
                     new NeisClient.NeisPeriod(5, "스포츠 생활1"))));
 
     assertThat(service.getMyToday(2, 1).timetablePartial()).isTrue();
+  }
+
+  @Test
+  @DisplayName("반 목록: 학교를 안 골랐으면 빈 목록이고 NEIS 를 부르지 않는다")
+  void classesWithoutSchool() {
+    hasSchool(null);
+
+    assertThat(service.getMyClasses(2)).isEqualTo(SchoolClassesResponse.noSchool(2));
+    verifyNoInteractions(neisClient);
+  }
+
+  @Test
+  @DisplayName("반 목록: 올해 학년도로 받아 24시간 동안 메모리에 두고, 30반을 넘는 번호는 뺀다")
+  void classesAreCachedForADay() {
+    hasSchool(SCHOOL);
+    hasSavedOfficeCode();
+    given(neisClient.fetchClasses("J10", SCHOOL, 2026, 2))
+        .willReturn(Optional.of(new NeisClient.NeisClasses(List.of(1, 2, 31), false)));
+
+    assertThat(service.getMyClasses(2))
+        .isEqualTo(SchoolClassesResponse.of(2, List.of(1, 2), false));
+
+    given(clock.instant()).willReturn(NOW.plus(Duration.ofHours(23)));
+    service.getMyClasses(2);
+    verify(neisClient, times(1)).fetchClasses("J10", SCHOOL, 2026, 2);
+
+    given(clock.instant()).willReturn(NOW.plus(Duration.ofHours(25)));
+    service.getMyClasses(2);
+    verify(neisClient, times(2)).fetchClasses("J10", SCHOOL, 2026, 2);
+  }
+
+  @Test
+  @DisplayName("반 목록: NEIS 가 멈추고 받아 둔 것도 없으면 에러(503), 학년이 없거나 1~3 밖이면 에러(400)")
+  void classesErrors() {
+    hasSchool(SCHOOL);
+    hasSavedOfficeCode();
+    given(neisClient.fetchClasses(anyString(), anyString(), anyInt(), anyInt()))
+        .willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.getMyClasses(2)).isInstanceOf(ApiException.class);
+    assertThatThrownBy(() -> service.getMyClasses(null)).isInstanceOf(ApiException.class);
+    assertThatThrownBy(() -> service.getMyClasses(0)).isInstanceOf(ApiException.class);
+    assertThatThrownBy(() -> service.getMyClasses(4)).isInstanceOf(ApiException.class);
+  }
+
+  @Test
+  @DisplayName("NEIS 학년도는 3월에 바뀐다 (1 · 2월은 지난해 학년도)")
+  void schoolYearRules() {
+    assertThat(SchoolTodayService.schoolYearOf(LocalDate.of(2026, 10, 23))).isEqualTo(2026);
+    assertThat(SchoolTodayService.schoolYearOf(LocalDate.of(2027, 2, 10))).isEqualTo(2026);
+    assertThat(SchoolTodayService.schoolYearOf(LocalDate.of(2027, 3, 2))).isEqualTo(2027);
   }
 
   @Test

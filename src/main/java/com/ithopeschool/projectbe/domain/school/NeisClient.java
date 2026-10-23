@@ -9,6 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,7 @@ import tools.jackson.databind.json.JsonMapper;
 //   https://open.neis.go.kr/hub/hisTimetable  고등학교 시간표 — 학년 · 반 · 교시 · 과목
 //   https://open.neis.go.kr/hub/schulAflcoinfo · schoolMajorinfo  학교 계열 · 학과 — 가입 때 "무슨 과야?"
 // (2026-10-19)
+//   https://open.neis.go.kr/hub/classInfo  학급정보 — 한 학년에 몇 반까지 있는지 (2026-10-23)
 //
 // ■ 인증키 (환경변수 NEIS_API_KEY)
 //   있으면 한 번에 1000건까지 받습니다. 없으면 NEIS 가 한 번에 5건만 주고 쪽 넘기기도 안 돼서,
@@ -300,6 +302,50 @@ public class NeisClient {
     return Optional.of(periods);
   }
 
+  // 한 학년의 반 번호를 작은 것부터 받습니다. (학급정보 classInfo, 2026-10-23)
+  //   분당고 2학년 → [1, 2, …, 12]
+  // 예전에는 반 고르기 칸이 학교와 상관없이 1~30반이라, 없는 반을 고르면 시간표가 늘 비었습니다.
+  // ⚠️ 키가 없으면 NEIS 가 5줄만 주고 쪽 넘기기도 안 됩니다. (분당고 2학년 12개 반 중 5개만 옴, 2026-10-23 확인)
+  //    그래도 머리(head)의 전체 개수(list_total_count)는 맞게 와서, 그때는 1반부터 전체 개수까지 채웁니다.
+  //    (반 번호는 거의 1부터 빈틈없이 붙습니다) 이렇게 채운 목록이면 complete 가 false 입니다.
+  // 반 이름이 숫자가 아닌 줄(예: 'A')은 버립니다. 시간표를 반 번호(숫자)로 묻기 때문입니다.
+  // 실패하면 빈 값, 그 학년에 반이 없으면 빈 목록입니다.
+  public Optional<NeisClasses> fetchClasses(
+      String officeCode, String schoolCode, int year, int grade) {
+    String query =
+        "ATPT_OFCDC_SC_CODE="
+            + officeCode
+            + "&SD_SCHUL_CODE="
+            + schoolCode
+            + "&AY="
+            + year
+            + "&GRADE="
+            + grade;
+    int pageSize = hasApiKey() ? PAGE_SIZE_WITH_KEY : PAGE_SIZE_WITHOUT_KEY;
+    Optional<String> body = get("classInfo", query, pageSize);
+    Optional<JsonNode> rows = rowsOf(body, "classInfo");
+    if (rows.isEmpty()) {
+      return Optional.empty();
+    }
+    // TreeSet: 겹치지 않게 모으면서 작은 번호부터 늘어섭니다.
+    Set<Integer> classNos = new TreeSet<>();
+    for (JsonNode row : rows.get()) {
+      try {
+        classNos.add(Integer.parseInt(row.path("CLASS_NM").asString("").trim()));
+      } catch (NumberFormatException e) {
+        // 숫자가 아닌 반 이름은 버립니다.
+      }
+    }
+    int total = totalCountOf(body, "classInfo");
+    boolean complete = rows.get().size() >= total;
+    if (!complete) {
+      for (int classNo = 1; classNo <= total; classNo++) {
+        classNos.add(classNo);
+      }
+    }
+    return Optional.of(new NeisClasses(new ArrayList<>(classNos), complete));
+  }
+
   // NEIS 의 시간표 한 줄 → 교시 하나. 교시가 숫자가 아니거나 과목이 없으면 버립니다.
   static Optional<NeisPeriod> toPeriod(JsonNode row) {
     String subject = row.path("ITRT_CNTNT").asString("").trim();
@@ -404,6 +450,26 @@ public class NeisClient {
     }
   }
 
+  // 받은 글의 머리(head)에 적힌 전체 줄 수입니다. 키가 없어 5줄만 왔어도 이 숫자는 전체를 셉니다.
+  //   { "classInfo": [ { "head": [ { "list_total_count": 12 }, … ] }, { "row": [ …5줄 ] } ] } → 12
+  // 머리가 없거나(데이터 없음 INFO-200 포함) 모양이 다르면 0 입니다.
+  static int totalCountOf(Optional<String> body, String service) {
+    if (body.isEmpty()) {
+      return 0;
+    }
+    try {
+      return JSON.readTree(body.get())
+          .path(service)
+          .path(0)
+          .path("head")
+          .path(0)
+          .path("list_total_count")
+          .asInt(0);
+    } catch (JacksonException e) {
+      return 0;
+    }
+  }
+
   private static JdkClientHttpRequestFactory requestFactoryWithTimeouts() {
     HttpClient httpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
     JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
@@ -431,4 +497,7 @@ public class NeisClient {
 
   // NEIS 학과 목록. complete 가 false 면 키가 없어서 뒤가 잘렸을 수 있습니다.
   public record NeisMajors(List<String> names, boolean complete) {}
+
+  // NEIS 한 학년의 반 번호 목록. complete 가 false 면 키가 없어서 전체 개수로 1반부터 채운 것입니다.
+  public record NeisClasses(List<Integer> classNos, boolean complete) {}
 }
