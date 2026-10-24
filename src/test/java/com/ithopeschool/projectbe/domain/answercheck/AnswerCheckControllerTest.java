@@ -3,6 +3,8 @@ package com.ithopeschool.projectbe.domain.answercheck;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -18,6 +20,8 @@ import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -151,6 +155,68 @@ class AnswerCheckControllerTest {
     mockMvc
         .perform(get("/api/v1/answer-checks").param("date", "10월 24일"))
         .andExpect(status().isBadRequest());
+    // date 로 부르면 기간 조회는 부르지 않습니다.
+    verify(answerCheckService, never()).getChecksBetween(any(), any());
+  }
+
+  @Test
+  @DisplayName("from · to 를 함께 보내면 기간 목록(200, 배열)을 돌려준다")
+  void listsRange() throws Exception {
+    given(answerCheckService.getChecksBetween(DATE.minusDays(6), DATE))
+        .willReturn(List.of(sample()));
+
+    mockMvc
+        .perform(get("/api/v1/answer-checks").param("from", "2026-10-18").param("to", "2026-10-24"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].id").value("12"))
+        .andExpect(jsonPath("$[0].date").value("2026-10-24"));
+    verify(answerCheckService, never()).getChecks(any());
+  }
+
+  @ParameterizedTest(name = "{0} 이면 400")
+  @ValueSource(
+      strings = {
+        "date=2026-10-24&from=2026-10-18&to=2026-10-24",
+        "date=2026-10-24&from=2026-10-18",
+        "from=2026-10-18",
+        "to=2026-10-24",
+        "from=2026/10/18&to=2026-10-24",
+        "from=2026-10-18&to=abc"
+      })
+  @DisplayName("date 와 from · to 를 섞거나, 하나만 보내거나, 모양이 틀리면 400 이고 Service 는 부르지 않는다")
+  void rejectsBadRangeParams(String query) throws Exception {
+    mockMvc
+        .perform(get("/api/v1/answer-checks?" + query))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    verifyNoInteractions(answerCheckService);
+  }
+
+  @Test
+  @DisplayName("섞어 보내거나 아무것도 안 보내면 무엇을 보내야 하는지 알려 준다")
+  void mixedParamsMessage() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/answer-checks").param("date", "2026-10-24").param("to", "2026-10-24"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("date 하나, 또는 from 과 to 를 함께 보내 주세요"));
+    mockMvc
+        .perform(get("/api/v1/answer-checks"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("date 하나, 또는 from 과 to 를 함께 보내 주세요"));
+  }
+
+  @Test
+  @DisplayName("시작이 끝보다 늦거나 31일을 넘으면 Service 가 던진 400 이 그대로 나간다")
+  void rangeRuleErrorsAreBadRequest() throws Exception {
+    given(answerCheckService.getChecksBetween(DATE, DATE.minusDays(1)))
+        .willThrow(new ApiException(ErrorCode.VALIDATION_ERROR, "시작 날짜는 끝 날짜보다 늦을 수 없어요"));
+
+    mockMvc
+        .perform(get("/api/v1/answer-checks").param("from", "2026-10-24").param("to", "2026-10-23"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.error.message").value("시작 날짜는 끝 날짜보다 늦을 수 없어요"));
   }
 
   @Test
