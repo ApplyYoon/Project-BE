@@ -104,6 +104,9 @@ erDiagram
     diaries ||--o{ diary_causes : "diary_id"
     diaries ||--o{ diary_keywords : "diary_id"
     users ||--o{ calendar_alarms : "user_id"
+    users ||--o{ answer_checks : "user_id"
+    users ||--o{ answer_check_items : "user_id"
+    answer_checks ||--o{ answer_check_items : "answer_check_id"
     users ||--o{ reflection_prescriptions : "user_id"
     users ||--o{ risk_forecasts : "user_id"
     risk_forecasts ||--o{ risk_forecast_reasons : "risk_forecast_id"
@@ -510,6 +513,28 @@ erDiagram
         timestamptz starts_at "일정이 시작하는 순간"
         timestamptz handled_at "알림을 보냈거나 연락 금지 시간이라 건너뛴 시각, 아직이면 비어 있음"
     }
+    answer_checks {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 기록의 주인"
+        date check_date "어느 날 공부한 것인지 (올릴 때 보낸 날짜, 보통 오늘)"
+        varchar mode "채점 모드 (MARKED 채점했어요, UNMARKED 아직 안 했어요)"
+        varchar subject_text "AI 가 사진에서 읽은 과목 (30자까지), 못 읽었으면 비어 있음"
+        timestamptz created_at "채점한(사진을 올린) 시각"
+    }
+    answer_check_items {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint answer_check_id FK "어느 채점 기록의 문제인지"
+        bigint user_id FK "이 줄의 주인"
+        int sort_order "사진 속 순서 (0 부터)"
+        varchar problem_number "문제 번호 글자 (예: 2, 3-1, 20자까지)"
+        varchar my_answer "AI 가 읽은 학생 답 (100자까지), 못 읽었으면 비어 있음"
+        varchar ai_answer "AI 가 직접 푼 답 (UNMARKED 만, 100자까지)"
+        varchar mark_read "AI 가 읽은 채점 표시 O 또는 X (MARKED 만), 못 읽었으면 비어 있음"
+        varchar ai_result "AI 의 처음 판정 (CORRECT, WRONG, UNSURE 중 하나), 고쳐도 안 바뀜"
+        varchar result "지금 판정 (CORRECT, WRONG, UNSURE 중 하나), 처음엔 ai_result 와 같음"
+        varchar correct_answer "학생이 직접 적은 정답 (100자까지)"
+        timestamptz edited_at "학생이 직접 고친 시각, 비어 있으면 AI 판정 그대로"
+    }
     reflection_prescriptions {
         bigint id PK "처방을 구분하는 고유 번호 (나중에 내린 것일수록 큼)"
         bigint user_id FK "처방을 받은 사람"
@@ -627,6 +652,7 @@ erDiagram
 | 개선안·실험 #52 | 완료 | v3 자기 실험 `experiments` · `experiment_cards` (#52 · #54). 옛 v2 개선안 계산 객체는 그대로 |
 | 일기 #60 | 완료 | `diaries`와 딸린 `diary_emotions` · `diary_causes` · `diary_keywords` |
 | 구글 캘린더 일정 알림 (2026-10-24) | 완료 | `calendar_alarms` |
+| 사진 채점 (2026-10-24) | 완료 | `answer_checks`, `answer_check_items` |
 | 잠금 해제 #67 | 완료 | `lock_events` 엔티티·그림·운영 SQL 반영 |
 | 동의 기록 #71 | 완료 | PR #204가 반영되어 `consent_records` 이력과 그림이 있음 |
 | 계획 루틴 #85 | 완료 | `routines`, `routine_applications` 엔티티·그림·운영 SQL 반영 |
@@ -687,6 +713,8 @@ erDiagram
 | `checkin_emotions` | 체크인 하나에서 고른 감정 태그가 한 줄씩 (`@ElementCollection`). 안 골랐으면 줄이 없음 | #220 |
 | `diaries` | 학생이 쓴 일기 하나가 한 줄 (원문, 기분, 날짜, 쓴 시각, AI 분석 시각). 같은 날에 여러 개 가능. **원문은 본인만** | #60 |
 | `calendar_alarms` | 학생의 구글 캘린더 일정 하나가 한 줄 (일정 id, 제목, 시작 시각, 알림 처리 시각). FE 가 앞으로 7일 일정을 **덮어쓰기**로 올리고, 예약 작업이 시작 10분 전에 푸시. 지난 일정은 하루 뒤 지움 | 2026-10-24 |
+| `answer_checks` | 문제집 사진을 한 번 올려 채점한 기록 하나가 한 줄 (날짜, 모드, AI 가 읽은 과목, 채점 시각). **사진은 저장하지 않음** | 2026-10-24 |
+| `answer_check_items` | 채점 기록 하나 안의 문제 하나가 한 줄 (번호, 학생 답, AI 답 또는 O · X 표시, AI 처음 판정, 지금 판정, 학생이 적은 정답, 고친 시각) | 2026-10-24 |
 | `diary_emotions` · `diary_causes` · `diary_keywords` | 일기 하나에서 AI 가 뽑은 감정 · 실패 원인 · 키워드가 한 줄씩 (`@ElementCollection`). 일기를 지우면 같이 지워짐 | #60 |
 | `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
 | `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
@@ -816,6 +844,15 @@ erDiagram
 > - 하루 첫 태그 = 컨디션(1~5) + 감정 태그 여러 개. 감정은 한 체크인에 여러 개라서 `thinking_test_weaknesses` 처럼 딸린 테이블에 담았습니다. 엔티티는 `CheckIn` 하나입니다.
 > - 감정 이름은 이슈에 적힌 6개(`EmotionTag`)이고, DB 에도 이름 그대로 저장합니다.
 > - 감정 태그를 보내면 그날의 감정이 **전부 바뀝니다.** 다른 칸과 달리 **안 보내면 그대로 둡니다**(감정 태그를 모르는 화면이 다시 보내도 지워지지 않게). 체크인 줄이 지워지면(탈퇴) 같이 지워집니다.
+
+> `answer_checks` 와 `answer_check_items` 는 2026-10-24 에 **학생이 직접 설계한** 사진 채점 테이블입니다. (AI 는 설계대로 코드로 옮기고 글자 칸 길이만 정했습니다)
+> - **사진 한 번 올린 것 = `answer_checks` 한 줄, 그 안의 문제 하나 = `answer_check_items` 한 줄.** 사진은 저장하지 않고 결과만 남깁니다.
+> - 맞음 · 틀림 개수는 저장하지 않고 `answer_check_items` 의 `result` 를 세어서 보여 줍니다. 학생이 판정을 고치면 개수도 바로 바뀝니다.
+> - AI 의 처음 판정(`ai_result`)은 고쳐도 바뀌지 않습니다. 고치면 `result` · `correct_answer` 만 바뀌고 `edited_at` 이 찹니다. (`edited_at` 이 차 있으면 "직접 고침")
+> - `ai_answer` 는 "아직 안 했어요"(`UNMARKED`) 에서만, `mark_read` 는 "채점했어요"(`MARKED`) 에서만 값이 있습니다.
+> - **AI 가 정한 글자 칸 길이:** 과목 30자, 문제 번호 20자, 학생 답 · AI 답 · 정답 100자. 요청 검사(정답 100자)와 같은 값입니다. 짧거나 길면 알려 주세요.
+> - `answer_check_id` 는 다른 테이블처럼 **번호만 적고 DB 외래 키 제약은 걸지 않았습니다.** 그림의 선은 논리적인 관계입니다. (탈퇴는 `user_id` 가 있는 테이블을 하나씩 지우는데, 외래 키가 있으면 지우는 순서에 따라 실패할 수 있어서)
+> - 두 테이블 모두 `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
 
 > `calendar_alarms` 는 2026-10-24 에 **AI 가 만든 테이블**입니다. (사용자 "캘린더 시작 10분 전에 실제 앱처럼 알람 오게", "알림에 일정 제목 넣자", **PR 리뷰에서 학생이 꼭 확인해 주세요**)
 > - 서버는 구글에 직접 접속하지 않습니다. FE 가 학생의 브라우저에서 읽은 **앞으로 7일 일정**을 올립니다. (`PUT /api/v1/calendar-alarms`, 덮어쓰기)
