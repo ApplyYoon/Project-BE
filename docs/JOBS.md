@@ -149,6 +149,7 @@ URL 은 `https://project-be-mxxc.onrender.com/api/v1/jobs/<작업 이름>` 입�
 | `school-events` | 매일 05:00 | 지금 (이슈 #289) | 학교 학사일정 새로 받기 | `[학사일정] 학교 n곳 중 n곳의 일정이 최신이에요.` | 6-7 |
 | `weekly-goals` | **매주 월요일** 05:00 | **PR #328 이 main 에 배포된 뒤** | 지난주 "이번 주 목표" 판정 | `[주 목표 판정] n개` | 6-8 (#328) |
 | `care-stages` | 매일 04:10 | **PR #331 이 main 에 배포된 뒤** | 모든 학생의 오늘 관리 단계 정하기 | `[관리 단계] 판정 n명` | 6-9 (#331) |
+| `calendar-alarm` | **10분마다** (:00 · :10 · :20 …) | **feat/calendar-alarm 이 main 에 배포되고, Neon 에 `17-calendar-alarms.sql` 을 실행한 뒤** | 구글 캘린더 일정 시작 10분 전에 푸시 | `[캘린더 알림] 보냄 n개 · 건너뜀 n개` | 6-11 |
 | `school-daily` | 매일 05:00 (학교가 많아지면 05:00 ~ 06:00 10분마다) | **feat/school-daily-crawl 이 main 에 배포된 뒤** | 학교마다 학사일정 · 급식 미리 받기 + 홈페이지 가정통신문 · 공지 제목 읽기 (`school-events` 일도 같이 함) | `[학교 하루 작업] 학교 n곳 중 n곳을 처리했어요. …` | 6-10 |
 
 - **배포되기 전의 작업을 부르면 404 "그런 작업이 없어요"** 입니다. 실패가 계속 쌓이면 cron-job.org 가 알람을 꺼 버리므로(연속 25회), 표의 "언제 만드나" 가 지난 뒤에 만듭니다.
@@ -400,6 +401,39 @@ curl -i -X POST http://localhost:8080/api/v1/jobs/care-stages -H "X-Job-Key: loc
 
 ```bash
 curl -i -X POST http://localhost:8080/api/v1/jobs/school-daily -H "X-Job-Key: local-job-key"
+```
+
+### 6-11. 구글 캘린더 일정 알림 (`calendar-alarm`)
+
+학생의 **구글 캘린더 일정이 시작 10분 전**이 되면 웹 푸시를 보냅니다. 누르면 앱의 홈(달력)이 열립니다. (2026-10-24, `domain/calendar/CalendarAlarmJob.java`)
+일정은 FE 가 홈 달력이 열려 있을 때 10분마다 올려 둡니다(`PUT /api/v1/calendar-alarms`). 서버는 구글에 직접 접속하지 않습니다.
+
+> 선행: Neon 에 `db/migrations/17-calendar-alarms.sql` 을 먼저 실행해야 합니다. 표가 없으면 이 작업이 500 입니다.
+> Render 에 **VAPID 키**가 있어야 푸시가 갑니다.
+
+| 칸 | 값 |
+| -- | -- |
+| URL | `https://project-be-mxxc.onrender.com/api/v1/jobs/calendar-alarm` |
+| 실행 주기 | **10분마다** — cron-job.org 의 "Every 10 minutes" (매시 :00 · :10 · :20 …) |
+| 요청 방법 | **POST** |
+| 헤더 | 이름 `X-Job-Key`, 값 = Render 에 넣은 **같은 키** |
+
+한 번 돌 때 **"지금부터 10분 안에 시작하는 일정"** 중 아직 처리하지 않은 것을 알립니다.
+
+- 정각 · 30분처럼 **10분 단위로 시작하는 일정은 딱 10분 전**에 갑니다. (19:00 일정 → 18:50 실행)
+- 19:15 처럼 어중간한 시각의 일정은 **5분 전쯤** 갑니다. (19:10 실행)
+- 실행 한 번이 다음 10분을 맡아서 빠지는 일정은 없습니다. **실행을 놓치면** 그 10분 안의 알림은 가지 않습니다. (이미 시작한 일정은 늦게 알리지 않음)
+- 알린 일정에는 "처리함"(`handled_at`)을 적어서, 두 번 불려도 한 번만 갑니다.
+- **연락 금지 시간**이면 보내지 않습니다. 지난 일정을 아침에 알리면 엉뚱해서 버립니다(DROP). (#57)
+- 알림: 제목 `📅 학원` / 글 `10분 뒤 19:00 에 시작해요`
+- 앱의 알림 목록(messages)에는 남기지 않습니다. (messages 는 AI 가 보낸 메시지만)
+- 시작한 지 **하루가 지난 일정은 지웁니다.** 일정 제목을 오래 들고 있지 않으려는 것입니다.
+- 로그에는 보낸 일정이 있을 때만 `[캘린더 알림] 보냄 n개 · 건너뜀 n개` 처럼 **숫자만** 남깁니다.
+
+**내 컴퓨터에서 시험** — 푸시는 꺼져 있지만 "처리함" 이 적히는 것은 볼 수 있습니다.
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/jobs/calendar-alarm -H "X-Job-Key: local-job-key"
 ```
 
 ## 7. 알아 둘 점
