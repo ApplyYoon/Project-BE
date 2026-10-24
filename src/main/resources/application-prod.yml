@@ -38,6 +38,10 @@ app:
     # 글을 쓰는 GPT 모델. 2026-10-11 에 gpt-6-luna 로 정했습니다. (가장 싼 최신 계열. docs/DEPLOY.md "AI(GPT) 켜기")
     # 다른 모델로 바꾸려면 환경변수 OPENAI_MODEL 에 이름을 넣습니다. 코드를 고치지 않아도 됩니다.
     model: ${OPENAI_MODEL:gpt-6-luna}
+    # 상담 채팅(코치 · 과목 쌤 · 계획 방 · 목표 대화, ChatAiClient)만 쓰는 모델. 2026-10-24 에 gpt-6.1-sol 로 올렸습니다.
+    # 학생과 직접 길게 이야기하는 곳이라 위의 글 모델보다 좋은 모델을 씁니다. 요금은 luna 의 약 20배입니다. (docs/DEPLOY.md "AI(GPT) 켜기")
+    # 바꾸려면 환경변수 OPENAI_CHAT_MODEL 에 이름을 넣습니다. OPENAI_MODEL 을 바꿔도 채팅은 이 값을 씁니다.
+    chat-model: ${OPENAI_CHAT_MODEL:gpt-6.1-sol}
     # 음성 통화에 쓸 모델. 글 모델과 다른 "음성 전용" 모델이고 훨씬 비쌉니다. 비워 두면 통화만 꺼집니다. (docs/DEPLOY.md "AI 통화 켜기")
     realtime-model: ${OPENAI_REALTIME_MODEL:}
     # AI 의 목소리. OpenAI 가 정해 둔 이름 중 하나입니다.
