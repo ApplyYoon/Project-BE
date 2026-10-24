@@ -58,6 +58,29 @@ class AnswerCheckRepositoryTest {
   }
 
   @Test
+  @DisplayName("기간의 내 기록만, 최근 날짜부터 · 같은 날은 최근에 올린 것부터 나온다 (양 끝 날짜 포함)")
+  void findsMyChecksBetweenNewestFirst() {
+    LocalDate from = DAY.minusDays(6);
+    // 기간 안 (양 끝 포함)
+    AnswerCheck firstDay = saveCheck(ME, from, "2026-10-18T05:00:00Z");
+    AnswerCheck midMorning = saveCheck(ME, DAY.minusDays(3), "2026-10-21T01:00:00Z");
+    AnswerCheck midEvening = saveCheck(ME, DAY.minusDays(3), "2026-10-21T11:00:00Z");
+    AnswerCheck lastDay = saveCheck(ME, DAY, "2026-10-24T01:00:00Z");
+    // 기간 밖 · 남의 기록
+    saveCheck(ME, from.minusDays(1), "2026-10-17T05:00:00Z");
+    saveCheck(ME, DAY.plusDays(1), "2026-10-25T05:00:00Z");
+    saveCheck(OTHER, DAY.minusDays(3), "2026-10-21T12:00:00Z");
+
+    List<AnswerCheck> found =
+        answerCheckRepository
+            .findByUserIdAndCheckDateBetweenOrderByCheckDateDescCreatedAtDescIdDesc(ME, from, DAY);
+
+    assertThat(found)
+        .extracting(AnswerCheck::getId)
+        .containsExactly(lastDay.getId(), midEvening.getId(), midMorning.getId(), firstDay.getId());
+  }
+
+  @Test
   @DisplayName("남의 기록 번호로는 기록을 찾을 수 없다")
   void cannotFindOthersCheck() {
     AnswerCheck others = saveCheck(OTHER, DAY, "2026-10-24T01:00:00Z");
