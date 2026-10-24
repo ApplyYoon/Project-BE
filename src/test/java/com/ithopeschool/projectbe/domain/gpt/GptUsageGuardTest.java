@@ -2,7 +2,6 @@ package com.ithopeschool.projectbe.domain.gpt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
 
 import jakarta.persistence.PersistenceException;
 import java.time.Clock;
@@ -14,9 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 
-// GPT 비용 지키기(이슈 #33)를 진짜 DB(H2)에 기록하며 확인합니다.
-// 한도: 하루 통화 3번 · 하루 통화 15분 · 통화 한 번 최대 300초 · 하루 글 호출 2번 · 하루 작은 AI 기능 3번
-//       · 분당 400원 · 글 한 번 5원
+// GPT 호출 기록(이슈 #33)을 진짜 DB(H2)에 남기며 확인합니다.
+// 하루 한도는 2026-10-24 에 없앴습니다. 그래서 몇 번을 불러도 막지 않고 기록만 하는지 봅니다.
+// 설정: 통화 한 번 최대 300초 · 분당 400원 · 글 한 번 5원
 @DataJpaTest
 class GptUsageGuardTest {
 
@@ -26,103 +25,32 @@ class GptUsageGuardTest {
   private static final Long ME = 1L;
   private static final Long OTHER = 2L;
 
-  // 2026-10-17 낮 12시(한국 시간) → 오늘은 10/17
+  // 2026-10-17 낮 12시(한국 시간)
   private static final Instant NOON = Instant.parse("2026-10-17T03:00:00Z");
-  // 2026-10-18 새벽 3시 59분(한국 시간) → 하루의 기준으로는 아직 10/17
-  private static final Instant BEFORE_FOUR = Instant.parse("2026-10-17T18:59:00Z");
-  // 2026-10-18 새벽 4시(한국 시간) → 10/18 (새 날)
-  private static final Instant FOUR_AM = Instant.parse("2026-10-17T19:00:00Z");
 
   private GptUsageGuard guardAt(Instant now) {
-    return new GptUsageGuard(
-        gptUsageRepository, Clock.fixed(now, ZoneOffset.UTC), 3, 15, 300, 2, 3, 400, 5);
-  }
-
-  // 통화를 시작하고 seconds 초 뒤에 끝낸 것으로 기록합니다. (callRecordId 는 통화마다 다르게)
-  private void finishedCall(GptUsageGuard guard, Long userId, long callRecordId, int seconds) {
-    guard.recordCallStart(userId, callRecordId);
-    guard.recordCallFinish(userId, callRecordId, NOON, NOON.plusSeconds(seconds));
+    return new GptUsageGuard(gptUsageRepository, Clock.fixed(now, ZoneOffset.UTC), 300, 400, 5);
   }
 
   // ---- 통화 ----
 
   @Test
-  @DisplayName("오늘 아직 통화하지 않았으면 한 번 최대 길이(300초)까지 할 수 있다")
-  void firstCall() {
-    assertThat(guardAt(NOON).allowedCallSeconds(ME)).isEqualTo(300);
+  @DisplayName("통화 한 번 최대 길이는 설정값(300초) 그대로다")
+  void maxCallSeconds() {
+    assertThat(guardAt(NOON).maxCallSeconds()).isEqualTo(300);
   }
 
   @Test
-  @DisplayName("하루 3번을 다 걸면 0 이다 (짧게 통화했어도)")
-  void callCountLimit() {
+  @DisplayName("하루에 통화를 여러 번 시작해도 막지 않고 모두 기록한다 (하루 한도 없음)")
+  void callsAreNotLimited() {
     GptUsageGuard guard = guardAt(NOON);
-    finishedCall(guard, ME, 1, 10);
-    finishedCall(guard, ME, 2, 10);
-    assertThat(guard.allowedCallSeconds(ME)).isEqualTo(300);
+    for (long callRecordId = 1; callRecordId <= 10; callRecordId++) {
+      guard.recordCallStart(ME, callRecordId);
+    }
 
-    finishedCall(guard, ME, 3, 10);
-
-    assertThat(guard.allowedCallSeconds(ME)).isZero();
-  }
-
-  @Test
-  @DisplayName("오늘 14분을 썼으면 남은 1분(60초)만 할 수 있고, 15분을 다 썼으면 0 이다")
-  void callMinutesLimit() {
-    GptUsageGuard guard = guardAt(NOON);
-    finishedCall(guard, ME, 1, 300);
-    finishedCall(guard, ME, 2, 240);
-    // 300 + 240 = 540초(9분) → 남은 6분이지만 한 번 최대 5분
-    assertThat(guard.allowedCallSeconds(ME)).isEqualTo(300);
-
-    GptUsageGuard bigLimit =
-        new GptUsageGuard(
-            gptUsageRepository, Clock.fixed(NOON, ZoneOffset.UTC), 10, 15, 300, 2, 3, 400, 5);
-    finishedCall(bigLimit, ME, 3, 300);
-    // 840초(14분) → 남은 60초
-    assertThat(bigLimit.allowedCallSeconds(ME)).isEqualTo(60);
-
-    finishedCall(bigLimit, ME, 4, 60);
-    // 900초(15분) → 0
-    assertThat(bigLimit.allowedCallSeconds(ME)).isZero();
-  }
-
-  @Test
-  @DisplayName("끝나지 않은 통화(마무리를 안 부름)는 최대 길이 300초를 쓴 것으로 센다")
-  void unfinishedCallCountsAsMax() {
-    GptUsageGuard bigLimit =
-        new GptUsageGuard(
-            gptUsageRepository, Clock.fixed(NOON, ZoneOffset.UTC), 10, 15, 300, 2, 3, 400, 5);
-    bigLimit.recordCallStart(ME, 1L);
-    bigLimit.recordCallStart(ME, 2L);
-
-    // 600초를 쓴 것으로 봐서 남은 300초
-    assertThat(bigLimit.allowedCallSeconds(ME)).isEqualTo(300);
-    bigLimit.recordCallStart(ME, 3L);
-    assertThat(bigLimit.allowedCallSeconds(ME)).isZero();
-  }
-
-  @Test
-  @DisplayName("날짜는 새벽 4시에 바뀐다: 3시 59분까지는 어제 통화가 세지고, 4시부터는 다시 처음이다")
-  void dayChangesAtFourAm() {
-    GptUsageGuard today = guardAt(NOON);
-    finishedCall(today, ME, 1, 10);
-    finishedCall(today, ME, 2, 10);
-    finishedCall(today, ME, 3, 10);
-
-    assertThat(guardAt(BEFORE_FOUR).allowedCallSeconds(ME)).isZero();
-    assertThat(guardAt(FOUR_AM).allowedCallSeconds(ME)).isEqualTo(300);
-  }
-
-  @Test
-  @DisplayName("한도는 사람마다 따로 센다")
-  void perUser() {
-    GptUsageGuard guard = guardAt(NOON);
-    finishedCall(guard, ME, 1, 10);
-    finishedCall(guard, ME, 2, 10);
-    finishedCall(guard, ME, 3, 10);
-
-    assertThat(guard.allowedCallSeconds(ME)).isZero();
-    assertThat(guard.allowedCallSeconds(OTHER)).isEqualTo(300);
+    assertThat(gptUsageRepository.findByUserIdOrderById(ME))
+        .hasSize(10)
+        .allMatch(usage -> usage.getKind() == GptUsageKind.CALL);
   }
 
   @Test
@@ -157,8 +85,6 @@ class GptUsageGuardTest {
     GptUsage usage = gptUsageRepository.findByCallRecordIdAndUserId(7L, ME).orElseThrow();
     assertThat(usage.getCallSeconds()).isEqualTo(1200);
     assertThat(usage.getCostWon()).isEqualTo(8000);
-    // 20분이라 오늘 통화 시간(15분)을 다 썼습니다.
-    assertThat(guard.allowedCallSeconds(ME)).isZero();
   }
 
   @Test
@@ -196,110 +122,26 @@ class GptUsageGuardTest {
         .isNull();
   }
 
-  // ---- 글 호출 (통화 요약 · 코치) ----
+  // ---- 글 호출 (통화 요약 · 코치 · 계획 초안 · 상담 채팅 · 작은 AI 기능) ----
 
   @Test
-  @DisplayName("글 호출은 통화 요약과 코치를 합쳐 하루 2번까지이고, 부를 때마다 5원으로 기록한다")
-  void textLimitIsShared() {
+  @DisplayName("글 호출은 몇 번을 불러도 막지 않고, 부를 때마다 5원으로 기록한다 (하루 한도 없음)")
+  void textCallsAreNotLimited() {
     GptUsageGuard guard = guardAt(NOON);
-
-    assertThat(guard.tryUseText(ME, GptUsageKind.COACH)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.CALL_REVIEW)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.COACH)).isFalse();
-    assertThat(guard.tryUseText(ME, GptUsageKind.CALL_REVIEW)).isFalse();
+    for (int i = 0; i < 30; i++) {
+      guard.recordText(ME, GptUsageKind.CHAT);
+    }
+    guard.recordText(ME, GptUsageKind.CHECKLIST);
 
     assertThat(gptUsageRepository.findByUserIdOrderById(ME))
-        .extracting(GptUsage::getKind, GptUsage::getCostWon, GptUsage::getCallRecordId)
-        .containsExactly(
-            tuple(GptUsageKind.COACH, 5, null), tuple(GptUsageKind.CALL_REVIEW, 5, null));
+        .hasSize(31)
+        .allMatch(usage -> usage.getCostWon() == 5 && usage.getCallRecordId() == null);
   }
 
   @Test
-  @DisplayName("말로 계획 세우기(PLAN_PARSE)도 같은 글 호출 한도를 함께 쓴다")
-  void planParseSharesTextLimit() {
-    GptUsageGuard guard = guardAt(NOON);
-
-    assertThat(guard.tryUseText(ME, GptUsageKind.PLAN_PARSE)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.COACH)).isTrue();
-    // 계획 초안 1번 + 코치 1번 = 2번이라 오늘은 더 못 부릅니다.
-    assertThat(guard.tryUseText(ME, GptUsageKind.PLAN_PARSE)).isFalse();
-
-    assertThat(gptUsageRepository.findByUserIdOrderById(ME))
-        .extracting(GptUsage::getKind)
-        .containsExactly(GptUsageKind.PLAN_PARSE, GptUsageKind.COACH);
-  }
-
-  @Test
-  @DisplayName("통화는 글 호출 한도에 세지 않는다. 글 호출 한도는 다음 날(새벽 4시) 다시 생긴다. 다른 사람은 따로다")
-  void textLimitIsSeparateFromCallsAndResets() {
-    GptUsageGuard guard = guardAt(NOON);
-    guard.recordCallStart(ME, 1L);
-    assertThat(guard.tryUseText(ME, GptUsageKind.COACH)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.COACH)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.COACH)).isFalse();
-
-    assertThat(guard.tryUseText(OTHER, GptUsageKind.COACH)).isTrue();
-    assertThat(guardAt(BEFORE_FOUR).tryUseText(ME, GptUsageKind.COACH)).isFalse();
-    assertThat(guardAt(FOUR_AM).tryUseText(ME, GptUsageKind.COACH)).isTrue();
-  }
-
-  // ---- 작은 AI 기능 (체크리스트 추천 등, #236 · #237) ----
-
-  @Test
-  @DisplayName("작은 AI 기능은 하루 3번까지이고, 글 호출과 같은 비용(5원)으로 기록한다")
-  void assistLimit() {
-    GptUsageGuard guard = guardAt(NOON);
-
-    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isFalse();
-
-    assertThat(gptUsageRepository.findByUserIdOrderById(ME))
-        .extracting(GptUsage::getKind, GptUsage::getCostWon)
-        .containsExactly(
-            tuple(GptUsageKind.CHECKLIST, 5),
-            tuple(GptUsageKind.CHECKLIST, 5),
-            tuple(GptUsageKind.CHECKLIST, 5));
-  }
-
-  @Test
-  @DisplayName("체크리스트(CHECKLIST)와 작은 AI 기능 묶음(ASSIST)은 한도를 함께 쓴다")
-  void checklistAndAssistShareLimit() {
-    GptUsageGuard guard = guardAt(NOON);
-
-    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.ASSIST)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.ASSIST)).isTrue();
-    // 합쳐서 3번이라 오늘은 더 못 부릅니다.
-    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isFalse();
-    assertThat(guard.tryUseText(ME, GptUsageKind.ASSIST)).isFalse();
-  }
-
-  @Test
-  @DisplayName("작은 AI 기능과 글 호출은 한도를 따로 센다: 한쪽을 다 써도 다른 쪽은 그대로 쓸 수 있다")
-  void assistLimitIsSeparateFromTextLimit() {
-    GptUsageGuard guard = guardAt(NOON);
-    // 글 호출 2번을 다 씀
-    assertThat(guard.tryUseText(ME, GptUsageKind.COACH)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.PLAN_PARSE)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.COACH)).isFalse();
-
-    // 그래도 체크리스트는 3번 됩니다.
-    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
-    assertThat(guard.tryUseText(ME, GptUsageKind.CHECKLIST)).isFalse();
-
-    // 다른 사람과 다음 날(새벽 4시)은 따로입니다.
-    assertThat(guard.tryUseText(OTHER, GptUsageKind.CHECKLIST)).isTrue();
-    assertThat(guardAt(FOUR_AM).tryUseText(ME, GptUsageKind.CHECKLIST)).isTrue();
-  }
-
-  @Test
-  @DisplayName("통화를 글 호출로 기록하려 하면 막는다 (통화는 시간을 따로 세야 해서)")
+  @DisplayName("통화를 글 호출로 기록하려 하면 막는다 (통화는 시간을 따로 기록해야 해서)")
   void callIsNotATextCall() {
-    assertThatThrownBy(() -> guardAt(NOON).tryUseText(ME, GptUsageKind.CALL))
+    assertThatThrownBy(() -> guardAt(NOON).recordText(ME, GptUsageKind.CALL))
         .isInstanceOf(IllegalArgumentException.class);
   }
 

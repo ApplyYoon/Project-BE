@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.ithopeschool.projectbe.domain.auth.TokenHasher;
@@ -69,7 +70,7 @@ class CallServiceTest {
   private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
   private final CallKeyClient callKeyClient = mock(CallKeyClient.class);
   private final TokenHasher tokenHasher = new TokenHasher();
-  // 하루 한도는 가짜로 둡니다. 진짜로 세는 것은 GptUsageGuardTest 가 확인합니다.
+  // GPT 호출 기록은 가짜로 둡니다. 진짜로 기록하는 것은 GptUsageGuardTest 가 확인합니다.
   // 기본은 "이번 통화는 300초까지 해도 된다" 입니다. (setUp)
   private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
   private final SafetyService safetyService = mock(SafetyService.class);
@@ -141,8 +142,8 @@ class CallServiceTest {
     given(callKeyClient.createKey(any(), any())).willReturn(Optional.of(KEY));
     given(riskService.levelOn(any(), any())).willReturn(RiskLevel.NONE);
     given(checkCallService.gateOf(any(), any())).willReturn(new CheckCall.Gate(true, null, null));
-    // 오늘 한도는 남아 있어서, 이번 통화는 최대 300초까지 해도 됩니다.
-    given(gptUsageGuard.allowedCallSeconds(any())).willReturn(300);
+    // 통화 한 번은 최대 300초까지 해도 됩니다.
+    given(gptUsageGuard.maxCallSeconds()).willReturn(300);
     // 지난 통화는 없고, 저장하면 12번 기록이 됩니다.
     given(
             callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
@@ -270,7 +271,7 @@ class CallServiceTest {
   }
 
   @Test
-  @DisplayName("통화가 꺼진 서버(내 컴퓨터)에서는 503 이고, 하루 한도를 쓰지 않는다")
+  @DisplayName("통화가 꺼진 서버(내 컴퓨터)에서는 503 이고, 통화 시작 기록을 남기지 않는다")
   void unavailableWhenOff() {
     given(callKeyClient.isEnabled()).willReturn(false);
     for (int i = 0; i < 5; i++) {
@@ -280,32 +281,18 @@ class CallServiceTest {
           "AI 통화가 아직 켜져 있지 않아요");
     }
     verify(callKeyClient, never()).createKey(any(), any());
-    // 통화가 시작되지 않았으니 GPT 호출 기록도 남기지 않습니다. (오늘 횟수를 쓰지 않음)
+    // 통화가 시작되지 않았으니 GPT 호출 기록도 남기지 않습니다.
     verify(gptUsageGuard, never()).recordCallStart(any(), any());
   }
 
   @Test
-  @DisplayName("오늘 횟수나 시간을 다 썼으면(허용 0초) 429 이고, OpenAI 를 부르지 않는다. 다른 사람은 걸 수 있다")
-  void tooManyCalls() {
-    given(gptUsageGuard.allowedCallSeconds(USER_ID)).willReturn(0);
+  @DisplayName("하루에 몇 번을 걸어도 막지 않고, 최대 길이는 매번 설정값(300초)이다 (하루 한도 없음)")
+  void noDailyCallLimit() {
+    for (int i = 0; i < 10; i++) {
+      assertThat(callService.startSession(REQUEST).maxCallSeconds()).isEqualTo(300);
+    }
 
-    assertError(
-        () -> callService.startSession(REQUEST),
-        ErrorCode.TOO_MANY_REQUESTS,
-        "오늘 통화는 다 썼어요. 내일 다시 만나요");
-    verify(callKeyClient, never()).createKey(any(), any());
-    verify(gptUsageGuard, never()).recordCallStart(any(), any());
-
-    given(currentUserProvider.getCurrentUserId()).willReturn(8L);
-    assertThat(callService.startSession(REQUEST).value()).isEqualTo("ek_abc123");
-  }
-
-  @Test
-  @DisplayName("오늘 남은 시간이 2분이면, 이번 통화의 최대 길이는 120초다")
-  void shortensTheCallToTheRemainingTime() {
-    given(gptUsageGuard.allowedCallSeconds(USER_ID)).willReturn(120);
-
-    assertThat(callService.startSession(REQUEST).maxCallSeconds()).isEqualTo(120);
+    verify(callKeyClient, times(10)).createKey(any(), any());
   }
 
   @Test
@@ -317,8 +304,8 @@ class CallServiceTest {
   }
 
   @Test
-  @DisplayName("OpenAI 가 임시 키를 못 주면 503 이고, 통화가 시작되지 않았으니 기록도 한도도 쓰지 않는다")
-  void failureDoesNotUseTheLimit() {
+  @DisplayName("OpenAI 가 임시 키를 못 주면 503 이고, 통화가 시작되지 않았으니 기록도 남기지 않는다")
+  void failureDoesNotRecord() {
     given(callKeyClient.createKey(any(), any())).willReturn(Optional.empty());
     for (int i = 0; i < 5; i++) {
       assertError(
@@ -327,7 +314,7 @@ class CallServiceTest {
           "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
     }
 
-    // 시작하지 못한 통화는 통화 기록도, GPT 호출 기록도 남기지 않습니다. (그래서 오늘 횟수를 쓰지 않습니다)
+    // 시작하지 못한 통화는 통화 기록도, GPT 호출 기록도 남기지 않습니다.
     verify(callRecordRepository, never()).save(any());
     verify(gptUsageGuard, never()).recordCallStart(any(), any());
   }

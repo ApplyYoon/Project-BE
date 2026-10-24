@@ -210,18 +210,6 @@ class CallControllerTest {
   }
 
   @Test
-  @DisplayName("하루 한도를 넘으면 429 와 그 안내")
-  void tooManyRequests() throws Exception {
-    given(callService.startSession(any()))
-        .willThrow(new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 통화는 다 썼어요. 내일 다시 만나요"));
-
-    start(VALID)
-        .andExpect(status().isTooManyRequests())
-        .andExpect(jsonPath("$.error.code").value("TOO_MANY_REQUESTS"))
-        .andExpect(jsonPath("$.error.message").value("오늘 통화는 다 썼어요. 내일 다시 만나요"));
-  }
-
-  @Test
   @DisplayName("통화가 꺼져 있으면 503 과 그 안내")
   void serviceUnavailable() throws Exception {
     given(callService.startSession(any()))
