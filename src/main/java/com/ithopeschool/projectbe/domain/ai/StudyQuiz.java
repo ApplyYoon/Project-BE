@@ -23,13 +23,16 @@ public final class StudyQuiz {
   public static final int MAX_QUESTION_LENGTH = 200;
   public static final int MAX_CHOICE_LENGTH = 80;
   public static final int MAX_EXPLANATION_LENGTH = 200;
+  // 지문(그 문제가 기대는 글)의 최대 글자 수. 학생 자료 글 한도(StudyQuizRequest)와 같습니다.
+  public static final int MAX_PASSAGE_LENGTH = 2000;
   // 단원 이름 글자 수 한도 (quiz_results.unit 칸과 맞춤, 통계 탭 2026-10-24)
   public static final int MAX_UNIT_LENGTH = 30;
 
   // AI 가 돌려주는 JSON 모양 그대로입니다.
   //   { "crisis": false, "notStudy": false, "unit": "함수",
   //     "questions": [ { "question": "lim (n→∞) 1/n 의 값은?", "choices": ["0", "1", "∞", "없다"],
-  //                      "answerIndex": 0, "explanation": "n 이 커지면 1/n 은 0 에 가까워져." } ] }
+  //                      "answerIndex": 0, "explanation": "n 이 커지면 1/n 은 0 에 가까워져.",
+  //                      "passage": null } ] }
   // unit: 이 문제들이 속한 큰 단원 하나 (퀴즈 한 번 = 한 단원, 통계 탭 2026-10-24)
   public record Answer(Boolean crisis, Boolean notStudy, String unit, List<Item> questions) {
 
@@ -39,12 +42,18 @@ public final class StudyQuiz {
     }
 
     public record Item(
-        String question, List<String> choices, Integer answerIndex, String explanation) {}
+        String question,
+        List<String> choices,
+        Integer answerIndex,
+        String explanation,
+        String passage) {}
   }
 
   // 검사를 통과한 문제 한 개
+  //   passage : 그 문제를 풀려면 읽어야 하는 글(자료 글 · 사진 속 글에서 옮긴 부분). 지문 없이 풀리는 문제는 null.
+  //             같은 지문으로 다른 문제를 내는 변형 문제(docs/VARIANT-SPEC.md 5-1)에 씁니다. (2026-10-24, #394)
   public record Question(
-      String question, List<String> choices, int answerIndex, String explanation) {}
+      String question, List<String> choices, int answerIndex, String explanation, String passage) {}
 
   private StudyQuiz() {}
 
@@ -62,6 +71,7 @@ public final class StudyQuiz {
     item.put("choices", AiSchema.stringList());
     item.put("answerIndex", AiSchema.nullableInteger());
     item.put("explanation", AiSchema.string());
+    item.put("passage", AiSchema.nullableString());
     Map<String, Object> answer = new LinkedHashMap<>();
     answer.put("crisis", Map.of("type", "boolean"));
     answer.put("notStudy", Map.of("type", "boolean"));
@@ -103,6 +113,12 @@ public final class StudyQuiz {
             + " (예: 수학이면 수와 식 · 함수 · 도형 · 확률과 통계, 국어면 문학 · 비문학 · 문법 · 화법과 작문,"
             + " 영어면 독해 · 듣기 · 문법 · 어휘, 과학이면 물리 · 화학 · 생명 · 지구). 12자까지."
             + " 문제는 모두 이 단원 하나에서 내. notStudy 면 빈 글자.");
+    lines.add(
+        "12. passage: 그 문제를 풀려면 꼭 읽어야 하는 글(독해 지문 · 자료 글 · 사진 속 글)이 있으면, 그 부분을 학생 자료에서"
+            + " 고치지 말고 그대로 옮겨 적어. "
+            + MAX_PASSAGE_LENGTH
+            + "자까지. 개념 · 용어 · 계산처럼 글 없이 풀리는 문제는 null."
+            + " 8번처럼 개인정보는 옮기지 마.");
     return String.join("\n", lines);
   }
 
@@ -143,6 +159,8 @@ public final class StudyQuiz {
   //   보기: 정확히 4개가 아니거나, 빈 보기 · 80자 넘는 보기 · 같은 보기 · 깎아내리는 말이 있으면 그 문제를 버립니다.
   //   정답: answerIndex 가 없거나 0~3 밖이면 버립니다.
   //   해설: 비었거나 200자를 넘거나 깎아내리는 말이 있으면 버립니다.
+  //   지문: 앞뒤 공백을 지우고 2000자에서 자릅니다. 비었으면 null.
+  //        학생 자료를 옮긴 글이라 문제는 버리지 않고, 깎아내리는 말이 있으면 지문만 비웁니다(null).
   //   정답 위치는 섞지 않고 AI 답 그대로 둡니다.
   //   한 문제도 안 남으면 null 입니다. (FE 는 "문제를 못 만들었어요" 를 보여 줍니다)
   public static List<Question> from(Answer answer, int count) {
@@ -194,7 +212,19 @@ public final class StudyQuiz {
       }
       choices.add(choice);
     }
-    return new Question(question, choices, answerIndex, explanation);
+    return new Question(question, choices, answerIndex, explanation, passageOf(item.passage()));
+  }
+
+  // 지문. 앞뒤 공백을 지우고 2000자에서 자릅니다. 비었거나 깎아내리는 말이 있으면 null
+  private static String passageOf(String raw) {
+    String text = raw == null ? "" : raw.trim();
+    if (text.length() > MAX_PASSAGE_LENGTH) {
+      text = text.substring(0, MAX_PASSAGE_LENGTH).trim();
+    }
+    if (text.isEmpty() || ToneGuide.hasBannedExpression(text)) {
+      return null;
+    }
+    return text;
   }
 
   // 앞뒤 공백을 지운 글. 비었거나 너무 길거나 깎아내리는 말이 있으면 null
