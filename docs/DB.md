@@ -99,6 +99,10 @@ erDiagram
     cards ||--o{ card_day_marks : "card_id"
     users ||--o{ rest_days : "user_id"
     checkins ||--o{ checkin_emotions : "checkin_id"
+    users ||--o{ diaries : "user_id"
+    diaries ||--o{ diary_emotions : "diary_id"
+    diaries ||--o{ diary_causes : "diary_id"
+    diaries ||--o{ diary_keywords : "diary_id"
     users ||--o{ reflection_prescriptions : "user_id"
     users ||--o{ risk_forecasts : "user_id"
     risk_forecasts ||--o{ risk_forecast_reasons : "risk_forecast_id"
@@ -476,6 +480,27 @@ erDiagram
         bigint checkin_id FK "어느 체크인의 감정인지"
         varchar emotion "하루 첫 태그에서 고른 감정 (STUCK, ANXIOUS, TIRED, ANNOYED, CALM, MOTIVATED 중 하나)"
     }
+    diaries {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 일기의 주인 (원문은 본인만 봄)"
+        date diary_date "어느 날의 일기인지 (쓴 시각을 새벽 4시 기준 날짜로)"
+        varchar content "학생이 쓴 일기 원문 (2000자까지)"
+        int mood "일기와 같이 고른 오늘 기분 (1 ~ 5, 체크인과 같은 척도), 비어도 됨"
+        timestamptz written_at "일기를 저장한 시각"
+        timestamptz analyzed_at "AI 분석을 마친 시각, 분석 안 했으면 비어 있음"
+    }
+    diary_emotions {
+        bigint diary_id FK "어느 일기에서 뽑은 감정인지"
+        varchar emotion "AI 가 뽑은 감정 (STUCK, ANXIOUS, TIRED, ANNOYED, CALM, MOTIVATED 중 하나)"
+    }
+    diary_causes {
+        bigint diary_id FK "어느 일기에서 뽑은 원인인지"
+        varchar cause "AI 가 뽑은 실패 원인 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, PROCRASTINATED, ETC 중 하나)"
+    }
+    diary_keywords {
+        bigint diary_id FK "어느 일기에서 뽑은 키워드인지"
+        varchar keyword "AI 가 뽑은 반복 키워드 (20자까지)"
+    }
     reflection_prescriptions {
         bigint id PK "처방을 구분하는 고유 번호 (나중에 내린 것일수록 큼)"
         bigint user_id FK "처방을 받은 사람"
@@ -591,7 +616,7 @@ erDiagram
 | AI 메시지 #30 | 완료 | `messages` |
 | 하루 요약 #34 | 대기 | 현재 `DaySummary` 계산 객체만 있고 저장 엔티티 없음 |
 | 개선안·실험 #52 | 완료 | v3 자기 실험 `experiments` · `experiment_cards` (#52 · #54). 옛 v2 개선안 계산 객체는 그대로 |
-| 일기 #60 | 대기 | 저장 엔티티 없음 |
+| 일기 #60 | 완료 | `diaries`와 딸린 `diary_emotions` · `diary_causes` · `diary_keywords` |
 | 잠금 해제 #67 | 완료 | `lock_events` 엔티티·그림·운영 SQL 반영 |
 | 동의 기록 #71 | 완료 | PR #204가 반영되어 `consent_records` 이력과 그림이 있음 |
 | 계획 루틴 #85 | 완료 | `routines`, `routine_applications` 엔티티·그림·운영 SQL 반영 |
@@ -650,6 +675,8 @@ erDiagram
 | `card_checklist_items` | 카드 하나의 체크리스트 항목이 한 줄씩 (`@ElementCollection`, 보낸 순서대로) | #222 |
 | `card_expected_fail_causes` | 카드 하나의 예상 실패 원인 글이 한 줄씩 (`@ElementCollection`, 5개까지) | #222 |
 | `checkin_emotions` | 체크인 하나에서 고른 감정 태그가 한 줄씩 (`@ElementCollection`). 안 골랐으면 줄이 없음 | #220 |
+| `diaries` | 학생이 쓴 일기 하나가 한 줄 (원문, 기분, 날짜, 쓴 시각, AI 분석 시각). 같은 날에 여러 개 가능. **원문은 본인만** | #60 |
+| `diary_emotions` · `diary_causes` · `diary_keywords` | 일기 하나에서 AI 가 뽑은 감정 · 실패 원인 · 키워드가 한 줄씩 (`@ElementCollection`). 일기를 지우면 같이 지워짐 | #60 |
 | `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
 | `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
 | `insight_evidence_dates` | 인사이트 하나의 근거 날짜가 한 줄씩 (`@ElementCollection`). 날짜로 찾기 쉽게 날짜로 저장 | #43 · #41 |
@@ -778,6 +805,14 @@ erDiagram
 > - 하루 첫 태그 = 컨디션(1~5) + 감정 태그 여러 개. 감정은 한 체크인에 여러 개라서 `thinking_test_weaknesses` 처럼 딸린 테이블에 담았습니다. 엔티티는 `CheckIn` 하나입니다.
 > - 감정 이름은 이슈에 적힌 6개(`EmotionTag`)이고, DB 에도 이름 그대로 저장합니다.
 > - 감정 태그를 보내면 그날의 감정이 **전부 바뀝니다.** 다른 칸과 달리 **안 보내면 그대로 둡니다**(감정 태그를 모르는 화면이 다시 보내도 지워지지 않게). 체크인 줄이 지워지면(탈퇴) 같이 지워집니다.
+
+> `diaries` 와 딸린 테이블 3개는 2026-10-24 에 이슈 #60 에서 **AI 가 만든 테이블**입니다. (사용자 "이슈 완료 및 참고 자료 조건에 따라 진행", **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - **일기 하나 = 한 줄**은 학생이 정했습니다. 같은 날에 여러 개를 쓸 수 있습니다.
+> - `mood`(기분 1 ~ 5)는 FE 짝 이슈(Project-FE#63)의 `DiaryEntry.mood` 에 맞춰 더했습니다. FE 는 필수로 고르지만 서버는 비어도 받습니다.
+> - 뽑은 감정 · 원인 · 키워드는 한 일기에 여러 개라서 `checkin_emotions` 처럼 딸린 테이블에 담았습니다. 일기 줄을 지우면 같이 지워집니다. (이슈 완료 조건)
+> - 감정은 체크인 감정 태그(`EmotionTag`), 원인은 체크인 못 채운 이유(`MissReason`)와 **같은 값**입니다. 실패 원인 분석(#39)에서 같이 셀 수 있습니다.
+> - `analyzed_at` 이 비어 있으면 분석을 안 한 것입니다(분석 동의 안 함 · 위기 표현 · AI 꺼짐 · 실패). 그때 딸린 줄이 없는 것은 "없음" 이 아니라 "모름" 입니다.
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다. 딸린 테이블은 `AccountServiceTest` 의 `CHILD_TABLES` 에 더했습니다.
 
 > `reflection_prescriptions` 는 2026-10-17 에 **선생님이 "FE·BE·테이블까지 AI 가 만들라" 고 맡긴 기능**(통화 기록·회고·성찰)에서 AI 가 만든 테이블입니다. (이슈 #61)
 > - **처방 한 번 = 한 줄.** 언제 처방하는지는 `ReflectionRule` 과 docs/API.md "성찰일기 처방" 에 있습니다.
