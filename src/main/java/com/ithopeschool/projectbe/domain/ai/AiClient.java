@@ -51,49 +51,76 @@ public class AiClient {
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
   // 답을 기다리는 최대 시간. 학생이 입력 칸 앞에서 기다리는 중이라 길게 잡지 않습니다.
   private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
-  // 긴 답(자기 분석처럼 문단 여러 개)을 기다리는 최대 시간. 화면은 그동안 코드가 쓴 기본 문장을 먼저 보여 줍니다.
+  // 긴 답(긴 계획처럼 문단 여러 개)을 기다리는 최대 시간. 화면은 그동안 코드가 쓴 기본 문장을 먼저 보여 줍니다.
   private static final Duration LONG_READ_TIMEOUT = Duration.ofSeconds(25);
+  // AI 자기 분석의 답을 기다리는 최대 시간. 분석은 더 큰 모델(app.ai.analysis-model)이라 느려서 28초까지 기다립니다.
+  // (FE aiAnalysisApi.ts 는 30초까지 기다립니다. 2026-10-24)
+  private static final Duration ANALYSIS_READ_TIMEOUT = Duration.ofSeconds(28);
 
   // 받은 JSON 글자를 자바 값으로 바꾸는 도구
   private static final JsonMapper JSON = JsonMapper.builder().build();
 
   private final String apiKey;
   private final String model;
+  // AI 자기 분석만 쓰는 모델 (askAnalysis). 따로 정하지 않았으면 위의 model 과 같습니다.
+  private final String analysisModel;
   private final GptUsageGuard gptUsageGuard;
   private final RestClient restClient;
   // 긴 답용 (askLong). 기다리는 시간만 다르고 나머지는 restClient 와 같습니다.
   private final RestClient longRestClient;
+  // 자기 분석용 (askAnalysis). 기다리는 시간만 다르고 나머지는 restClient 와 같습니다.
+  private final RestClient analysisRestClient;
 
   // Spring 이 쓰는 생성자입니다. 키와 모델 이름 중 하나라도 비어 있으면 꺼진 상태입니다.
   @Autowired
   public AiClient(
       @Value("${app.ai.openai-api-key:}") String apiKey,
       @Value("${app.ai.model:}") String model,
+      @Value("${app.ai.analysis-model:}") String analysisModel,
       GptUsageGuard gptUsageGuard) {
     this(
         apiKey,
         model,
+        analysisModel,
         gptUsageGuard,
         RestClient.builder().requestFactory(requestFactoryWithTimeouts(READ_TIMEOUT)),
-        RestClient.builder().requestFactory(requestFactoryWithTimeouts(LONG_READ_TIMEOUT)));
+        RestClient.builder().requestFactory(requestFactoryWithTimeouts(LONG_READ_TIMEOUT)),
+        RestClient.builder().requestFactory(requestFactoryWithTimeouts(ANALYSIS_READ_TIMEOUT)));
   }
 
-  // 테스트에서 가짜 OpenAI 를 끼워 넣을 때 쓰는 생성자입니다. (AiClientTest) 긴 답도 같은 가짜 서버로 갑니다.
+  // 테스트에서 가짜 OpenAI 를 끼워 넣을 때 쓰는 생성자입니다. (AiClientTest) 긴 답 · 분석도 같은 가짜 서버로 갑니다.
+  // 분석 모델은 따로 주지 않아서 model 과 같습니다.
   AiClient(String apiKey, String model, GptUsageGuard gptUsageGuard, RestClient.Builder builder) {
-    this(apiKey, model, gptUsageGuard, builder, builder);
+    this(apiKey, model, null, gptUsageGuard, builder);
+  }
+
+  // 테스트에서 분석 모델을 따로 줄 때 쓰는 생성자입니다. (AiClientTest)
+  AiClient(
+      String apiKey,
+      String model,
+      String analysisModel,
+      GptUsageGuard gptUsageGuard,
+      RestClient.Builder builder) {
+    this(apiKey, model, analysisModel, gptUsageGuard, builder, builder, builder);
   }
 
   private AiClient(
       String apiKey,
       String model,
+      String analysisModel,
       GptUsageGuard gptUsageGuard,
       RestClient.Builder builder,
-      RestClient.Builder longBuilder) {
+      RestClient.Builder longBuilder,
+      RestClient.Builder analysisBuilder) {
     this.apiKey = apiKey == null ? "" : apiKey.trim();
     this.model = model == null ? "" : model.trim();
+    // 분석 모델을 따로 정하지 않았으면(비었으면) 글 모델을 씁니다.
+    this.analysisModel =
+        analysisModel == null || analysisModel.isBlank() ? this.model : analysisModel.trim();
     this.gptUsageGuard = gptUsageGuard;
     this.restClient = builder.baseUrl(OPENAI_BASE_URL).build();
     this.longRestClient = longBuilder.baseUrl(OPENAI_BASE_URL).build();
+    this.analysisRestClient = analysisBuilder.baseUrl(OPENAI_BASE_URL).build();
   }
 
   // GPT 를 부를 수 있는 서버인지 알려줍니다. 키와 모델 이름이 둘 다 있어야 true 입니다.
@@ -106,13 +133,22 @@ public class AiClient {
   //   kind   : 무슨 기능인지 (gpt_usages 에 이 종류로 남습니다)
   public <T> Optional<T> ask(
       Long userId, GptUsageKind kind, AiQuestion question, Class<T> answerType) {
-    return send(restClient, userId, kind, question, question.input(), answerType);
+    return send(restClient, model, userId, kind, question, question.input(), answerType);
   }
 
-  // ask 와 같고, 답을 25초까지 기다립니다. 답이 긴 기능(자기 분석 SelfAnalysisService)에서만 씁니다.
+  // ask 와 같고, 답을 25초까지 기다립니다. 답이 긴 기능(긴 계획 LongPlanService)에서 씁니다.
   public <T> Optional<T> askLong(
       Long userId, GptUsageKind kind, AiQuestion question, Class<T> answerType) {
-    return send(longRestClient, userId, kind, question, question.input(), answerType);
+    return send(longRestClient, model, userId, kind, question, question.input(), answerType);
+  }
+
+  // ask 와 같고, 분석 모델(app.ai.analysis-model)로 묻고 답을 28초까지 기다립니다. AI 자기 분석(SelfAnalysisService)에서만
+  // 씁니다.
+  // 분석은 "왜 그런지 · 다음에 뭘 해 볼지" 를 길게 쓰는 일이라, 2026-10-24 에 다른 작은 기능보다 좋은 모델로 올렸습니다.
+  public <T> Optional<T> askAnalysis(
+      Long userId, GptUsageKind kind, AiQuestion question, Class<T> answerType) {
+    return send(
+        analysisRestClient, analysisModel, userId, kind, question, question.input(), answerType);
   }
 
   // ask 와 같고, 질문 글과 함께 사진 한 장을 보냅니다. 사진을 읽느라 오래 걸려서 답을 25초까지 기다립니다.
@@ -136,12 +172,14 @@ public class AiClient {
                 List.of(
                     Map.of("type", "input_text", "text", question.input()),
                     Map.of("type", "input_image", "image_url", imageDataUrl, "detail", "auto"))));
-    return send(longRestClient, userId, kind, question, input, answerType);
+    return send(longRestClient, model, userId, kind, question, input, answerType);
   }
 
   // input 은 글(String)이거나, 사진이 섞인 메시지 목록(askWithImage)입니다.
+  // modelName 은 보낼 모델 이름입니다. (보통 model, 자기 분석만 analysisModel)
   private <T> Optional<T> send(
       RestClient client,
+      String modelName,
       Long userId,
       GptUsageKind kind,
       AiQuestion question,
@@ -158,7 +196,7 @@ public class AiClient {
       // store=false: OpenAI 쪽에 이 요청과 답을 보관하지 말라는 뜻입니다. (미성년자의 글이라 남기지 않습니다)
       OpenAiRequest request =
           new OpenAiRequest(
-              model,
+              modelName,
               question.instructions(),
               input,
               false,

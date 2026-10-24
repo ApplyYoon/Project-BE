@@ -188,4 +188,40 @@ class AiClientTest {
         .contains(new Answer(List.of("채점하기")));
     openAi.verify();
   }
+
+  @Test
+  @DisplayName("askAnalysis 는 분석 모델 이름으로 보내고, 다른 질문은 글 모델 그대로다 (2026-10-24)")
+  void askAnalysisUsesTheAnalysisModel() {
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.model").value("analysis-model"))
+        .andRespond(withSuccess(answerOf("{\"items\":[\"분석\"]}"), MediaType.APPLICATION_JSON));
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.model").value(MODEL))
+        .andRespond(withSuccess(answerOf("{\"items\":[\"보통\"]}"), MediaType.APPLICATION_JSON));
+
+    AiClient client = new AiClient(KEY, MODEL, "analysis-model", gptUsageGuard, builder);
+
+    assertThat(client.askAnalysis(USER_ID, GptUsageKind.ASSIST, QUESTION, Answer.class))
+        .contains(new Answer(List.of("분석")));
+    assertThat(client.ask(USER_ID, GptUsageKind.ASSIST, QUESTION, Answer.class))
+        .contains(new Answer(List.of("보통")));
+    openAi.verify();
+  }
+
+  @Test
+  @DisplayName("분석 모델을 따로 정하지 않았으면(빈 값) askAnalysis 도 글 모델로 보낸다")
+  void askAnalysisFallsBackToTheTextModel() {
+    openAi
+        .expect(requestTo(URL))
+        .andExpect(jsonPath("$.model").value(MODEL))
+        .andRespond(withSuccess(answerOf("{\"items\":[\"분석\"]}"), MediaType.APPLICATION_JSON));
+
+    AiClient client = new AiClient(KEY, MODEL, " ", gptUsageGuard, builder);
+
+    assertThat(client.askAnalysis(USER_ID, GptUsageKind.ASSIST, QUESTION, Answer.class))
+        .contains(new Answer(List.of("분석")));
+    openAi.verify();
+  }
 }
