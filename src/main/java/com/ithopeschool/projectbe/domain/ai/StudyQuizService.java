@@ -82,7 +82,7 @@ public class StudyQuizService {
     if (questions != null && CrisisText.hasCrisisText(passagesOf(questions))) {
       return StudyQuizResponse.help();
     }
-    return StudyQuizResponse.of(questions);
+    return StudyQuizResponse.of(questions, StudyQuiz.unitOf(answer.get()));
   }
 
   // 문제들의 지문 (없는 것은 뺍니다)

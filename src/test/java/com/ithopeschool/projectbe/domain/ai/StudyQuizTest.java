@@ -145,4 +145,16 @@ class StudyQuizTest {
     assertThat(StudyQuiz.from(new StudyQuiz.Answer(false, false, null), 3)).isNull();
     assertThat(StudyQuiz.from(null, 3)).isNull();
   }
+
+  @Test
+  @DisplayName("단원은 앞뒤 빈칸을 지워 쓰고, 비었거나 30자를 넘으면 null (통계 탭)")
+  void unitOf() {
+    assertThat(StudyQuiz.unitOf(new StudyQuiz.Answer(false, false, " 함수 ", List.of())))
+        .isEqualTo("함수");
+    assertThat(StudyQuiz.unitOf(new StudyQuiz.Answer(false, false, " ", List.of()))).isNull();
+    assertThat(StudyQuiz.unitOf(new StudyQuiz.Answer(false, false, "가".repeat(31), List.of())))
+        .isNull();
+    assertThat(StudyQuiz.unitOf(new StudyQuiz.Answer(false, false, List.of()))).isNull();
+    assertThat(StudyQuiz.unitOf(null)).isNull();
+  }
 }

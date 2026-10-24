@@ -884,11 +884,8 @@ class AiControllerTest {
             StudyQuizResponse.of(
                 List.of(
                     new StudyQuiz.Question(
-                        "lim (n→∞) 1/n 의 값은?",
-                        List.of("0", "1", "∞", "없다"),
-                        0,
-                        "0 에 가까워져.",
-                        null))));
+                        "lim (n→∞) 1/n 의 값은?", List.of("0", "1", "∞", "없다"), 0, "0 에 가까워져.", null)),
+                "함수"));
 
     mockMvc
         .perform(
@@ -899,7 +896,7 @@ class AiControllerTest {
         .andExpect(
             content()
                 .json(
-                    "{\"showHelp\":false,\"questions\":[{\"question\":\"lim (n→∞) 1/n 의 값은?\",\"choices\":[\"0\",\"1\",\"∞\",\"없다\"],\"answerIndex\":0,\"explanation\":\"0 에 가까워져.\",\"passage\":null}],\"reason\":null}",
+                    "{\"showHelp\":false,\"questions\":[{\"question\":\"lim (n→∞) 1/n 의 값은?\",\"choices\":[\"0\",\"1\",\"∞\",\"없다\"],\"answerIndex\":0,\"explanation\":\"0 에 가까워져.\",\"passage\":null}],\"unit\":\"함수\",\"reason\":null}",
                     true));
     verify(studyQuizService).make(new StudyQuizRequest("수열의 극한", List.of(), null, null, 3));
   }
