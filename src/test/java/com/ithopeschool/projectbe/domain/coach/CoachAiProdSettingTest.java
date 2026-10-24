@@ -31,10 +31,11 @@ class CoachAiProdSettingTest {
     @Autowired private Environment environment;
 
     @Test
-    @DisplayName("AI 가 켜지고, 넣은 모델 이름을 쓴다 (기본값보다 환경변수가 먼저)")
+    @DisplayName("AI 가 켜지고, 넣은 모델 이름을 쓴다 (기본값보다 환경변수가 먼저). 채팅 모델은 따로라 그대로다")
     void aiIsOnWithTheGivenModel() {
       assertThat(coachAiClient.isEnabled()).isTrue();
       assertThat(environment.getProperty("app.ai.model")).isEqualTo("test-model");
+      assertThat(environment.getProperty("app.ai.chat-model")).isEqualTo("gpt-6.1-sol");
     }
   }
 
@@ -51,10 +52,11 @@ class CoachAiProdSettingTest {
     @Autowired private Environment environment;
 
     @Test
-    @DisplayName("AI 가 켜지고, 모델은 기본값 gpt-6-luna 를 쓴다")
+    @DisplayName("AI 가 켜지고, 모델은 기본값 gpt-6-luna 를, 채팅은 기본값 gpt-6.1-sol 을 쓴다")
     void aiIsOnWithTheDefaultModel() {
       assertThat(coachAiClient.isEnabled()).isTrue();
       assertThat(environment.getProperty("app.ai.model")).isEqualTo("gpt-6-luna");
+      assertThat(environment.getProperty("app.ai.chat-model")).isEqualTo("gpt-6.1-sol");
     }
   }
 
