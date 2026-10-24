@@ -45,8 +45,9 @@ public class ChatAiClient {
 
   // OpenAI 에 연결되기를 기다리는 최대 시간
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
-  // 답을 기다리는 최대 시간. 채팅은 학생이 답을 기다리는 화면이라 15초가 지나면 포기하고 다시 보내게 합니다.
-  private static final Duration READ_TIMEOUT = Duration.ofSeconds(15);
+  // 답을 기다리는 최대 시간. 채팅은 학생이 답을 기다리는 화면이라 20초가 지나면 포기하고 다시 보내게 합니다.
+  // 2026-10-24 에 채팅 모델을 더 큰 gpt-6.1-sol 로 올리면서 15초 → 20초로 늘렸습니다. (FE 는 25초까지 기다립니다. chatApi.ts)
+  private static final Duration READ_TIMEOUT = Duration.ofSeconds(20);
   // 사진이 붙은 말은 사진을 읽느라 오래 걸려서 25초까지 기다립니다. (AiClient.askWithImage 와 같음)
   private static final Duration IMAGE_READ_TIMEOUT = Duration.ofSeconds(25);
 
@@ -129,10 +130,12 @@ public class ChatAiClient {
   // 사진이 붙은 말을 보낼 때 쓰는 연결 (더 오래 기다림)
   private final RestClient imageRestClient;
 
-  // Spring 이 쓰는 생성자입니다. 설정에서 키와 모델 이름을 받습니다. 둘 중 하나라도 비어 있으면 꺼진 상태입니다.
+  // Spring 이 쓰는 생성자입니다. 설정에서 키와 채팅 모델 이름(app.ai.chat-model)을 받습니다. 둘 중 하나라도 비어 있으면 꺼진 상태입니다.
+  // 채팅은 다른 글 AI(app.ai.model)보다 좋은 모델을 따로 씁니다. (application-prod.yml, 2026-10-24)
   @Autowired
   public ChatAiClient(
-      @Value("${app.ai.openai-api-key:}") String apiKey, @Value("${app.ai.model:}") String model) {
+      @Value("${app.ai.openai-api-key:}") String apiKey,
+      @Value("${app.ai.chat-model:}") String model) {
     this(
         apiKey,
         model,
