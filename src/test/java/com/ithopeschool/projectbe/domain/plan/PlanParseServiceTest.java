@@ -13,7 +13,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
-import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.plan.PlanDraft.Raw;
 import com.ithopeschool.projectbe.domain.plan.PlanDraft.Raw.Item;
 import com.ithopeschool.projectbe.domain.plan.dto.PlanParseRequest;
@@ -61,7 +60,6 @@ class PlanParseServiceTest {
   void setUp() {
     given(currentUserProvider.getCurrentUserId()).willReturn(USER_ID);
     given(planParseClient.isEnabled()).willReturn(true);
-    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.PLAN_PARSE)).willReturn(true);
     given(subjectRepository.findByUserIdOrderById(USER_ID))
         .willReturn(List.of(subject(3, "수학"), subject(4, "영어")));
   }
@@ -111,7 +109,7 @@ class PlanParseServiceTest {
   }
 
   @Test
-  @DisplayName("문장에 위기 표현이 있으면 GPT 를 부르지 않고, 한도도 쓰지 않고 showHelp 를 돌려준다")
+  @DisplayName("문장에 위기 표현이 있으면 GPT 를 부르지 않고, 기록도 남기지 않고 showHelp 를 돌려준다")
   void crisisTextStopsBeforeGpt() {
     PlanParseResponse response = service.parse(new PlanParseRequest(DATE, "오늘은 그냥 죽고 싶다"));
 
@@ -142,19 +140,6 @@ class PlanParseServiceTest {
         .extracting("errorCode")
         .isEqualTo(ErrorCode.SERVICE_UNAVAILABLE);
     verifyNoInteractions(gptUsageGuard);
-  }
-
-  @Test
-  @DisplayName("하루 한도를 넘으면 429 와 안내 문구이고, GPT 를 부르지 않는다")
-  void dailyLimitIs429() {
-    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.PLAN_PARSE)).willReturn(false);
-
-    assertThatThrownBy(() -> service.parse(new PlanParseRequest(DATE, TEXT)))
-        .isInstanceOf(ApiException.class)
-        .hasMessage("오늘 AI 사용량을 다 썼어요. 계획은 직접 추가하거나 내일 다시 시도해 주세요")
-        .extracting("errorCode")
-        .isEqualTo(ErrorCode.TOO_MANY_REQUESTS);
-    verify(planParseClient, never()).parse(anyString(), anyString(), any());
   }
 
   @Test

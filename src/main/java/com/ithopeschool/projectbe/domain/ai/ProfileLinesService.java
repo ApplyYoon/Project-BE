@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 //   1. 서버 DB 에 저장된 내 가장 최근 심리검사(#219)를 읽습니다. 없으면 lines 가 null 입니다.
 //      답이 거의 다 같아서 믿기 어려우면 AI 를 부르지 않고 정해 둔 3줄입니다. (ProfileLines.UNSURE_LINES, 2026-10-18)
 //   2. 가장 두드러진 척도 3개를 코드가 고릅니다. (ProfileLines.pick)
-//   3. AI 가 척도마다 한 줄씩 씁니다. 꺼짐 · 하루 한도 · 실패 · 쓸 수 없는 답이면 lines 가 null 입니다.
+//   3. AI 가 척도마다 한 줄씩 씁니다. 꺼짐 · 실패 · 쓸 수 없는 답이면 lines 가 null 입니다.
 //
 // currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 내 검사만 읽습니다.
 @Service

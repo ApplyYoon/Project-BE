@@ -11,7 +11,7 @@ import java.util.List;
 //                   "checklist": ["교과서 52~60쪽 읽기"], "goalId": "4" } ],
 //     "durationEvidence": "최근 14일 공부 기록 8번의 ...",
 //     "scopeText": "수학 3~4단원, 교과서 52~88쪽" }
-// - drafts 가 null 이면 만들지 못한 것입니다. (AI 꺼짐 · 하루 한도 · 실패 · 시험 범위가 아닌 사진) 에러가 아니라 200 입니다.
+// - drafts 가 null 이면 만들지 못한 것입니다. (AI 꺼짐 · 실패 · 시험 범위가 아닌 사진) 에러가 아니라 200 입니다.
 // - startTime 은 늘 null 입니다. 사진에는 시각이 없어서 FE 가 물어봅니다.
 // - scopeText 는 AI 가 사진에서 읽은 범위 한 줄입니다. 못 읽었으면 null.
 // - showHelp 가 true 면 메모나 사진 속 글에서 위기 표현이 감지된 것입니다. FE 는 도움 연결 안내를 먼저 보여 줍니다.
@@ -28,7 +28,7 @@ public record CardPhotoResponse(
     return new CardPhotoResponse(false, cards.drafts(), cards.durationEvidence(), scopeText);
   }
 
-  // 만들지 못했을 때 (AI 꺼짐 · 하루 한도 · 실패 · 시험 범위가 아닌 사진)
+  // 만들지 못했을 때 (AI 꺼짐 · 실패 · 시험 범위가 아닌 사진)
   public static CardPhotoResponse notMade() {
     return new CardPhotoResponse(false, null, null, null);
   }

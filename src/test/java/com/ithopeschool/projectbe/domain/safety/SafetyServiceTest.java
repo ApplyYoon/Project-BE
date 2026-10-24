@@ -28,7 +28,7 @@ class SafetyServiceTest {
       new SafetyService(ai, usage, settings, messages, Clock.fixed(now, ZoneOffset.UTC));
 
   @Test
-  void keywordsWorkWithoutAiOrQuota() {
+  void keywordsWorkWithoutAi() {
     assertThat(service.check(7L, List.of("사라지고 싶어"))).isTrue();
     verifyNoInteractions(ai, usage);
   }
@@ -36,19 +36,13 @@ class SafetyServiceTest {
   @Test
   void aiFindsIndirectExpressionAndFailsConservatively() {
     when(ai.isEnabled()).thenReturn(true);
-    when(usage.tryUseText(7L, GptUsageKind.COACH)).thenReturn(true);
     when(ai.ask(anyString(), anyString()))
         .thenReturn(Optional.of("CRISIS"), Optional.empty(), Optional.of("SAFE"));
     assertThat(service.check(7L, List.of("오늘이 마지막이면 좋겠어"))).isTrue();
     assertThat(service.check(7L, List.of("오늘은 힘들었어"))).isTrue();
     assertThat(service.check(7L, List.of("오늘은 힘들었어"))).isFalse();
-  }
-
-  @Test
-  void quotaExhaustionCannotDeclareTextSafe() {
-    when(ai.isEnabled()).thenReturn(true);
-    assertThat(service.check(7L, List.of("오늘은 힘들었어"))).isTrue();
-    verify(ai, never()).ask(anyString(), anyString());
+    // 하루 한도 없이 AI 에게 물을 때마다 기록만 남깁니다.
+    verify(usage, times(3)).recordText(7L, GptUsageKind.COACH);
   }
 
   @Test

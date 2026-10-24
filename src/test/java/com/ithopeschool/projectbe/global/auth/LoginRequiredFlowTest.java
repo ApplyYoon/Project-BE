@@ -421,7 +421,7 @@ class LoginRequiredFlowTest {
           new Api("GET", "/api/v1/school/notices", "/api/v1/school/notices", null),
           // 카드 체크리스트 추천 (내 지난 기록을 보고 AI 를 부릅니다. 이슈 #236)
           new Api("POST", "/api/v1/ai/checklist", "/api/v1/ai/checklist", "{\"title\":\"수학 문제집\"}"),
-          // 첫 준비 행동 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #236)
+          // 첫 준비 행동 (AI 를 부르고 호출 기록을 사람마다 남깁니다. 이슈 #236)
           new Api(
               "POST", "/api/v1/ai/first-step", "/api/v1/ai/first-step", "{\"item\":\"단어 외우기\"}"),
           // 예상 실패 원인 선지 (내 최근 30일 실패 원인을 봅니다. 이슈 #237)
@@ -436,13 +436,13 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/exam-next-step",
               "/api/v1/ai/exam-next-step",
               "{\"examId\":\"1\"}"),
-          // 글에 이름표 붙이기 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #237)
+          // 글에 이름표 붙이기 (AI 를 부르고 호출 기록을 사람마다 남깁니다. 이슈 #237)
           new Api(
               "POST",
               "/api/v1/ai/classify-text",
               "/api/v1/ai/classify-text",
               "{\"kind\":\"memo\",\"text\":\"문자 보내기\"}"),
-          // 루틴 카드 제안 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #239)
+          // 루틴 카드 제안 (AI 를 부르고 호출 기록을 사람마다 남깁니다. 이슈 #239)
           new Api(
               "POST",
               "/api/v1/ai/routine-cards",

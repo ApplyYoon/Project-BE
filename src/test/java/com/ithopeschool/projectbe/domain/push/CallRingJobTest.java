@@ -10,7 +10,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import com.ithopeschool.projectbe.domain.gpt.GptUsageGuard;
 import com.ithopeschool.projectbe.domain.job.JobContext;
 import com.ithopeschool.projectbe.domain.job.JobResultStore;
 import com.ithopeschool.projectbe.domain.message.Message;
@@ -46,7 +45,6 @@ class CallRingJobTest {
   private final MessageService messageService = mock(MessageService.class);
   private final CareSettingRepository careSettings = mock(CareSettingRepository.class);
   private final QuietHoursSettings quietHoursSettings = mock(QuietHoursSettings.class);
-  private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
   private final JobResultStore resultStore = new JobResultStore();
 
   // 오늘 끝낸 공부는 보지 않습니다. 통화의 공부 조건은 2026-10-22 에 뺐습니다. (CheckCall)
@@ -58,7 +56,6 @@ class CallRingJobTest {
           messageService,
           careSettings,
           quietHoursSettings,
-          gptUsageGuard,
           resultStore);
 
   // 한국 시간 "HH:mm" 에 작업이 돈 것으로 합니다.
@@ -106,7 +103,6 @@ class CallRingJobTest {
     given(messageRepository.findFirstByUserIdAndKindOrderBySentAtDesc(anyLong(), any()))
         .willReturn(Optional.empty());
     given(quietHoursSettings.windowOf(anyLong())).willReturn(QuietHours.Window.DEFAULT);
-    given(gptUsageGuard.allowedCallSeconds(anyLong())).willReturn(300);
   }
 
   @Test
@@ -180,16 +176,6 @@ class CallRingJobTest {
     callTimeIs("23:30");
 
     job.run(at("23:30"));
-
-    expectNotRang();
-  }
-
-  @Test
-  @DisplayName("오늘 걸 수 있는 통화가 남지 않았으면 보내지 않는다 (눌러도 통화를 못 함)")
-  void skipsWhenNoCallsLeft() {
-    given(gptUsageGuard.allowedCallSeconds(STUDENT)).willReturn(0);
-
-    job.run(at("21:00"));
 
     expectNotRang();
   }

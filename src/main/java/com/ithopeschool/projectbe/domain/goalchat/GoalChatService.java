@@ -28,8 +28,8 @@ import org.springframework.stereotype.Service;
 //
 //   1. 열기 (start)      정해 둔 첫 질문으로 시작합니다. (GPT 를 부르지 않음)
 //   2. 말 보내기 (send)  학생의 말을 모두 위기 표현 검사 → 걸리면 GPT 를 부르지 않고 도움 안내로 끝냄
-//                        아니면 지금까지의 대화를 주고 AI 의 다음 질문을 받습니다. (ChatAiClient, 한도는 상담 채팅 CHAT)
-//   3. 끝내기 (finish)   대화를 읽고 목표 초안(goalDraft)을 돌려줍니다. (AiClient, 한도는 작은 AI 기능 묶음 ASSIST)
+//                        아니면 지금까지의 대화를 주고 AI 의 다음 질문을 받습니다. (ChatAiClient, 기록은 상담 채팅 CHAT)
+//   3. 끝내기 (finish)   대화를 읽고 목표 초안(goalDraft)을 돌려줍니다. (AiClient, 기록은 작은 AI 기능 ASSIST)
 //                        FE 가 목표 저장 화면(POST /api/v1/goals, #221)에 채워 학생에게 확인받고 저장합니다.
 //
 // 상담 채팅(ChatService)과 다른 점: 통화 기록(call_records) · 요약 · 체크인을 남기지 않습니다. 목표만 만드는 짧은 대화라서입니다.
@@ -82,9 +82,7 @@ public class GoalChatService {
     if (!chatAiClient.isEnabled()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 목표 대화가 아직 켜져 있지 않아요");
     }
-    if (!gptUsageGuard.tryUseText(userId, GptUsageKind.CHAT)) {
-      throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 AI 사용량을 다 썼어요. 목표는 직접 써 볼까요?");
-    }
+    gptUsageGuard.recordText(userId, GptUsageKind.CHAT);
     LocalDate today = DayRule.dateOf(clock.instant());
     Optional<String> reply = chatAiClient.reply(GoalChatPrompt.instructions(today), lines);
     if (reply.isEmpty()) {
@@ -107,7 +105,7 @@ public class GoalChatService {
 
     goalChatStore.close(chatId);
     LocalDate today = DayRule.dateOf(clock.instant());
-    // AiClient 가 꺼짐 · 하루 한도 · 실패를 모두 빈 값으로 돌려줍니다.
+    // AiClient 가 꺼짐 · 실패를 모두 빈 값으로 돌려줍니다.
     Optional<GoalChatPrompt.Answer> answer =
         aiClient.ask(
             userId,

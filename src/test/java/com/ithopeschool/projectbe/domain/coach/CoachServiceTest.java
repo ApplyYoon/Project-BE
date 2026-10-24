@@ -3,7 +3,6 @@ package com.ithopeschool.projectbe.domain.coach;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -19,9 +18,7 @@ import com.ithopeschool.projectbe.domain.safety.SafetyService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -30,7 +27,7 @@ import org.mockito.ArgumentCaptor;
 
 // Service 단위 테스트: GPT 를 부르는 곳(CoachAiClient)을 가짜로 바꿔서, GPT 없이 로직만 확인합니다. (이슈 #87 완료 조건)
 //   - GPT 가 좋은 문단을 줬을 때 / 숫자를 지어냈을 때 / 깎아내리는 말을 썼을 때 / 아무것도 안 줬을 때
-//   - 로그인하지 않았을 때, AI 가 꺼져 있을 때, 하루 한도를 넘었을 때는 GPT 를 아예 부르지 않는지
+//   - 로그인하지 않았을 때, AI 가 꺼져 있을 때는 GPT 를 아예 부르지 않는지 (하루 한도는 2026-10-24 에 없앴습니다)
 //   - 같은 숫자로 다시 물으면 받아 둔 문단을 돌려주는지, 안전 브레이크가 켜지면 위로하는 말투로 묻는지
 class CoachServiceTest {
 
@@ -40,10 +37,8 @@ class CoachServiceTest {
 
   private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
   private final CoachAiClient coachAiClient = mock(CoachAiClient.class);
-  // 하루 한도는 가짜로 "한 사람당 2번" 을 흉내 냅니다. (진짜로 DB 에 기록하며 세는 것은 GptUsageGuardTest 가 확인합니다)
+  // GPT 호출 기록은 가짜입니다. (진짜로 DB 에 기록하는 것은 GptUsageGuardTest 가 확인합니다)
   private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
-  // 가짜 한도가 세는 횟수 (사용자 번호 → 오늘 쓴 횟수)
-  private final Map<Long, Integer> usedCounts = new HashMap<>();
 
   // 받아 둔 문단을 기억하는 곳도 진짜 코드를 씁니다.
   private final CoachParagraphStore coachParagraphStore = new CoachParagraphStore();
@@ -72,28 +67,16 @@ class CoachServiceTest {
     // 기본 상황: 로그인한 사람이고, AI 가 켜져 있습니다. 테스트마다 필요한 것만 바꿉니다.
     given(currentUserProvider.getCurrentUserId()).willReturn(USER_ID);
     given(coachAiClient.isEnabled()).willReturn(true);
-    // 코치로 부르면 한 사람당 2번까지 true, 그 뒤로는 false 입니다.
-    given(gptUsageGuard.tryUseText(any(), eq(GptUsageKind.COACH)))
-        .willAnswer(
-            invocation -> {
-              Long userId = invocation.getArgument(0);
-              int used = usedCounts.getOrDefault(userId, 0);
-              if (used >= 2) {
-                return false;
-              }
-              usedCounts.put(userId, used + 1);
-              return true;
-            });
   }
 
   @Test
-  @DisplayName("GPT 를 부르기 전에 '코치' 종류로 하루 한도를 보고 기록한다")
-  void usesTheCoachLimit() {
+  @DisplayName("GPT 를 부르기 전에 '코치' 종류로 기록한다")
+  void recordsAsCoach() {
     given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
 
     coachService.weeklyParagraph(REQUEST);
 
-    verify(gptUsageGuard).tryUseText(USER_ID, GptUsageKind.COACH);
+    verify(gptUsageGuard).recordText(USER_ID, GptUsageKind.COACH);
   }
 
   @Test
@@ -164,66 +147,47 @@ class CoachServiceTest {
   }
 
   @Test
-  @DisplayName("하루 한도(2번)를 넘으면 GPT 를 더 부르지 않고 문단 없음으로 답한다")
-  void stopsCallingAiAfterTheDailyLimit() {
+  @DisplayName("하루에 여러 번 물어도 막지 않고 매번 GPT 에게 묻는다 (하루 한도 없음)")
+  void noDailyLimit() {
     given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
 
-    // 주를 바꿔 가며 묻습니다. (같은 주를 같은 숫자로 다시 물으면 GPT 를 부르지 않아서 한도를 쓰지 않습니다)
+    // 주를 바꿔 가며 묻습니다. (같은 주를 같은 숫자로 다시 물으면 받아 둔 문단을 돌려줘서 GPT 를 부르지 않습니다)
     assertThat(coachService.weeklyParagraph(weekOf("2026-09-21")).paragraph())
         .isEqualTo(GOOD_PARAGRAPH);
     assertThat(coachService.weeklyParagraph(weekOf("2026-09-28")).paragraph())
         .isEqualTo(GOOD_PARAGRAPH);
-    assertThat(coachService.weeklyParagraph(weekOf("2026-10-05")).paragraph()).isNull();
-
-    verify(coachAiClient, times(2)).ask(any(), any());
-  }
-
-  @Test
-  @DisplayName("한 사람이 한도를 다 써도 다른 사람은 쓸 수 있다")
-  void limitIsPerUser() {
-    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
-    coachService.weeklyParagraph(weekOf("2026-09-21"));
-    coachService.weeklyParagraph(weekOf("2026-09-28"));
-    assertThat(coachService.weeklyParagraph(weekOf("2026-10-05")).paragraph()).isNull();
-
-    given(currentUserProvider.getCurrentUserId()).willReturn(8L);
-
     assertThat(coachService.weeklyParagraph(weekOf("2026-10-05")).paragraph())
         .isEqualTo(GOOD_PARAGRAPH);
+
+    verify(coachAiClient, times(3)).ask(any(), any());
   }
 
   @Test
-  @DisplayName("AI 가 꺼져 있을 때는 하루 한도를 쓰지 않는다")
-  void aiOffDoesNotUseTheLimit() {
+  @DisplayName("AI 가 꺼져 있을 때는 GPT 호출 기록을 남기지 않는다")
+  void aiOffDoesNotRecord() {
     given(coachAiClient.isEnabled()).willReturn(false);
     for (int i = 0; i < 5; i++) {
       coachService.weeklyParagraph(REQUEST);
     }
 
-    // AI 가 켜진 뒤에도 한도 2번이 그대로 남아 있습니다.
-    given(coachAiClient.isEnabled()).willReturn(true);
-    given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
-    assertThat(coachService.weeklyParagraph(weekOf("2026-09-28")).paragraph())
-        .isEqualTo(GOOD_PARAGRAPH);
-    assertThat(coachService.weeklyParagraph(weekOf("2026-10-05")).paragraph())
-        .isEqualTo(GOOD_PARAGRAPH);
-    verify(coachAiClient, times(2)).ask(any(), any());
+    verify(gptUsageGuard, never()).recordText(any(), any());
   }
 
   // ---- 받아 둔 문단 다시 쓰기 ----
 
   @Test
-  @DisplayName("같은 주를 같은 숫자로 다시 물으면 GPT 를 부르지 않고 받아 둔 문단을 돌려준다 (하루 한도도 쓰지 않는다)")
+  @DisplayName("같은 주를 같은 숫자로 다시 물으면 GPT 를 부르지 않고 받아 둔 문단을 돌려준다 (호출 기록도 남기지 않는다)")
   void sameQuestionReusesTheSavedParagraph() {
     given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
 
-    // 한도는 2번인데 5번을 물어도 전부 문단이 나옵니다. GPT 는 처음 한 번만 부릅니다.
+    // 5번을 물어도 전부 문단이 나옵니다. GPT 는 처음 한 번만 부릅니다.
     for (int i = 0; i < 5; i++) {
       assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isEqualTo(GOOD_PARAGRAPH);
     }
     verify(coachAiClient, times(1)).ask(any(), any());
+    verify(gptUsageGuard, times(1)).recordText(USER_ID, GptUsageKind.COACH);
 
-    // 한도가 그대로 남아 있어서 다른 주도 물어볼 수 있습니다.
+    // 다른 주를 물으면 새로 부릅니다.
     assertThat(coachService.weeklyParagraph(weekOf("2026-09-28")).paragraph())
         .isEqualTo(GOOD_PARAGRAPH);
     verify(coachAiClient, times(2)).ask(any(), any());
@@ -385,17 +349,14 @@ class CoachServiceTest {
   }
 
   @Test
-  @DisplayName("어제 한 줄·월간도 지어낸 숫자가 있으면 버리고, 로그인이 필요하고, 하루 한도를 같이 쓴다")
+  @DisplayName("어제 한 줄·월간도 지어낸 숫자가 있으면 버리고, 로그인이 필요하다")
   void otherKindsFollowTheSameRules() {
     given(coachAiClient.ask(any(), any())).willReturn(Optional.of("어제는 계획의 70% 를 했어."));
     assertThat(coachService.dailyParagraph(COMMENT_REQUEST).paragraph()).isNull();
 
-    // 위에서 1번 썼고, 한도는 2번입니다. 월간으로 1번 더 쓰면 다음은 종류와 상관없이 막힙니다.
     given(coachAiClient.ask(any(), any())).willReturn(Optional.of(GOOD_PARAGRAPH));
     assertThat(coachService.monthlyParagraph(COMMENT_REQUEST).paragraph())
         .isEqualTo(GOOD_PARAGRAPH);
-    assertThat(coachService.dailyParagraph(COMMENT_REQUEST).paragraph()).isNull();
-    assertThat(coachService.weeklyParagraph(REQUEST).paragraph()).isNull();
 
     given(currentUserProvider.getCurrentUserId())
         .willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"));

@@ -25,7 +25,7 @@ import tools.jackson.databind.json.JsonMapper;
 //
 // ask 한 번에 하는 일 (순서대로)
 //   1. 꺼져 있으면(키·모델 이름이 없음) 빈 값. 내 컴퓨터(local)에서는 항상 여기서 멈춥니다.
-//   2. 하루 한도(GptUsageGuard)를 넘었으면 빈 값. 부를 때마다 gpt_usages 에 한 줄 남습니다.
+//   2. 부를 때마다 gpt_usages 에 한 줄 남깁니다. (GptUsageGuard. 하루 한도는 2026-10-24 에 없앴습니다)
 //   3. 칸 모양(JSON schema)을 같이 보내서 그 모양으로만 답하게 합니다. (Structured Outputs)
 //   4. 10초 안에 답이 없거나, 에러로 답하거나, 모양이 다른 답이면 빈 값.
 //
@@ -102,7 +102,7 @@ public class AiClient {
   }
 
   // 질문을 보내고, 칸 모양대로 받은 답을 answerType 으로 바꿔 돌려줍니다. 못 받으면 빈 값입니다.
-  //   userId : 부르게 한 사람 (하루 한도를 사람마다 셉니다)
+  //   userId : 부르게 한 사람 (gpt_usages 에 이 사람으로 남습니다)
   //   kind   : 무슨 기능인지 (gpt_usages 에 이 종류로 남습니다)
   public <T> Optional<T> ask(
       Long userId, GptUsageKind kind, AiQuestion question, Class<T> answerType) {
@@ -147,14 +147,12 @@ public class AiClient {
       AiQuestion question,
       Object input,
       Class<T> answerType) {
-    // 1) 꺼져 있음. 부르지 않았으니 한도도 쓰지 않습니다.
+    // 1) 꺼져 있음. 부르지 않았으니 기록도 남기지 않습니다.
     if (!isEnabled()) {
       return Optional.empty();
     }
-    // 2) 하루 한도
-    if (!gptUsageGuard.tryUseText(userId, kind)) {
-      return Optional.empty();
-    }
+    // 2) 부른 것을 기록
+    gptUsageGuard.recordText(userId, kind);
 
     try {
       // store=false: OpenAI 쪽에 이 요청과 답을 보관하지 말라는 뜻입니다. (미성년자의 글이라 남기지 않습니다)
