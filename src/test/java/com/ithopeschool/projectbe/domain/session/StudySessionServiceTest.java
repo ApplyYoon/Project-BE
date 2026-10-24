@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.care.Stage4Service;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlan;
 import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
@@ -72,6 +73,7 @@ class StudySessionServiceTest {
             subjectRepository,
             studyPlanRepository,
             cardRepository,
+            mock(Stage4Service.class),
             Clock.fixed(NOW, ZoneOffset.UTC));
     given(currentUserProvider.getCurrentUserId()).willReturn(ME);
     // 3번 과목·7번 계획만 내 것이고, 그 밖의 번호는 없거나 남의 것입니다.

@@ -156,6 +156,10 @@ public class StudySession {
   @Column(length = 300)
   private String proofSummary;
 
+  // 관리 4단계라서 증빙이 꼭 필요했던 세션인지 (이슈 #234). 증빙 없이 끝내면 실행으로 인정하지 않습니다. (CardResultJudge)
+  // 저장하는 순간의 단계로 정하고 나중에 바꾸지 않습니다. 비어 있는 옛 기록은 "필요 없었음" 으로 봅니다.
+  private Boolean proofRequired;
+
   // [종료 팝업] 잘 된 이유 (물었을 때만)
   @ElementCollection
   @CollectionTable(
@@ -254,6 +258,25 @@ public class StudySession {
   public void recordPlay(PlayTag playTag, Long overRestMs) {
     this.playTag = playTag;
     this.overRestMs = overRestMs;
+  }
+
+  // 관리 4단계라서 증빙이 꼭 필요한 세션으로 표시합니다. (Service 가 저장하기 전에 부릅니다)
+  public void requireProof() {
+    this.proofRequired = true;
+  }
+
+  // 증빙이 꼭 필요했던 세션인지. 비어 있는 옛 기록은 false 입니다.
+  public boolean isProofRequired() {
+    return Boolean.TRUE.equals(proofRequired);
+  }
+
+  // 증빙이 있는지. 링크나 요약 중 하나라도 글자가 있으면 있는 것입니다. (FE 의 hasProof 와 같음)
+  public boolean hasProof() {
+    return hasText(proofLink) || hasText(proofSummary);
+  }
+
+  private static boolean hasText(String value) {
+    return value != null && !value.isEmpty();
   }
 
   // 세션을 잰 방법. 비어 있는 옛 기록은 타이머(NORMAL)로 봅니다.
