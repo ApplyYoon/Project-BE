@@ -306,6 +306,99 @@ class AnswerCheckServiceTest {
   }
 
   @Test
+  @DisplayName("기간 목록: 내 번호 · 기간으로 찾은 기록에 문제를 붙여 받은 순서(최근 날짜부터) 그대로 돌려준다")
+  void listsChecksBetweenWithTheirItems() {
+    LocalDate from = DATE.minusDays(6);
+    AnswerCheck today = check(20L, NOW);
+    AnswerCheck weekAgo = check(12L, Instant.parse("2026-10-18T09:00:00Z"));
+    ReflectionTestUtils.setField(weekAgo, "checkDate", from);
+    given(
+            answerCheckRepository
+                .findByUserIdAndCheckDateBetweenOrderByCheckDateDescCreatedAtDescIdDesc(
+                    USER_ID, from, DATE))
+        .willReturn(List.of(today, weekAgo));
+    given(
+            answerCheckItemRepository
+                .findByUserIdAndAnswerCheckIdInOrderByAnswerCheckIdAscSortOrderAsc(
+                    USER_ID, List.of(20L, 12L)))
+        .willReturn(
+            List.of(row(31L, 12L, 0, GradeResult.WRONG), row(40L, 20L, 0, GradeResult.CORRECT)));
+
+    List<AnswerCheckResponse> responses = service.getChecksBetween(from, DATE);
+
+    assertThat(responses)
+        .extracting(AnswerCheckResponse::id, AnswerCheckResponse::date)
+        .containsExactly(tuple("20", DATE), tuple("12", from));
+    assertThat(responses.get(0).counts()).isEqualTo(new AnswerCheckResponse.Counts(1, 0, 0));
+    assertThat(responses.get(1).counts()).isEqualTo(new AnswerCheckResponse.Counts(0, 1, 0));
+    // 하루치 조회는 부르지 않습니다.
+    verify(answerCheckRepository, never())
+        .findByUserIdAndCheckDateOrderByCreatedAtDescIdDesc(any(), any());
+  }
+
+  @Test
+  @DisplayName("기간 안에 기록이 없으면 빈 배열이고 문제는 찾지 않는다")
+  void emptyRange() {
+    given(
+            answerCheckRepository
+                .findByUserIdAndCheckDateBetweenOrderByCheckDateDescCreatedAtDescIdDesc(
+                    USER_ID, DATE, DATE))
+        .willReturn(List.of());
+
+    // 같은 날을 from · to 로 보내면 하루짜리 기간입니다.
+    assertThat(service.getChecksBetween(DATE, DATE)).isEmpty();
+    verifyNoInteractions(answerCheckItemRepository);
+  }
+
+  @Test
+  @DisplayName("시작이 끝보다 늦으면 400 이고 DB 를 부르지 않는다")
+  void rejectsReversedRange() {
+    assertThatThrownBy(() -> service.getChecksBetween(DATE, DATE.minusDays(1)))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("시작 날짜는 끝 날짜보다 늦을 수 없어요")
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.VALIDATION_ERROR);
+    verifyNoInteractions(answerCheckRepository, answerCheckItemRepository);
+  }
+
+  @Test
+  @DisplayName("31일(양 끝 포함)까지는 되고, 32일이면 400 이고 DB 를 부르지 않는다")
+  void rangeUpTo31Days() {
+    LocalDate from = LocalDate.of(2026, 10, 1);
+    given(
+            answerCheckRepository
+                .findByUserIdAndCheckDateBetweenOrderByCheckDateDescCreatedAtDescIdDesc(
+                    any(), any(), any()))
+        .willReturn(List.of());
+
+    // 10/1 ~ 10/31 은 31일
+    assertThat(service.getChecksBetween(from, from.plusDays(30))).isEmpty();
+
+    // 10/1 ~ 11/1 은 32일
+    assertThatThrownBy(() -> service.getChecksBetween(from, from.plusDays(31)))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("한 번에 31일까지만 조회할 수 있어요")
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.VALIDATION_ERROR);
+    verify(answerCheckRepository, never())
+        .findByUserIdAndCheckDateBetweenOrderByCheckDateDescCreatedAtDescIdDesc(
+            USER_ID, from, from.plusDays(31));
+  }
+
+  @Test
+  @DisplayName("기간 목록도 로그인 확인이 먼저다 (토큰이 없으면 날짜가 틀려도 401)")
+  void rangeChecksLoginFirst() {
+    given(currentUserProvider.getCurrentUserId())
+        .willThrow(new ApiException(ErrorCode.UNAUTHORIZED, "로그인이 필요해요"));
+
+    assertThatThrownBy(() -> service.getChecksBetween(DATE, DATE.minusDays(1)))
+        .isInstanceOf(ApiException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.UNAUTHORIZED);
+    verifyNoInteractions(answerCheckRepository);
+  }
+
+  @Test
   @DisplayName("판정을 고치면 AI 처음 판정은 남고, 개수 · editedByUser · 정답이 바뀐 기록 전체를 돌려준다")
   void updatesItem() {
     AnswerCheck check = check(12L, NOW);

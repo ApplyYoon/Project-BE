@@ -14,4 +14,9 @@ public interface AnswerCheckRepository extends JpaRepository<AnswerCheck, Long> 
   // 내 그날의 채점 기록들, 최근에 올린 것부터. (같은 시각이면 나중 번호부터)
   List<AnswerCheck> findByUserIdAndCheckDateOrderByCreatedAtDescIdDesc(
       Long userId, LocalDate checkDate);
+
+  // 내 기간(from ~ to, 두 날짜 모두 포함) 채점 기록들. 최근 날짜부터, 같은 날은 위와 같은 순서(최근에 올린 것부터).
+  // Between 은 양 끝을 포함합니다. (check_date >= from and check_date <= to)
+  List<AnswerCheck> findByUserIdAndCheckDateBetweenOrderByCheckDateDescCreatedAtDescIdDesc(
+      Long userId, LocalDate from, LocalDate to);
 }

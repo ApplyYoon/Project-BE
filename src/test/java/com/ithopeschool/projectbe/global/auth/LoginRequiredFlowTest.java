@@ -291,6 +291,12 @@ class LoginRequiredFlowTest {
               "/api/v1/answer-checks",
               "{\"mode\":\"MARKED\",\"image\":\"data:image/jpeg;base64,AQID\",\"date\":\"2026-10-24\"}"),
           new Api("GET", "/api/v1/answer-checks", "/api/v1/answer-checks?date=2026-10-24", null),
+          // 같은 주소를 기간(from · to)으로 불러도 401 인지 봅니다. (주간 리포트)
+          new Api(
+              "GET",
+              "/api/v1/answer-checks",
+              "/api/v1/answer-checks?from=2026-10-18&to=2026-10-24",
+              null),
           new Api(
               "PATCH",
               "/api/v1/answer-checks/{id}/items/{itemId}",

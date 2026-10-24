@@ -12,6 +12,7 @@ import com.ithopeschool.projectbe.global.exception.ApiException;
 import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,6 +42,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class AnswerCheckService {
 
   private static final Logger log = LoggerFactory.getLogger(AnswerCheckService.class);
+
+  // 기간 조회(getChecksBetween)가 받아 주는 가장 긴 기간(일)입니다. 시작일과 끝일을 모두 센 날 수입니다.
+  // 주간 리포트는 7일이면 되지만, 다른 기간 조회(일기 · 미루기 표시)와 같은 31일로 맞췄습니다.
+  static final int MAX_RANGE_DAYS = 31;
 
   private final CurrentUserProvider currentUserProvider;
   private final AnswerCheckRepository answerCheckRepository;
@@ -123,6 +128,33 @@ public class AnswerCheckService {
     Long userId = currentUserProvider.getCurrentUserId();
     List<AnswerCheck> checks =
         answerCheckRepository.findByUserIdAndCheckDateOrderByCreatedAtDescIdDesc(userId, date);
+    return withItems(userId, checks);
+  }
+
+  // 내 기간(from ~ to, 두 날짜 모두 포함) 채점 기록들. 주간 리포트가 일주일치를 한 번에 읽을 때 씁니다.
+  // 최근 날짜부터, 같은 날은 그날 목록(getChecks)과 같은 순서입니다. 기간이 길어도 DB 는 두 번만 부릅니다.
+  @Transactional(readOnly = true)
+  public List<AnswerCheckResponse> getChecksBetween(LocalDate from, LocalDate to) {
+    // 로그인 확인이 먼저입니다. (토큰이 없으면 날짜를 보기 전에 401)
+    Long userId = currentUserProvider.getCurrentUserId();
+    if (from.isAfter(to)) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "시작 날짜는 끝 날짜보다 늦을 수 없어요");
+    }
+    // 시작일과 끝일을 모두 세어야 해서 1 을 더합니다. (같은 날이면 1일)
+    if (ChronoUnit.DAYS.between(from, to) + 1 > MAX_RANGE_DAYS) {
+      throw new ApiException(
+          ErrorCode.VALIDATION_ERROR, "한 번에 " + MAX_RANGE_DAYS + "일까지만 조회할 수 있어요");
+    }
+    List<AnswerCheck> checks =
+        answerCheckRepository
+            .findByUserIdAndCheckDateBetweenOrderByCheckDateDescCreatedAtDescIdDesc(
+                userId, from, to);
+    return withItems(userId, checks);
+  }
+
+  // 기록들에 각 기록의 문제를 붙여 응답으로 바꿉니다. 기록 순서는 받은 그대로입니다.
+  // 문제는 기록 수와 상관없이 한 번에 꺼냅니다. (기록마다 따로 꺼내면 DB 를 기록 수만큼 부르게 됩니다)
+  private List<AnswerCheckResponse> withItems(Long userId, List<AnswerCheck> checks) {
     if (checks.isEmpty()) {
       return List.of();
     }
