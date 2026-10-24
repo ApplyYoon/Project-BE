@@ -46,6 +46,10 @@ app:
     realtime-model: ${OPENAI_REALTIME_MODEL:}
     # AI 의 목소리. OpenAI 가 정해 둔 이름 중 하나입니다.
     realtime-voice: ${OPENAI_REALTIME_VOICE:marin}
+    # AI 자기 분석(SelfAnalysisService)만 쓰는 모델. 2026-10-24 에 gpt-6.1-sol 로 올렸습니다. (docs/DEPLOY.md "AI(GPT) 켜기")
+    # FE 가 하루에 한 번만 물어서, 큰 모델이어도 비용이 작습니다. (학생 한 명 하루 약 30원, 어림값)
+    # 바꾸려면 환경변수 OPENAI_ANALYSIS_MODEL 에 이름을 넣습니다. 빈 값을 넣으면 위의 글 모델(model)을 씁니다.
+    analysis-model: ${OPENAI_ANALYSIS_MODEL:gpt-6.1-sol}
   # 웹 푸시(앱을 닫아도 오는 알림)의 VAPID 키입니다. 배포 서버의 환경변수에서만 받습니다. (docs/DEPLOY.md "웹 푸시 켜기")
   # 둘 중 하나라도 비어 있으면 푸시가 꺼집니다. 개인 키가 새면 남이 우리 학생들에게 알림을 보낼 수 있어서 비밀값입니다.
   # ⚠️ 키 값을 이 파일에 직접 적지 않습니다.
