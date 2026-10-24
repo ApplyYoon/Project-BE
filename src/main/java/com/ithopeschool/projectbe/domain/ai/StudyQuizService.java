@@ -75,6 +75,7 @@ public class StudyQuizService {
     }
 
     // 5) 문제마다 검사
-    return StudyQuizResponse.of(StudyQuiz.from(answer.get(), request.count()));
+    return StudyQuizResponse.of(
+        StudyQuiz.from(answer.get(), request.count()), StudyQuiz.unitOf(answer.get()));
   }
 }

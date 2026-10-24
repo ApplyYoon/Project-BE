@@ -63,6 +63,30 @@ app:
   # client secret 은 쓰지 않습니다. (구글 신분증을 구글의 tokeninfo 주소로 확인하는 방식)
   google:
     client-id: ${GOOGLE_CLIENT_ID:}
+  # 변형 문제 설정입니다. (docs/VARIANT-SPEC.md 9장, domain/variant/VariantSettings)
+  # 비밀값이 아니라서 값을 적어도 됩니다. AI 키 · 모델은 위의 app.ai 공용 설정을 씁니다.
+  variant:
+    # 변형 하나를 만들 때 AI 에게 다시 시키는 최대 횟수
+    max-generation-attempts: ${VARIANT_MAX_GENERATION_ATTEMPTS:3}
+    # G7 독립 풀이 검사(AI 에게 한 번 더 풀게 함)를 켤지. 품질 평가 결과를 보고 정합니다
+    enable-independent-solve-check: ${VARIANT_INDEPENDENT_SOLVE_CHECK:false}
+    # 샌드박스(따로 띄우는 계산 프로그램)의 시간(초) · 메모리(MB) 제한
+    sandbox-timeout-sec: ${VARIANT_SANDBOX_TIMEOUT_SEC:10}
+    sandbox-memory-mb: ${VARIANT_SANDBOX_MEMORY_MB:256}
+    # 하루 일일 과제 수 · 레벨을 내리는 L0 연속 오답 수 · 주의 표시를 붙이는 L-1 연속 오답 수
+    daily-max-items: ${VARIANT_DAILY_MAX_ITEMS:10}
+    l0-wrong-streak-to-drop: 2
+    floor-wrong-streak-to-flag: 3
+    # 월간 세트: (A) 유형 수 · (B) 최대 수 · 마감(만든 날 + 며칠)
+    monthly-correct-types: 5
+    monthly-wrong-max: 10
+    monthly-due-days: 7
+    # 분류기 자신감이 이보다 낮으면 사람이 확인하도록 둡니다
+    classify-min-confidence: 0.6
+    # 예약 작업 한 번이 새 변형 만들기를 시작하는 최대 시간(초). cron-job.org 는 30초까지만 기다립니다
+    job-budget-sec: ${VARIANT_JOB_BUDGET_SEC:20}
+    # 내 컴퓨터(local)에서만: true 면 서버를 켤 때 시드 원본 30문항을 테스트 사용자에게 등록합니다 (VariantSeedInitializer)
+    seed-on-start: ${VARIANT_SEED_ON_START:false}
 
 server:
   port: ${PORT:8080}

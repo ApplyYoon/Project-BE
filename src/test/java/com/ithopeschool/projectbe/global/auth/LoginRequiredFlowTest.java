@@ -172,6 +172,18 @@ class LoginRequiredFlowTest {
           new Api("POST", "/api/v1/rest-days/{date}", "/api/v1/rest-days/2026-10-12", null),
           new Api(
               "GET", "/api/v1/rest-days", "/api/v1/rest-days?from=2026-10-01&to=2026-10-07", null),
+          // 퀴즈 결과 · 통계 탭 (2026-10-24)
+          new Api(
+              "POST",
+              "/api/v1/quiz-results",
+              "/api/v1/quiz-results",
+              "{\"subjectId\":1,\"unit\":\"함수\",\"correctCount\":1,\"totalCount\":2,"
+                  + "\"questionSeconds\":[30,40]}"),
+          new Api(
+              "GET",
+              "/api/v1/quiz-results/stats",
+              "/api/v1/quiz-results/stats?from=2026-10-01&to=2026-10-07",
+              null),
           // 카드 결과 (이슈 #229)
           new Api(
               "GET",
@@ -302,6 +314,17 @@ class LoginRequiredFlowTest {
               "/api/v1/answer-checks/{id}/items/{itemId}",
               "/api/v1/answer-checks/1/items/1",
               "{\"result\":\"WRONG\"}"),
+          // 이번 주에 고른 것 (이슈 #406, 내가 고른 것은 본인만 봅니다)
+          new Api(
+              "PUT",
+              "/api/v1/weekly-picks/{weekStart}",
+              "/api/v1/weekly-picks/2026-10-26",
+              "{\"title\":\"폰을 다른 방에 두기\",\"hint\":\"손이 안 닿으면 덜 멈춰요\",\"skip\":false}"),
+          new Api(
+              "GET",
+              "/api/v1/weekly-picks",
+              "/api/v1/weekly-picks?from=2026-10-01&to=2026-10-31",
+              null),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
