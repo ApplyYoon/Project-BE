@@ -260,7 +260,7 @@ public class CardResultService {
   }
 
   // 공부 기록 하나를 판정에 넣는 세션으로 바꿉니다.
-  // ⚠️ proofRequired(관리 4단계라 증빙이 꼭 필요했던 세션)는 아직 서버에 저장하지 않아서 false 로 넣습니다.
+  // proofRequired: 관리 4단계라 증빙이 꼭 필요했던 세션인지 (저장할 때 정한 값, #234)
   private static CardDay.Session toJudgeSession(StudySession session) {
     // FE 의 hasProof 와 같습니다: 링크나 요약 중 하나라도 글자가 있으면 증빙이 있는 것입니다.
     boolean hasProof = hasText(session.getProofLink()) || hasText(session.getProofSummary());
@@ -271,7 +271,7 @@ public class CardResultService {
         Boolean.TRUE.equals(session.getEndedEarly()),
         new HashSet<>(session.getCheckedItems().keySet()),
         hasProof,
-        false);
+        session.isProofRequired());
   }
 
   // 미루기 · 실패 표시를 결과로 바꿉니다. 표시가 없으면 null

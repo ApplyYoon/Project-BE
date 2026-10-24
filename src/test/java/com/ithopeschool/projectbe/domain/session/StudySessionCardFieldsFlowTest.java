@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import com.ithopeschool.projectbe.domain.card.Card;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.card.ChecklistItem;
+import com.ithopeschool.projectbe.domain.care.Stage4Service;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
 import com.ithopeschool.projectbe.domain.session.dto.SessionEndReportRequest;
@@ -63,6 +64,7 @@ class StudySessionCardFieldsFlowTest {
             subjectRepository,
             studyPlanRepository,
             cardRepository,
+            mock(Stage4Service.class),
             Clock.fixed(START.plusSeconds(6 * 3600), ZoneOffset.UTC));
     // lockUser 가 users 의 줄을 잠그므로 1번 사용자가 있어야 합니다.
     em.getEntityManager()

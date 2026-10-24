@@ -268,6 +268,7 @@ class EntityRuleTest {
   // FE StudySession.endReport
   //   = { checked, shortfallReason, withWhat, proof: { link, summary }, goodReasons }
   //   → 팝업에 답했는지(endReported) + 칸마다 하나씩 (#224)
+  //   + 관리 4단계라서 증빙이 꼭 필요했는지(proofRequired, FE 의 endReport.proofRequired, #234)
   private static final Map<String, List<String>> SPLIT =
       Map.of(
           "StudySession.endReport",
@@ -278,7 +279,8 @@ class EntityRuleTest {
               "withWhat",
               "proofLink",
               "proofSummary",
-              "goodReasons"));
+              "goodReasons",
+              "proofRequired"));
 
   @ParameterizedTest(name = "{0} 엔티티")
   @ValueSource(strings = {"User", "Subject", "StudyPlan", "StudySession"})

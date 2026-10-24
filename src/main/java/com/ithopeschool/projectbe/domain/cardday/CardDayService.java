@@ -11,6 +11,7 @@ import com.ithopeschool.projectbe.domain.cardday.dto.LateEntryRequest;
 import com.ithopeschool.projectbe.domain.cardday.dto.PostponeLimitResponse;
 import com.ithopeschool.projectbe.domain.cardday.dto.PostponeRequest;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.care.Stage4Service;
 import com.ithopeschool.projectbe.domain.safety.CrisisText;
 import com.ithopeschool.projectbe.domain.session.StudySessionService;
 import com.ithopeschool.projectbe.domain.session.dto.StudySessionResponse;
@@ -49,6 +50,8 @@ public class CardDayService {
   private final CallRecordRepository callRecordRepository;
   // 사후 입력 세션을 저장할 때 씁니다. (겹침 검사 · 저장 규칙은 그쪽에 있습니다)
   private final StudySessionService studySessionService;
+  // 관리 4단계면 미루기가 잠깁니다. (이슈 #234)
+  private final Stage4Service stage4Service;
   // "지금 몇 시인지" 는 시계에게 묻습니다. 테스트에서 시각을 고정할 수 있습니다.
   private final Clock clock;
 
@@ -63,15 +66,18 @@ public class CardDayService {
 
     long usedThisMonth = countPostponesInMonth(userId, cardId, date);
     long usedEver = countPostponesEver(userId, cardId);
+    boolean stage4Locked = stage4Service.isOn(userId);
     return new PostponeLimitResponse(
-        PostponeRule.postponesLeft(card.getPriority(), card.isOneOff(), usedThisMonth, usedEver),
-        PostponeRule.blockReason(card.getPriority(), card.isOneOff(), usedThisMonth, usedEver));
+        PostponeRule.postponesLeft(
+            card.getPriority(), card.isOneOff(), usedThisMonth, usedEver, stage4Locked),
+        PostponeRule.blockReason(
+            card.getPriority(), card.isOneOff(), usedThisMonth, usedEver, stage4Locked));
   }
 
   // 카드 하루치를 미룹니다.
   //   - 1회성 카드: 카드 자체를 새 날짜 · 시각으로 옮기고, 원래 날짜에 "미룸" 표시를 남깁니다.
   //   - 반복 카드: 카드는 그대로 두고, 그 날짜에 "미룸" 표시와 새 날짜 · 시각만 남깁니다. (반복 카드는 한 장이라)
-  // 검사 순서: 내 카드(404) → 그날 하는 카드(400) → 이미 처리한 날(409) → 한도(409) → 새 시각이 지금 뒤(400)
+  // 검사 순서: 내 카드(404) → 그날 하는 카드(400) → 이미 처리한 날(409) → 한도 · 4단계 잠금(409) → 새 시각이 지금 뒤(400)
   @Transactional
   public CardMarkResultResponse postpone(Long cardId, PostponeRequest request) {
     Long userId = currentUserProvider.getCurrentUserId();
@@ -83,8 +89,10 @@ public class CardDayService {
     boolean isOneOff = card.isOneOff();
     long usedThisMonth = countPostponesInMonth(userId, cardId, date);
     long usedEver = countPostponesEver(userId, cardId);
+    boolean stage4Locked = stage4Service.isOn(userId);
     String blockReason =
-        PostponeRule.blockReason(card.getPriority(), isOneOff, usedThisMonth, usedEver);
+        PostponeRule.blockReason(
+            card.getPriority(), isOneOff, usedThisMonth, usedEver, stage4Locked);
     if (blockReason != null) {
       throw new ApiException(ErrorCode.CONFLICT, blockReason);
     }
@@ -114,7 +122,8 @@ public class CardDayService {
 
     // 방금 한 번 썼으므로 1을 더해서 남은 횟수를 셉니다.
     int left =
-        PostponeRule.postponesLeft(card.getPriority(), isOneOff, usedThisMonth + 1, usedEver + 1);
+        PostponeRule.postponesLeft(
+            card.getPriority(), isOneOff, usedThisMonth + 1, usedEver + 1, false);
     return new CardMarkResultResponse(CardDayMarkResponse.from(mark), left, crisisDetected);
   }
 

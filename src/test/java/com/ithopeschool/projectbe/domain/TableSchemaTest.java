@@ -84,6 +84,8 @@ class TableSchemaTest {
     expected.put("STUDY_SESSIONS.WITH_WHAT", "ENUM NULL");
     expected.put("STUDY_SESSIONS.PROOF_LINK", "CHARACTER VARYING(300) NULL");
     expected.put("STUDY_SESSIONS.PROOF_SUMMARY", "CHARACTER VARYING(300) NULL");
+    // 관리 4단계라서 증빙이 꼭 필요했던 세션인지 (#234). 옛 기록이 있어서 비어도 됩니다.
+    expected.put("STUDY_SESSIONS.PROOF_REQUIRED", "BOOLEAN NULL");
     expected.put("STUDY_SESSIONS.PLAY_TAG", "ENUM NULL");
     expected.put("STUDY_SESSIONS.OVER_REST_MS", "BIGINT NULL");
 

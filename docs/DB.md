@@ -99,6 +99,11 @@ erDiagram
     cards ||--o{ card_day_marks : "card_id"
     users ||--o{ rest_days : "user_id"
     checkins ||--o{ checkin_emotions : "checkin_id"
+    users ||--o{ diaries : "user_id"
+    diaries ||--o{ diary_emotions : "diary_id"
+    diaries ||--o{ diary_causes : "diary_id"
+    diaries ||--o{ diary_keywords : "diary_id"
+    users ||--o{ calendar_alarms : "user_id"
     users ||--o{ reflection_prescriptions : "user_id"
     users ||--o{ risk_forecasts : "user_id"
     risk_forecasts ||--o{ risk_forecast_reasons : "risk_forecast_id"
@@ -147,6 +152,7 @@ erDiagram
         varchar with_what "같이 한 것 (MUSIC, VIDEO, NONE 중 하나), 비어도 됨"
         varchar proof_link "산출물 증빙 링크 (300자까지), 비어도 됨"
         varchar proof_summary "산출물 증빙 2~3줄 요약 (300자까지), 비어도 됨"
+        boolean proof_required "관리 4단계라서 증빙이 꼭 필요했으면 true (옛 기록은 비어 있음 = false, #234)"
         varchar play_tag "노는 기록일 때 무엇을 했는지 (YOUTUBE, GAME, SNS, WEBTOON, REST, ETC 중 하나)"
         bigint over_rest_ms "노는 기록일 때 놀기가 끝난 뒤 더 쉰 시간(밀리초)"
     }
@@ -350,6 +356,9 @@ erDiagram
         boolean suggest_shrink "계획을 줄여 보자고 할지"
         varchar reason "왜 이 단계인지 한 줄"
         timestamptz decided_at "판정한 시각"
+        bigint forced_card_id "4단계라서 그날 하루만 절대 카드로 보는 카드 번호, 없거나 풀렸으면 비어 있음 (#234)"
+        date forced_card_date "그 카드를 절대로 보는 날짜, 비어도 됨"
+        timestamptz released_at "4단계를 푼 시각 (증빙 있는 실행 1회 → 3단계), 안 풀렸으면 비어 있음"
     }
     daily_signals {
         bigint id PK "줄을 구분하는 고유 번호"
@@ -472,6 +481,35 @@ erDiagram
         bigint checkin_id FK "어느 체크인의 감정인지"
         varchar emotion "하루 첫 태그에서 고른 감정 (STUCK, ANXIOUS, TIRED, ANNOYED, CALM, MOTIVATED 중 하나)"
     }
+    diaries {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 일기의 주인 (원문은 본인만 봄)"
+        date diary_date "어느 날의 일기인지 (쓴 시각을 새벽 4시 기준 날짜로)"
+        varchar content "학생이 쓴 일기 원문 (2000자까지)"
+        int mood "일기와 같이 고른 오늘 기분 (1 ~ 5, 체크인과 같은 척도), 비어도 됨"
+        timestamptz written_at "일기를 저장한 시각"
+        timestamptz analyzed_at "AI 분석을 마친 시각, 분석 안 했으면 비어 있음"
+    }
+    diary_emotions {
+        bigint diary_id FK "어느 일기에서 뽑은 감정인지"
+        varchar emotion "AI 가 뽑은 감정 (STUCK, ANXIOUS, TIRED, ANNOYED, CALM, MOTIVATED 중 하나)"
+    }
+    diary_causes {
+        bigint diary_id FK "어느 일기에서 뽑은 원인인지"
+        varchar cause "AI 가 뽑은 실패 원인 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, PROCRASTINATED, ETC 중 하나)"
+    }
+    diary_keywords {
+        bigint diary_id FK "어느 일기에서 뽑은 키워드인지"
+        varchar keyword "AI 가 뽑은 반복 키워드 (20자까지)"
+    }
+    calendar_alarms {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 일정의 주인"
+        varchar event_key "구글 캘린더의 일정 id (같은 일정을 다시 올렸을 때 찾는 데 씀)"
+        varchar title "일정 제목, 알림 글에 들어감 (100자까지)"
+        timestamptz starts_at "일정이 시작하는 순간"
+        timestamptz handled_at "알림을 보냈거나 연락 금지 시간이라 건너뛴 시각, 아직이면 비어 있음"
+    }
     reflection_prescriptions {
         bigint id PK "처방을 구분하는 고유 번호 (나중에 내린 것일수록 큼)"
         bigint user_id FK "처방을 받은 사람"
@@ -587,7 +625,8 @@ erDiagram
 | AI 메시지 #30 | 완료 | `messages` |
 | 하루 요약 #34 | 대기 | 현재 `DaySummary` 계산 객체만 있고 저장 엔티티 없음 |
 | 개선안·실험 #52 | 완료 | v3 자기 실험 `experiments` · `experiment_cards` (#52 · #54). 옛 v2 개선안 계산 객체는 그대로 |
-| 일기 #60 | 대기 | 저장 엔티티 없음 |
+| 일기 #60 | 완료 | `diaries`와 딸린 `diary_emotions` · `diary_causes` · `diary_keywords` |
+| 구글 캘린더 일정 알림 (2026-10-24) | 완료 | `calendar_alarms` |
 | 잠금 해제 #67 | 완료 | `lock_events` 엔티티·그림·운영 SQL 반영 |
 | 동의 기록 #71 | 완료 | PR #204가 반영되어 `consent_records` 이력과 그림이 있음 |
 | 계획 루틴 #85 | 완료 | `routines`, `routine_applications` 엔티티·그림·운영 SQL 반영 |
@@ -646,6 +685,9 @@ erDiagram
 | `card_checklist_items` | 카드 하나의 체크리스트 항목이 한 줄씩 (`@ElementCollection`, 보낸 순서대로) | #222 |
 | `card_expected_fail_causes` | 카드 하나의 예상 실패 원인 글이 한 줄씩 (`@ElementCollection`, 5개까지) | #222 |
 | `checkin_emotions` | 체크인 하나에서 고른 감정 태그가 한 줄씩 (`@ElementCollection`). 안 골랐으면 줄이 없음 | #220 |
+| `diaries` | 학생이 쓴 일기 하나가 한 줄 (원문, 기분, 날짜, 쓴 시각, AI 분석 시각). 같은 날에 여러 개 가능. **원문은 본인만** | #60 |
+| `calendar_alarms` | 학생의 구글 캘린더 일정 하나가 한 줄 (일정 id, 제목, 시작 시각, 알림 처리 시각). FE 가 앞으로 7일 일정을 **덮어쓰기**로 올리고, 예약 작업이 시작 10분 전에 푸시. 지난 일정은 하루 뒤 지움 | 2026-10-24 |
+| `diary_emotions` · `diary_causes` · `diary_keywords` | 일기 하나에서 AI 가 뽑은 감정 · 실패 원인 · 키워드가 한 줄씩 (`@ElementCollection`). 일기를 지우면 같이 지워짐 | #60 |
 | `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
 | `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
 | `insight_evidence_dates` | 인사이트 하나의 근거 날짜가 한 줄씩 (`@ElementCollection`). 날짜로 찾기 쉽게 날짜로 저장 | #43 · #41 |
@@ -756,6 +798,10 @@ erDiagram
 
 > `daily_care_stages` 는 2026-10-18 에 이슈 #62 에서 **AI 가 만든 테이블**입니다. (테이블 설계를 AI 에게 맡긴 범위, **PR 리뷰에서 학생이 꼭 확인해 주세요**)
 > - 하루의 단계를 **한 번 정하면 바꾸지 않습니다.** 그래서 "어제 몇 단계였나"(하루 한 칸 규칙)와 "당근 주 vs 채찍 주"(#47)를 이 표로 셉니다.
+> - 4단계 칸(`forced_card_id` · `forced_card_date` · `released_at`)은 2026-10-24 에 이슈 #234 에서 **학생이 고른 설계**입니다.
+>   - 절대 전환은 카드(`cards.priority`)를 바꾸지 않고 "그 카드 · 그 날짜만 절대" 로 이 줄에 적습니다. 풀면 두 칸을 비워서 원래대로 돌아갑니다. (FE `stage4.ts` 와 같은 방식)
+>   - 풀어도 판정한 `stage`(4)는 그대로 두고 `released_at` 만 적습니다. 응답과 다음 날 판정은 이 칸이 있으면 3단계로 봅니다.
+>   - 증빙 강제는 세션 쪽 `study_sessions.proof_required` 에 저장 순간의 값으로 남깁니다. 나중에 단계가 바뀌어도 그때 규칙이 남게 하려는 것입니다.
 > - 이유 문장(`reason`)을 그대로 남깁니다. 규칙 문장이 나중에 바뀌어도 그날 학생이 본 문장이 남게 하려는 것입니다.
 > - 계산 재료(의지력 등)는 남기지 않습니다. 의지력은 어떤 응답에도 넣지 않는 값이라서입니다. (낙인 방지, `WillpowerNotInResponseTest`)
 > - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
@@ -770,6 +816,22 @@ erDiagram
 > - 하루 첫 태그 = 컨디션(1~5) + 감정 태그 여러 개. 감정은 한 체크인에 여러 개라서 `thinking_test_weaknesses` 처럼 딸린 테이블에 담았습니다. 엔티티는 `CheckIn` 하나입니다.
 > - 감정 이름은 이슈에 적힌 6개(`EmotionTag`)이고, DB 에도 이름 그대로 저장합니다.
 > - 감정 태그를 보내면 그날의 감정이 **전부 바뀝니다.** 다른 칸과 달리 **안 보내면 그대로 둡니다**(감정 태그를 모르는 화면이 다시 보내도 지워지지 않게). 체크인 줄이 지워지면(탈퇴) 같이 지워집니다.
+
+> `calendar_alarms` 는 2026-10-24 에 **AI 가 만든 테이블**입니다. (사용자 "캘린더 시작 10분 전에 실제 앱처럼 알람 오게", "알림에 일정 제목 넣자", **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - 서버는 구글에 직접 접속하지 않습니다. FE 가 학생의 브라우저에서 읽은 **앞으로 7일 일정**을 올립니다. (`PUT /api/v1/calendar-alarms`, 덮어쓰기)
+> - 하루 종일 일정은 "10분 전" 이 없어서 받지 않습니다. 시각이 있는 일정만 한 줄씩입니다.
+> - 한 사람의 같은 일정(`user_id` + `event_key`)은 **한 줄만** 둡니다(unique). 올리기가 동시에 두 번 오면 같은 일정이 두 줄이 되어 알림이 두 번 가던 것을 로컬에서 확인하고 막았습니다. 겹친 요청은 한 번 더 올려서 있는 줄을 고칩니다.
+> - `handled_at` 이 차 있으면 다시 보내지 않습니다. 구글에서 일정을 옮겨 `starts_at` 이 바뀌면 비워서 새 시각에 다시 알립니다.
+> - **일정 제목이 서버에 저장됩니다.** (사용자가 알림에 제목을 넣기로 정함) 알림 글에만 쓰고, 로그 · GPT 에는 보내지 않습니다. 시작한 지 하루 지난 줄은 예약 작업이 지우고, 캘린더 연결을 끊으면(`DELETE`) 바로 다 지웁니다.
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
+
+> `diaries` 와 딸린 테이블 3개는 2026-10-24 에 이슈 #60 에서 **AI 가 만든 테이블**입니다. (사용자 "이슈 완료 및 참고 자료 조건에 따라 진행", **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - **일기 하나 = 한 줄**은 학생이 정했습니다. 같은 날에 여러 개를 쓸 수 있습니다.
+> - `mood`(기분 1 ~ 5)는 FE 짝 이슈(Project-FE#63)의 `DiaryEntry.mood` 에 맞춰 더했습니다. FE 는 필수로 고르지만 서버는 비어도 받습니다.
+> - 뽑은 감정 · 원인 · 키워드는 한 일기에 여러 개라서 `checkin_emotions` 처럼 딸린 테이블에 담았습니다. 일기 줄을 지우면 같이 지워집니다. (이슈 완료 조건)
+> - 감정은 체크인 감정 태그(`EmotionTag`), 원인은 체크인 못 채운 이유(`MissReason`)와 **같은 값**입니다. 실패 원인 분석(#39)에서 같이 셀 수 있습니다.
+> - `analyzed_at` 이 비어 있으면 분석을 안 한 것입니다(분석 동의 안 함 · 위기 표현 · AI 꺼짐 · 실패). 그때 딸린 줄이 없는 것은 "없음" 이 아니라 "모름" 입니다.
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다. 딸린 테이블은 `AccountServiceTest` 의 `CHILD_TABLES` 에 더했습니다.
 
 > `reflection_prescriptions` 는 2026-10-17 에 **선생님이 "FE·BE·테이블까지 AI 가 만들라" 고 맡긴 기능**(통화 기록·회고·성찰)에서 AI 가 만든 테이블입니다. (이슈 #61)
 > - **처방 한 번 = 한 줄.** 언제 처방하는지는 `ReflectionRule` 과 docs/API.md "성찰일기 처방" 에 있습니다.

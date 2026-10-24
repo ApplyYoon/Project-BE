@@ -22,6 +22,8 @@ import com.ithopeschool.projectbe.domain.cardday.dto.LateEntryRequest;
 import com.ithopeschool.projectbe.domain.cardday.dto.PostponeLimitResponse;
 import com.ithopeschool.projectbe.domain.cardday.dto.PostponeRequest;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.care.Stage4;
+import com.ithopeschool.projectbe.domain.care.Stage4Service;
 import com.ithopeschool.projectbe.domain.session.StudySessionService;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -58,6 +60,7 @@ class CardDayServiceTest {
   private CardDayMarkRepository cardDayMarkRepository;
   private CallRecordRepository callRecordRepository;
   private StudySessionService studySessionService;
+  private Stage4Service stage4Service;
   private CardDayService service;
 
   // 반복 카드(10-01 시작, 월·수 19:00 60분) · 1회성 카드(10-12 19:00) · 절대 카드(10-12 19:00)
@@ -84,6 +87,8 @@ class CardDayServiceTest {
     cardDayMarkRepository = mock(CardDayMarkRepository.class);
     callRecordRepository = mock(CallRecordRepository.class);
     studySessionService = mock(StudySessionService.class);
+    // 기본은 4단계가 아닙니다. (4단계 테스트에서만 켭니다)
+    stage4Service = mock(Stage4Service.class);
     service =
         new CardDayService(
             currentUserProvider,
@@ -91,6 +96,7 @@ class CardDayServiceTest {
             cardDayMarkRepository,
             callRecordRepository,
             studySessionService,
+            stage4Service,
             Clock.fixed(NOW, ZoneOffset.UTC));
     given(currentUserProvider.getCurrentUserId()).willReturn(ME);
 
@@ -247,6 +253,21 @@ class CardDayServiceTest {
     assertThat(service.getPostponeLimit(8L, OCT_12)).isEqualTo(new PostponeLimitResponse(1, null));
     assertThat(service.getPostponeLimit(9L, OCT_12))
         .isEqualTo(new PostponeLimitResponse(0, "절대 카드는 미룰 수 없어요"));
+  }
+
+  @Test
+  @DisplayName("관리 4단계면 한도가 남아도 미루기가 잠긴다: 409, 남은 횟수 0 과 이유 (#234)")
+  void postponeLockedInStage4() {
+    given(stage4Service.isOn(ME)).willReturn(true);
+
+    assertError(
+        () -> service.postpone(8L, postpone(OCT_12, REASON_100)),
+        ErrorCode.CONFLICT,
+        Stage4.POSTPONE_LOCK_REASON);
+    verify(cardDayMarkRepository, never()).save(any());
+    assertThat(oneOffCard.getCardDate()).isEqualTo(OCT_12);
+    assertThat(service.getPostponeLimit(8L, OCT_12))
+        .isEqualTo(new PostponeLimitResponse(0, Stage4.POSTPONE_LOCK_REASON));
   }
 
   // ---- 실패로 기록 ----
