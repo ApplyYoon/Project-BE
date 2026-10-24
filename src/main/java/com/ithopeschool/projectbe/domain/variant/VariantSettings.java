@@ -25,12 +25,12 @@ public record VariantSettings(
     @Value("${app.variant.l0-wrong-streak-to-drop:2}") int l0WrongStreakToDrop,
     // L-1 에서 이만큼 연속으로 틀리면 "주의" 표시를 붙입니다
     @Value("${app.variant.floor-wrong-streak-to-flag:3}") int floorWrongStreakToFlag,
-    // 월간 (A): 맞은 문제에서 고르는 유형 수
-    @Value("${app.variant.monthly-correct-types:5}") int monthlyCorrectTypes,
-    // 월간 (B): 졸업한 오답에서 고르는 최대 수
-    @Value("${app.variant.monthly-wrong-max:10}") int monthlyWrongMax,
-    // 월간 세트의 마감(만든 날 + 며칠)
-    @Value("${app.variant.monthly-due-days:7}") int monthlyDueDays,
+    // 주간 (A): 맞은 문제에서 고르는 유형 수
+    @Value("${app.variant.weekly-correct-types:5}") int weeklyCorrectTypes,
+    // 주간 (B): 졸업한 오답에서 고르는 최대 수
+    @Value("${app.variant.weekly-wrong-max:10}") int weeklyWrongMax,
+    // 주간 세트의 마감(만든 날 + 며칠)
+    @Value("${app.variant.weekly-due-days:7}") int weeklyDueDays,
     // 분류기의 자신감이 이보다 낮으면 사람이 확인하도록(NEEDS_REVIEW) 둡니다
     @Value("${app.variant.classify-min-confidence:0.6}") double classifyMinConfidence,
     // 예약 작업 한 번이 일하는 최대 시간(초). 부르는 쪽(cron-job.org)이 30초까지만 기다려서 그보다 짧게 둡니다
