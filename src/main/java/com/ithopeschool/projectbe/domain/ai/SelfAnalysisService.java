@@ -22,8 +22,8 @@ import org.springframework.stereotype.Service;
 //   1. 같은 key 의 숫자가 두 번 오면 처음 것만 씁니다.
 //   2. 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. 카드 이름이 값 안에 들어올 수 있어서입니다.
 //   3. 서버 DB 에 있는 것을 더합니다: 최근 14일 통화에서 자주 보인 생각 습관 (최대 2개, CallRecordService.getHabits)
-//   4. AI 가 씁니다. 답이 길어서 askLong(25초)으로 묻습니다. 하루 한도는 작은 AI 기능들과 같은 ASSIST 를 씁니다.
-//      꺼짐 · 하루 한도 · 실패 · 쓸 수 없는 답이면 analysis 가 null 이고, FE 는 기본 문장을 씁니다.
+//   4. AI 가 씁니다. 답이 길어서 askLong(25초)으로 묻습니다. 호출 기록은 작은 AI 기능들과 같은 ASSIST 로 남깁니다.
+//      꺼짐 · 실패 · 쓸 수 없는 답이면 analysis 가 null 이고, FE 는 기본 문장을 씁니다.
 //
 // currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 내 기록만 읽습니다.
 // AI 에게는 숫자와 그 이름만 줍니다. 이름 · 학교 · 통화 근거 문장(lastEvidence) 은 주지 않습니다.

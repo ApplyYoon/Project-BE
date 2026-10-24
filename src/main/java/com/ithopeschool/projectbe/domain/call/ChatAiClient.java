@@ -241,7 +241,7 @@ public class ChatAiClient {
 
   // 과목 쌤 방의 답 한 번. turn · turnWithImage 와 같고, webSearch 가 true 면 웹 검색 도구를 붙입니다. (2026-10-18)
   //   imageDataUrl : 학생의 마지막 말에 붙은 사진 (없으면 null)
-  //   webSearch    : 이번 답에 검색 도구를 붙일지 (TutorWebSearch.canSearch 가 정함)
+  //   webSearch    : 이번 답에 검색 도구를 붙일지 (TutorWebSearch.isEnabled 가 정함)
   // 검색 도구를 붙인 요청이 4xx 로 거절되면(모델이 도구를 못 씀 등) 도구 없이 한 번 더 보냅니다. 채팅이 막히지 않게.
   public Optional<ChatTurn> turnForTutor(
       String instructions,

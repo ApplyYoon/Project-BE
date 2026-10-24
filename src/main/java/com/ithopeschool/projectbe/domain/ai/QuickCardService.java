@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
 //      - 내 과목 이름 (과목 번호 순서)
 //      - 최근 카드 제목: 최근 2주(오늘 포함) 내 공부 계획의 제목, 최근 것부터 겹치지 않게 RECENT_TITLES(10)개
 //        평소 쓰던 제목으로 맞추면, 같은 카드의 지난 기록(체크리스트 추천 등)을 이어서 볼 수 있습니다.
-//   3. AI 가 카드 초안을 씁니다. 꺼짐 · 하루 한도 · 실패 · 쓸 수 없는 답이면 card 가 null 입니다. (QuickCard.from)
+//   3. AI 가 카드 초안을 씁니다. 꺼짐 · 실패 · 쓸 수 없는 답이면 card 가 null 입니다. (QuickCard.from)
 //
 // currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 내 과목·계획만 읽습니다.
 // 학생이 쓴 글과 AI 의 답은 로그에 찍지 않습니다.

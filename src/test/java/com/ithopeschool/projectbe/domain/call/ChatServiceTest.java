@@ -74,8 +74,8 @@ class ChatServiceTest {
   private final PsychTestRepository psychTestRepository = mock(PsychTestRepository.class);
   // 교육과정 · 성취기준 고르기는 가짜입니다. (진짜 고르기는 CurriculumServiceTest · CurriculumSearchTest)
   private final CurriculumService curriculumService = mock(CurriculumService.class);
-  // 웹 검색 한도는 진짜 코드를 씁니다. 하루 2번까지.
-  private final TutorWebSearch tutorWebSearch = new TutorWebSearch(true, 2, clock);
+  // 웹 검색은 진짜 코드를 씁니다. (켜져 있음)
+  private final TutorWebSearch tutorWebSearch = new TutorWebSearch(true);
   private final ChatService service =
       new ChatService(
           currentUserProvider,
@@ -96,7 +96,6 @@ class ChatServiceTest {
   void loggedInAndAiOn() {
     given(currentUserProvider.getCurrentUserId()).willReturn(USER_ID);
     given(chatAiClient.isEnabled()).willReturn(true);
-    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.CHAT)).willReturn(true);
     // 성취기준 칸은 따로 정하지 않으면 빈 글자(맞는 줄 없음)입니다.
     given(curriculumService.standardsSection(any(), any())).willReturn("");
     given(callService.prepareScript(eq(USER_ID), any(), eq(NOW), eq(TODAY), eq(CallChannel.CHAT)))
@@ -218,21 +217,16 @@ class ChatServiceTest {
   }
 
   @Test
-  @DisplayName("AI 가 꺼져 있으면 503, 오늘 한도를 다 썼으면 429 이고 채팅 기록을 만들지 않는다")
-  void startNeedsAiAndQuota() {
+  @DisplayName("AI 가 꺼져 있으면 503 이고 채팅 기록을 만들지 않는다")
+  void startNeedsAi() {
     given(chatAiClient.isEnabled()).willReturn(false);
     assertError(() -> service.start(START), ErrorCode.SERVICE_UNAVAILABLE, "AI 상담이 아직 켜져 있지 않아요");
-
-    given(chatAiClient.isEnabled()).willReturn(true);
-    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.CHAT)).willReturn(false);
-    assertError(
-        () -> service.start(START), ErrorCode.TOO_MANY_REQUESTS, "오늘 AI 사용량을 다 썼어요. 내일 다시 이야기해요");
 
     verify(callRecordRepository, never()).save(any());
   }
 
   @Test
-  @DisplayName("인사 없이 열면 AI 를 부르지 않고 한도도 쓰지 않으며, 채팅 기록과 대본만 만든다 (채팅 수정 1)")
+  @DisplayName("인사 없이 열면 AI 를 부르지 않고 호출 기록도 남기지 않으며, 채팅 기록과 대본만 만든다 (채팅 수정 1)")
   void startsWithoutGreeting() {
     ChatReplyResponse response = service.start(START, null, null, false);
 
@@ -240,7 +234,7 @@ class ChatServiceTest {
     assertThat(response.reply()).isNull();
     assertThat(response.showHelp()).isFalse();
     verify(chatAiClient, never()).turn(any(), anyList());
-    verify(gptUsageGuard, never()).tryUseText(any(), any());
+    verify(gptUsageGuard, never()).recordText(any(), any());
     verify(callRecordRepository).save(any());
     // 이어지는 말 보내기는 같은 대본을 씁니다.
     assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(SCRIPT);
@@ -342,7 +336,7 @@ class ChatServiceTest {
     assertThat(response.reply()).isEqualTo(ChatService.CHAT_CRISIS_REPLY);
     assertThat(response.helpLines()).isEqualTo(HelpLine.ALL);
     verify(chatAiClient, never()).reply(any(), anyList());
-    verify(gptUsageGuard, never()).tryUseText(any(), any());
+    verify(gptUsageGuard, never()).recordText(any(), any());
     // "위기 표현이 감지됨" 표시는 남기지만 채팅은 끝내지 않습니다. 그 뒤 7일 동안 통화·채팅이 위로하는 쪽이 됩니다.
     assertThat(chat.isCrisisDetected()).isTrue();
     assertThat(chat.isFinished()).isFalse();
@@ -637,7 +631,7 @@ class ChatServiceTest {
     assertThat(response.reply()).isEqualTo(ChatService.CHAT_CRISIS_REPLY);
     assertThat(response.chatId()).isEqualTo(String.valueOf(CHAT_ID));
     verify(chatAiClient, never()).turn(any(), anyList());
-    verify(gptUsageGuard, never()).tryUseText(any(), any());
+    verify(gptUsageGuard, never()).recordText(any(), any());
     verify(safetyService).activate(USER_ID);
     ArgumentCaptor<CallRecord> saved = ArgumentCaptor.forClass(CallRecord.class);
     verify(callRecordRepository).save(saved.capture());
@@ -804,7 +798,7 @@ class ChatServiceTest {
   }
 
   @Test
-  @DisplayName("사진 모양이 틀리면 400 이고 AI 한도를 쓰지 않는다")
+  @DisplayName("사진 모양이 틀리면 400 이고 AI 를 부르지 않는다")
   void rejectsBadImage() {
     givenOpenChat();
     ChatMessageRequest gif =
@@ -818,7 +812,7 @@ class ChatServiceTest {
         "사진은 jpeg · png · webp 의 data URL 로 보내 주세요");
     assertError(
         () -> service.send(CHAT_ID, broken), ErrorCode.VALIDATION_ERROR, "사진을 읽을 수 없어요. 다시 찍어 주세요");
-    verify(gptUsageGuard, never()).tryUseText(any(), any());
+    verify(gptUsageGuard, never()).recordText(any(), any());
   }
 
   // ---- 과목 쌤의 교육과정 · 찾아보기 (2026-10-18) ----
@@ -864,29 +858,23 @@ class ChatServiceTest {
   }
 
   @Test
-  @DisplayName("실제로 검색한 답만 하루 한도에 세고, 한도(2번)를 다 쓰면 검색 도구 없이 보낸다")
-  void tutorSearchLimit() {
+  @DisplayName("검색이 켜져 있으면 몇 번을 검색해도 매번 검색 도구를 붙인다 (하루 한도 없음)")
+  void tutorSearchHasNoLimit() {
     givenOpenChat();
     chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, null, ChatRoom.TUTOR, CURRICULUM);
     ChatMessageRequest request = said("최신 수능 일정 알려 줘");
     ChatAiClient.ChatTurn searched =
         new ChatAiClient.ChatTurn("찾아봤어.", List.of(), null, List.of(), List.of(), true);
-    ChatAiClient.ChatTurn notSearched = ChatAiClient.ChatTurn.textOnly("알고 있는 걸로 말할게.");
     given(chatAiClient.turnForTutor(alreadySaid(SCRIPT, request), request.lines(), null, true))
-        .willReturn(Optional.of(notSearched))
-        .willReturn(Optional.of(searched))
         .willReturn(Optional.of(searched));
-    given(chatAiClient.turnForTutor(alreadySaid(SCRIPT, request), request.lines(), null, false))
-        .willReturn(Optional.of(notSearched));
 
-    service.send(CHAT_ID, request); // 검색 안 함 → 세지 않음
-    service.send(CHAT_ID, request); // 1번
-    service.send(CHAT_ID, request); // 2번 (한도)
-    service.send(CHAT_ID, request); // 도구 없이
+    for (int i = 0; i < 6; i++) {
+      service.send(CHAT_ID, request);
+    }
 
-    verify(chatAiClient, times(3))
+    verify(chatAiClient, times(6))
         .turnForTutor(alreadySaid(SCRIPT, request), request.lines(), null, true);
-    verify(chatAiClient, times(1))
+    verify(chatAiClient, never())
         .turnForTutor(alreadySaid(SCRIPT, request), request.lines(), null, false);
   }
 
@@ -972,7 +960,7 @@ class ChatServiceTest {
   }
 
   @Test
-  @DisplayName("새 답이 직전 AI 답과 같은 구절이면 한도를 하나 더 쓰고 딱 한 번 다시 받는다")
+  @DisplayName("새 답이 직전 AI 답과 같은 구절이면 호출 기록을 하나 더 남기고 딱 한 번 다시 받는다")
   void repeatAsksOnceMore() {
     givenOpenChat();
     given(chatAiClient.turn(any(), anyList()))
@@ -983,7 +971,7 @@ class ChatServiceTest {
 
     assertThat(response.reply()).isEqualTo(FRESH);
     // 처음 한 번(checkAiReady) + 다시 받기 한 번
-    verify(gptUsageGuard, times(2)).tryUseText(USER_ID, GptUsageKind.CHAT);
+    verify(gptUsageGuard, times(2)).recordText(USER_ID, GptUsageKind.CHAT);
     // 다시 받을 때만 첫 답의 첫 문장을 알려 주는 줄이 지시 끝에 붙습니다.
     ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
     verify(chatAiClient, times(2)).turn(instructions.capture(), anyList());
@@ -1036,20 +1024,7 @@ class ChatServiceTest {
 
     assertThat(service.send(CHAT_ID, AFTER_TEN_MINUTES).reply()).isEqualTo(FRESH);
     verify(chatAiClient, times(1)).turn(any(), anyList());
-    verify(gptUsageGuard, times(1)).tryUseText(USER_ID, GptUsageKind.CHAT);
-  }
-
-  @Test
-  @DisplayName("반복이어도 오늘 한도가 없으면 다시 부르지 않고 첫 답을 쓴다")
-  void repeatWithoutQuotaKeepsFirst() {
-    givenOpenChat();
-    // 처음 한 번은 쓸 수 있고, 다시 받으려 할 때는 한도가 없습니다.
-    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.CHAT)).willReturn(true, false);
-    given(chatAiClient.turn(any(), anyList()))
-        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(SAME_AGAIN)));
-
-    assertThat(service.send(CHAT_ID, AFTER_TEN_MINUTES).reply()).isEqualTo(SAME_AGAIN);
-    verify(chatAiClient, times(1)).turn(any(), anyList());
+    verify(gptUsageGuard, times(1)).recordText(USER_ID, GptUsageKind.CHAT);
   }
 
   @Test

@@ -34,7 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 //   4. 학생 말에 위기 표현이 있는지 단어 목록으로 본다 (있으면 내용 없이 "감지됨" 만 남기고 도움 안내)
 //   5. 학생이 한마디도 안 했으면 GPT 를 부르지 않고 빈 기록으로 마무리한다
 //   6. GPT 에게 자막을 정해진 칸으로 정리해 달라고 한다 (꺼져 있거나 실패하면 503, 기록은 그대로라 다시 시도할 수 있음)
-//      부르기 전에 GPT 글 호출 하루 한도를 본다          (넘었으면 429. GptUsageGuard, 이슈 #33)
+//      부르기 전에 GPT 호출 기록을 남긴다                (GptUsageGuard, 이슈 #33)
 //   (처음 마무리를 부를 때, 통화 시간과 대략적인 비용을 GPT 호출 기록에 남깁니다)
 //   7. 받은 칸을 검사한다                              (CallReview: 정해진 값이 아니면 그 칸은 비움)
 //   8. GPT 도 위기 표현이라고 했으면 4번과 같이 한다   (단어 목록과 GPT 중 하나라도 걸리면 감지. 놓치는 쪽이 더 위험)
@@ -52,7 +52,7 @@ public class CallRecordService {
   // 통화에서 나온 값을 그날의 체크인으로 남깁니다. (이슈 #29 · #24)
   private final CheckInRepository checkInRepository;
   private final CallReviewClient callReviewClient;
-  // 통화 시간을 기록하고, GPT 요약을 부르기 전에 하루 한도를 봅니다. (이슈 #33)
+  // 통화 시간과 GPT 요약을 부른 것을 기록합니다. (이슈 #33)
   private final GptUsageGuard gptUsageGuard;
   private final Clock clock;
   private final SafetyService safetyService;
@@ -131,11 +131,7 @@ public class CallRecordService {
     if (!callReviewClient.isEnabled()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 정리가 아직 켜져 있지 않아요");
     }
-    // 정리가 실패할 때마다 다시 부르면 GPT 를 끝없이 부를 수 있어서, 글 호출 하루 한도를 씁니다. (넘으면 429)
-    // 기록은 그대로라 다음 날 다시 마무리할 수 있습니다.
-    if (!gptUsageGuard.tryUseText(userId, GptUsageKind.CALL_REVIEW)) {
-      throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 AI 사용량을 다 썼어요. 내일 다시 시도해 주세요");
-    }
+    gptUsageGuard.recordText(userId, GptUsageKind.CALL_REVIEW);
     Optional<CallReview.Raw> raw =
         callReviewClient.review(
             CallReviewPrompt.instructions(),

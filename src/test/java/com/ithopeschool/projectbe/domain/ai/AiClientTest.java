@@ -1,7 +1,6 @@
 package com.ithopeschool.projectbe.domain.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -20,7 +19,6 @@ import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -29,7 +27,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
-// GPT 를 진짜로 부르지 않는 테스트입니다. 가짜 OpenAI 서버를 끼워 넣고, 하루 한도(GptUsageGuard)도 가짜로 바꿉니다.
+// GPT 를 진짜로 부르지 않는 테스트입니다. 가짜 OpenAI 서버를 끼워 넣고, GPT 호출 기록(GptUsageGuard)도 가짜로 바꿉니다.
 // "언제 부르지 않는지(꺼짐·한도)" 와 "무엇을 보내고, 받은 JSON 을 어떻게 읽는지" 를 봅니다.
 // ⚠️ 진짜 GPT 가 이 모양으로 답하는지는 이 테스트로 알 수 없습니다. 배포 서버에서 직접 불러 봐야 합니다.
 class AiClientTest {
@@ -68,13 +66,8 @@ class AiClientTest {
         .formatted(escaped);
   }
 
-  @BeforeEach
-  void setUp() {
-    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.CHECKLIST)).willReturn(true);
-  }
-
   @Test
-  @DisplayName("키와 모델 이름이 둘 다 있어야 켜지고, 꺼져 있으면 OpenAI 를 부르지 않고 한도도 쓰지 않는다")
+  @DisplayName("키와 모델 이름이 둘 다 있어야 켜지고, 꺼져 있으면 OpenAI 를 부르지 않고 기록도 남기지 않는다")
   void disabledDoesNotCall() {
     openAi.expect(never(), anything());
 
@@ -85,17 +78,6 @@ class AiClientTest {
         .isEmpty();
 
     verifyNoInteractions(gptUsageGuard);
-    openAi.verify();
-  }
-
-  @Test
-  @DisplayName("오늘 한도를 다 썼으면 OpenAI 를 부르지 않고 빈 값이다")
-  void overLimitDoesNotCall() {
-    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.CHECKLIST)).willReturn(false);
-    openAi.expect(never(), anything());
-
-    assertThat(clientWith(KEY, MODEL).ask(USER_ID, GptUsageKind.CHECKLIST, QUESTION, Answer.class))
-        .isEmpty();
     openAi.verify();
   }
 
@@ -125,7 +107,7 @@ class AiClientTest {
             .orElseThrow();
 
     assertThat(answer.items()).containsExactly("42쪽 펴기", "5문제 풀기");
-    verify(gptUsageGuard).tryUseText(USER_ID, GptUsageKind.CHECKLIST);
+    verify(gptUsageGuard).recordText(USER_ID, GptUsageKind.CHECKLIST);
     openAi.verify();
   }
 
@@ -152,7 +134,7 @@ class AiClientTest {
             .orElseThrow();
 
     assertThat(answer.items()).containsExactly("52쪽 읽기");
-    verify(gptUsageGuard).tryUseText(USER_ID, GptUsageKind.CHECKLIST);
+    verify(gptUsageGuard).recordText(USER_ID, GptUsageKind.CHECKLIST);
     openAi.verify();
   }
 

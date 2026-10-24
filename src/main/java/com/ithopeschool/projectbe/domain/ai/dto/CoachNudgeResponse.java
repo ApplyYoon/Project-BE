@@ -6,7 +6,7 @@ import com.ithopeschool.projectbe.domain.ai.CoachNudge;
 //   { "morning": { "title": "오늘 6교시 미적분", "body": "어제 틀린 극한 문제, 쉬는 시간에 한 번만 다시 보자." },
 //     "evening": { "title": "오늘 카드 어땠어?", "body": "미적분 문제집 해 봤어? 내일 계획도 같이 정하자." },
 //     "comfort": false }
-// - morning · evening 이 null 이면 그 칸은 만들지 못한 것입니다. (AI 꺼짐 · 하루 한도 · 실패 · 검사에서 빠짐)
+// - morning · evening 이 null 이면 그 칸은 만들지 못한 것입니다. (AI 꺼짐 · 실패 · 검사에서 빠짐)
 //   에러가 아니라 200 이고, FE 는 그 칸만 정해 둔 문장으로 예약합니다.
 // - comfort 가 true 면 최근 위기 표현 · 보호 조치 때문에 AI 를 부르지 않고 정해 둔 위로 문장을 준 것입니다.
 //   FE 는 이 동안 공부를 재촉하는 다른 알림도 줄이는 것이 좋습니다. (HabitNudgeJob 이 "오늘의 작전" 을 멈추는 것과 같은 뜻)
@@ -24,7 +24,7 @@ public record CoachNudgeResponse(
     return new CoachNudgeResponse(result.morning(), result.evening(), false);
   }
 
-  // 만들지 못했을 때 (AI 꺼짐 · 하루 한도 · 실패)
+  // 만들지 못했을 때 (AI 꺼짐 · 실패)
   public static CoachNudgeResponse notMade() {
     return new CoachNudgeResponse(null, null, false);
   }

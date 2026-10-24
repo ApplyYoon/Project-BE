@@ -19,13 +19,13 @@ import org.springframework.stereotype.Service;
 // 순서
 //   1. 사진이 있으면 모양을 봅니다. ("사진으로 카드 만들기" 와 같은 규칙, 아니면 400)
 //   2. 주제 · 체크리스트 · 자료 글에 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. (#56)
-//   3. AI 를 부릅니다. 사진이 있으면 사진과 함께. 꺼짐 · 하루 한도 · 실패면 questions 가 null 입니다. (한도는 ASSIST)
+//   3. AI 를 부릅니다. 사진이 있으면 사진과 함께. 꺼짐 · 실패면 questions 가 null 입니다. (기록은 ASSIST)
 //      학생의 학년을 알면 교육과정(2022 · 2015 개정)과 주제에 맞는 성취기준 몇 줄을 입력에 붙여 범위 안에서 내게 합니다.
 //      (CurriculumService.quizLines, 2026-10-18 "가벼운 RAG")
 //   4. AI 가 위기 표현이라고 하면 showHelp, 공부 내용이 아니라고 하면 reason: NOT_STUDY
 //   5. 받은 문제를 검사합니다. (StudyQuiz.from — 보기 4개 · 정답 위치 · 글자 수 · 말투)
 //
-// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 한도는 사람마다 셉니다.
+// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 입니다.
 @Service
 @RequiredArgsConstructor
 public class StudyQuizService {

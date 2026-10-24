@@ -1,7 +1,6 @@
 package com.ithopeschool.projectbe.domain.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -38,7 +37,6 @@ class GoalDraftFakeOpenAiTest {
   @Test
   @DisplayName("초안 질문은 goal_draft 칸 모양으로 보내고, 받은 JSON 을 목표 저장 칸으로 읽어 검사한다")
   void readsDraftFromOpenAi() {
-    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.ASSIST)).willReturn(true);
     // OpenAI 가 돌려주는 글 안의 JSON (따옴표는 \" 로 넣습니다)
     String draftJson =
         "{\\\"kind\\\":\\\"completion\\\",\\\"title\\\":\\\"영단어장 1회독\\\",\\\"dDay\\\":\\\"2026-11-30\\\","

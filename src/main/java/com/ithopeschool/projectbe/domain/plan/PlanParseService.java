@@ -23,7 +23,7 @@ import org.springframework.stereotype.Service;
 // 순서
 //   1. 위기 표현(단어 목록)이 있으면 GPT 를 부르지 않고 showHelp 를 돌려줍니다. (#56, 어떤 기능보다 먼저)
 //   2. GPT 가 꺼져 있으면 503
-//   3. 하루 글 호출 한도(#33)를 넘었으면 429. 통화 요약 · 코치와 한도를 함께 씁니다.
+//   3. GPT 를 부른다고 기록합니다. (#33. 하루 한도는 2026-10-24 에 없앴습니다)
 //   4. 내 과목 목록(번호·이름)을 같이 주고 GPT 를 부릅니다. 실패하거나 시간이 넘으면 빈 목록이 아니라 503
 //   5. GPT 가 위기 표현이라고 하면 1번과 같이 합니다. (단어 목록과 GPT 중 하나라도 걸리면 감지)
 //   6. 줄마다 검사해서(PlanDraft.from) 쓸 수 있는 줄만 돌려줍니다.
@@ -40,7 +40,7 @@ public class PlanParseService {
   private final GptUsageGuard gptUsageGuard;
 
   // GPT 를 기다리는 동안 DB 연결을 붙잡지 않으려고 @Transactional 을 붙이지 않았습니다.
-  // (한도 기록은 GptUsageGuard 가 따로 저장합니다)
+  // (호출 기록은 GptUsageGuard 가 따로 저장합니다)
   public PlanParseResponse parse(PlanParseRequest request) {
     Long userId = currentUserProvider.getCurrentUserId();
 
@@ -54,11 +54,8 @@ public class PlanParseService {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 계획 만들기가 아직 켜져 있지 않아요");
     }
 
-    // 3) 하루 한도. 넘으면 429 이고, 학생은 계획을 손으로 넣으면 됩니다.
-    if (!gptUsageGuard.tryUseText(userId, GptUsageKind.PLAN_PARSE)) {
-      throw new ApiException(
-          ErrorCode.TOO_MANY_REQUESTS, "오늘 AI 사용량을 다 썼어요. 계획은 직접 추가하거나 내일 다시 시도해 주세요");
-    }
+    // 3) 부른 것을 기록
+    gptUsageGuard.recordText(userId, GptUsageKind.PLAN_PARSE);
 
     // 4) GPT 에게 내 과목 목록과 문장을 줍니다.
     List<Subject> subjects = subjectRepository.findByUserIdOrderById(userId);

@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 // 순서
 //   1. 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. (#56, 어떤 기능보다 먼저)
 //   2. 완주형이면 하루 분량을 코드가 계산합니다. (RoutineCardPrompt.dailyAmountOf, 오늘은 하루의 기준 새벽 4시)
-//   3. AI 를 부릅니다. 꺼짐 · 하루 한도 · 실패면 cards 가 null 입니다. (AiClient, 한도는 작은 AI 기능 묶음 ASSIST)
+//   3. AI 를 부릅니다. 꺼짐 · 실패면 cards 가 null 입니다. (AiClient, 기록은 작은 AI 기능 ASSIST)
 //   4. 받은 카드를 검사합니다. 쓸 만한 카드가 2장보다 적으면 cards 가 null 입니다. (RoutineCardDraft)
 //
 // DB 는 읽지 않습니다. 목표가 아직 서버에 저장되지 않아서(#221) 필요한 글을 요청으로 받습니다.
