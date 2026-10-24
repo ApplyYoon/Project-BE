@@ -70,6 +70,7 @@ erDiagram
     onboarding_answers ||--o{ onboarding_answer_subject_levels : "onboarding_answer_id"
     subjects ||--o{ study_plans : "subject_id"
     subjects ||--o{ study_sessions : "subject_id"
+    subjects ||--o{ cards : "subject_id"
     subjects ||--o{ onboarding_answer_subject_levels : "subject_id"
     users ||--o{ exams : "user_id"
     users ||--o{ experiments : "user_id"
@@ -141,7 +142,7 @@ erDiagram
     study_sessions {
         bigint id PK "기록을 구분하는 고유 번호"
         bigint user_id FK "이 기록의 주인"
-        bigint subject_id FK "어떤 과목을 공부했는지 (노는 기록, 과목 없이 카드로 켠 기록이면 비어 있음)"
+        bigint subject_id FK "어떤 과목을 공부했는지 (노는 기록, 과목 없는 카드로 켠 기록이면 비어 있음. 카드로 켜고 과목을 안 보내면 카드의 과목, #404)"
         timestamptz started_at "공부를 시작한 시각"
         timestamptz ended_at "공부를 끝낸 시각"
         int pause_count "일시정지를 누른 횟수"
@@ -576,6 +577,7 @@ erDiagram
         time start_time "시작 시각, 몇 시 몇 분 (옛 계획에서 옮긴 카드만 비어 있음)"
         int duration_minutes "길이(분), 1 ~ 600"
         bigint goal_id FK "연결한 목표 번호 (목표 없음이면 비어 있음)"
+        bigint subject_id FK "어떤 과목의 카드인지 (과목 없음이면 비어 있음, 과목을 지우면 비워짐, #404)"
         varchar priority "우선순위 (ABSOLUTE 절대, FLEXIBLE 유연 중 하나)"
         varchar type "유형 (SELF 자습, LECTURE 인강 중 하나)"
         int expected_done "예상 달성 개수 (비어 있으면 체크리스트 전부)"
@@ -733,7 +735,7 @@ erDiagram
 | `school_event_fetches` | 학교 하나가 한 줄 (교육청 코드, NEIS 에서 마지막으로 받은 시각). 다시 받을지 정할 때 봄 | #282 |
 | `gpt_usages` | GPT 를 한 번 부른 것이 한 줄 (종류, 부른 시각, 통화 번호·통화 시간, 대략적인 비용). 얼마나 썼는지 보는 기록 (하루 한도는 2026-10-24 에 없앰) | #33 |
 | `checkins` | 한 사람의 하루치 체크인이 한 줄 (컨디션, 기분, 어제 못 채운 이유와 기타 글, 예상 순공시간, 약속 두 칸, 개선안 실천 여부, 어디서 했는지). 같은 날을 다시 보내면 덮어씀. 누구·날짜·source 말고는 다 비어도 됨 | #24 |
-| `cards` | 카드 한 장이 한 줄 (제목, 날짜, 반복 요일, 시작 시각, 길이, 목표, 절대/유연, 자습/인강, 예상 달성 개수와 낮춘 이유, 알림, 계획에 쓴 시간). 반복 카드도 **한 장**이고 날마다 복사하지 않음 | #222 |
+| `cards` | 카드 한 장이 한 줄 (제목, 날짜, 반복 요일, 시작 시각, 길이, 목표, 과목, 절대/유연, 자습/인강, 예상 달성 개수와 낮춘 이유, 알림, 계획에 쓴 시간). 반복 카드도 **한 장**이고 날마다 복사하지 않음 | #222 |
 | `card_checklist_items` | 카드 하나의 체크리스트 항목이 한 줄씩 (`@ElementCollection`, 보낸 순서대로) | #222 |
 | `card_expected_fail_causes` | 카드 하나의 예상 실패 원인 글이 한 줄씩 (`@ElementCollection`, 5개까지) | #222 |
 | `checkin_emotions` | 체크인 하나에서 고른 감정 태그가 한 줄씩 (`@ElementCollection`). 안 골랐으면 줄이 없음 | #220 |
@@ -833,6 +835,10 @@ erDiagram
 > - **반복 요일은 한 칸(`repeat_days`)에 `"1,3,5"` 처럼** 적습니다. 요일은 7개뿐이라 딸린 테이블로 빼지 않았습니다. 그날 하는 카드인지는 `Card.isOnDate` 가 FE 의 `isCardOnDate` 와 같은 규칙으로 봅니다.
 > - **체크리스트 · 예상 실패 원인은 여러 개라서 딸린 테이블**에 담았습니다. `position` 은 보낸 순서입니다. 체크했는지(`doneAt`)는 카드가 아니라 **그날의 세션 기록**(#224)에 남깁니다.
 > - `goal_id` 는 목표 테이블(`goals`, #221)의 번호입니다. DB 의 외래 키는 걸지 않았습니다. 카드를 저장할 때 "내 목표인지" 검사는 #221 다음 PR 에서 더합니다.
+> - `subject_id` 는 2026-10-24 에 이슈 #404 에서 **AI 가 더한 칸**입니다. (사용자가 칸 추가를 허락함, **PR 리뷰에서 학생이 꼭 확인해 주세요**) 과목(`subjects`)의 번호이고 비어 있으면 "과목 없음" 입니다.
+>   - 카드로 켠 공부 기록에 과목을 안 보내면 서버가 카드의 과목을 `study_sessions.subject_id` 에 채웁니다. 과목별 공부 시간이 '기타' 로 묶이지 않게 하려는 것입니다.
+>   - `goal_id` 처럼 DB 외래 키는 걸지 않았습니다. 대신 **과목을 지우면 그 과목을 붙인 카드의 `subject_id` 를 비웁니다.** (카드는 지우지 않음, `SubjectService.delete`) 과목 없는 카드도 있어서, 그림의 선은 "과목 하나에 카드 여러 장(0장도 됨)" 이라는 논리적인 관계입니다.
+>   - 카드를 저장할 때 "내 과목인지" 를 검사합니다. 없는 과목 · 남의 과목은 404 입니다.
 > - 알림 세 칸(`alert_*`)이 모두 비어 있으면 **기본 알림**(정각 · 메시지 · 기본 문구)입니다.
 > - 모든 줄에 `user_id` 가 있어서(딸린 테이블은 카드를 따라) 탈퇴하면 같이 지워집니다.
 
