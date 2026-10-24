@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -37,6 +39,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 @RequiredArgsConstructor
 public class AnswerCheckService {
+
+  private static final Logger log = LoggerFactory.getLogger(AnswerCheckService.class);
 
   private final CurrentUserProvider currentUserProvider;
   private final AnswerCheckRepository answerCheckRepository;
@@ -75,6 +79,16 @@ public class AnswerCheckService {
 
     // 4) 문제 사진이 아님 · 읽은 문제가 없음
     if (!Boolean.TRUE.equals(answer.get().problemPage()) || items.isEmpty()) {
+      // 왜 NOT_PROBLEM 인지 배포 서버 로그에서 보려고 남깁니다. (2026-10-24 "계속 문제를 못 읽었어요만 나와요")
+      // ⚠️ 사진 · 문제 번호 · 답 글자는 찍지 않고 true/false 와 개수 · 크기만 찍습니다.
+      int receivedCount = answer.get().items() == null ? 0 : answer.get().items().size();
+      log.info(
+          "[사진 채점] NOT_PROBLEM: mode={}, problemPage={}, 받은 문제 {}개, 남은 문제 {}개, 사진 {}KB",
+          mode,
+          answer.get().problemPage(),
+          receivedCount,
+          items.size(),
+          request.image().length() / 1024);
       return AnswerCheckResponse.notGraded(AnswerCheckResponse.NOT_PROBLEM, date, mode);
     }
 
