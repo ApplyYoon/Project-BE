@@ -63,6 +63,7 @@ erDiagram
     goals ||--o{ goal_target_snapshots : "goal_id"
     goals ||--o{ cards : "goal_id"
     users ||--o{ weekly_goals : "user_id"
+    users ||--o{ weekly_picks : "user_id"
     goals |o--o{ exams : "goal_id"
     psych_tests ||--o{ psych_test_answers : "psych_test_id"
     onboarding_answers ||--o{ onboarding_answer_failure_causes : "onboarding_answer_id"
@@ -280,6 +281,17 @@ erDiagram
         int result_value "판정할 때 본 그 주의 숫자"
         timestamptz judged_at "판정한 시각"
         timestamptz created_at "목표를 정한(덮어쓴) 시각"
+    }
+    weekly_picks {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 줄의 주인 (한 사람의 한 주에 한 줄)"
+        date week_start "해 보는 주 (그 주의 월요일)"
+        varchar title "해 볼 것 한 줄 (60자까지)"
+        varchar hint "왜 하는지 짧게 (60자까지)"
+        boolean skip "이번 주는 넘어가기를 골랐으면 true"
+        timestamptz decided_at "학생이 고른 시각 (FE 가 보낸 값, 없으면 저장한 시각)"
+        timestamptz created_at "이 줄을 처음 만든 시각"
+        timestamptz updated_at "마지막으로 덮어쓴 시각"
     }
     goal_target_snapshots {
         bigint goal_id FK "어느 목표의 이력인지"
@@ -653,6 +665,7 @@ erDiagram
 | 일기 #60 | 완료 | `diaries`와 딸린 `diary_emotions` · `diary_causes` · `diary_keywords` |
 | 구글 캘린더 일정 알림 (2026-10-24) | 완료 | `calendar_alarms` |
 | 사진 채점 (2026-10-24) | 완료 | `answer_checks`, `answer_check_items` |
+| 이번 주에 고른 것 #406 | 완료 | `weekly_picks` |
 | 잠금 해제 #67 | 완료 | `lock_events` 엔티티·그림·운영 SQL 반영 |
 | 동의 기록 #71 | 완료 | PR #204가 반영되어 `consent_records` 이력과 그림이 있음 |
 | 계획 루틴 #85 | 완료 | `routines`, `routine_applications` 엔티티·그림·운영 SQL 반영 |
@@ -715,6 +728,7 @@ erDiagram
 | `calendar_alarms` | 학생의 구글 캘린더 일정 하나가 한 줄 (일정 id, 제목, 시작 시각, 알림 처리 시각). FE 가 앞으로 7일 일정을 **덮어쓰기**로 올리고, 예약 작업이 시작 10분 전에 푸시. 지난 일정은 하루 뒤 지움 | 2026-10-24 |
 | `answer_checks` | 문제집 사진을 한 번 올려 채점한 기록 하나가 한 줄 (날짜, 모드, AI 가 읽은 과목, 채점 시각). **사진은 저장하지 않음** | 2026-10-24 |
 | `answer_check_items` | 채점 기록 하나 안의 문제 하나가 한 줄 (번호, 학생 답, AI 답 또는 O · X 표시, AI 처음 판정, 지금 판정, 학생이 적은 정답, 고친 시각) | 2026-10-24 |
+| `weekly_picks` | 한 사람이 한 주에 "해 보기로 고른 것" 하나가 한 줄 (주, 해 볼 것, 한 줄 설명, 넘어가기 여부, 고른 시각). 같은 주에 다시 고르면 덮어씀 | #406 |
 | `diary_emotions` · `diary_causes` · `diary_keywords` | 일기 하나에서 AI 가 뽑은 감정 · 실패 원인 · 키워드가 한 줄씩 (`@ElementCollection`). 일기를 지우면 같이 지워짐 | #60 |
 | `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
 | `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
@@ -853,6 +867,13 @@ erDiagram
 > - **AI 가 정한 글자 칸 길이:** 과목 30자, 문제 번호 20자, 학생 답 · AI 답 · 정답 100자. 요청 검사(정답 100자)와 같은 값입니다. 짧거나 길면 알려 주세요.
 > - `answer_check_id` 는 다른 테이블처럼 **번호만 적고 DB 외래 키 제약은 걸지 않았습니다.** 그림의 선은 논리적인 관계입니다. (탈퇴는 `user_id` 가 있는 테이블을 하나씩 지우는데, 외래 키가 있으면 지우는 순서에 따라 실패할 수 있어서)
 > - 두 테이블 모두 `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
+
+> `weekly_picks` 는 2026-10-24 에 이슈 #406 에서 **AI 가 만든 테이블**입니다. (사용자가 새 테이블을 허락하고 칸을 정함, **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - 주간 리포트 아래 [다음 주에 하나만 해 볼까요?] 에서 고른 것입니다. 전에는 FE 의 이 기기(localStorage, `src/lib/weeklyPicks.ts`)에만 있었고, 칸 이름은 그 모양을 그대로 따랐습니다.
+> - **한 사람의 한 주(월요일)에 한 줄**입니다. (`uk_weekly_picks_user_id_week_start`) 다시 고르면 새 줄을 만들지 않고 그 줄을 덮어씁니다.
+> - "이번 주는 넘어가기" 도 한 줄로 남기고 `skip` 을 `true` 로 둡니다. 이때도 `title` · `hint` 에는 보기 글자가 들어 있습니다.
+> - "지켰어?" 는 따로 적지 않습니다. 그 주에 해냈는지는 타이머 기록으로 봅니다.
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
 
 > `calendar_alarms` 는 2026-10-24 에 **AI 가 만든 테이블**입니다. (사용자 "캘린더 시작 10분 전에 실제 앱처럼 알람 오게", "알림에 일정 제목 넣자", **PR 리뷰에서 학생이 꼭 확인해 주세요**)
 > - 서버는 구글에 직접 접속하지 않습니다. FE 가 학생의 브라우저에서 읽은 **앞으로 7일 일정**을 올립니다. (`PUT /api/v1/calendar-alarms`, 덮어쓰기)
