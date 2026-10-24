@@ -172,6 +172,18 @@ class LoginRequiredFlowTest {
           new Api("POST", "/api/v1/rest-days/{date}", "/api/v1/rest-days/2026-10-12", null),
           new Api(
               "GET", "/api/v1/rest-days", "/api/v1/rest-days?from=2026-10-01&to=2026-10-07", null),
+          // 퀴즈 결과 · 통계 탭 (2026-10-24)
+          new Api(
+              "POST",
+              "/api/v1/quiz-results",
+              "/api/v1/quiz-results",
+              "{\"subjectId\":1,\"unit\":\"함수\",\"correctCount\":1,\"totalCount\":2,"
+                  + "\"questionSeconds\":[30,40]}"),
+          new Api(
+              "GET",
+              "/api/v1/quiz-results/stats",
+              "/api/v1/quiz-results/stats?from=2026-10-01&to=2026-10-07",
+              null),
           // 카드 결과 (이슈 #229)
           new Api(
               "GET",

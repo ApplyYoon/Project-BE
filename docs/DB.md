@@ -98,6 +98,8 @@ erDiagram
     users ||--o{ card_day_marks : "user_id"
     cards ||--o{ card_day_marks : "card_id"
     users ||--o{ rest_days : "user_id"
+    users ||--o{ quiz_results : "user_id"
+    subjects ||--o{ quiz_results : "subject_id"
     checkins ||--o{ checkin_emotions : "checkin_id"
     users ||--o{ diaries : "user_id"
     diaries ||--o{ diary_emotions : "diary_id"
@@ -577,6 +579,16 @@ erDiagram
         date rest_date "휴식으로 처리한 날짜 (같은 사람 안에서 중복 불가)"
         timestamptz created_at "휴식으로 처리한 시각"
     }
+    quiz_results {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "누가 푼 퀴즈인지"
+        bigint subject_id FK "어느 과목의 퀴즈인지"
+        varchar unit "어느 단원의 퀴즈인지 (퀴즈 한 번 = 한 단원, 30자까지)"
+        date quiz_date "퀴즈를 푼 날짜 (새벽 4시 기준)"
+        int correct_count "맞은 문제 수"
+        int total_count "전체 문제 수"
+        varchar question_seconds "문제마다 걸린 시간(초)을 쉼표로 이은 글자 (예: 45,30,62)"
+    }
     insights {
         bigint id PK "줄을 구분하는 고유 번호"
         bigint user_id FK "이 인사이트의 주인"
@@ -649,6 +661,7 @@ erDiagram
 | `session_memos` | 기록 하나의 딴생각 메모가 한 줄씩 (`@ElementCollection`) | #224 |
 | `card_day_marks` | 카드 한 장 · 날짜 하나를 미뤘거나(이유 · 새 날짜 · 새 시각) 실패로 기록한(원인 태그 · 사유) 것이 한 줄. 같은 카드 · 같은 날짜에는 한 줄만 | #225 |
 | `rest_days` | 한 사람이 하루를 사후에 휴식으로 처리한 것이 한 줄. 같은 날은 한 번만, 한 달에 4번까지 | #225 |
+| `quiz_results` | 확인 문제(퀴즈) 한 번이 한 줄 (과목 · 단원 · 날짜 · 맞은 개수 · 전체 개수 · 문제마다 걸린 시간). 통계 탭이 씀. **설계는 학생이 정함** (2026-10-24) | 통계 탭 |
 | `accounts` | 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시 또는 구글 고유 번호, 실명(선택), 학교, 동의). 사용자 한 명에 하나 | #97 · #19 |
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
 | `consent_records` | 개인정보 동의 한 번이 한 줄 (동의 시각, 문구 버전, 만 14세 확인). 다시 동의하면 **새 줄이 쌓여** 이력이 남음 | #71 |
