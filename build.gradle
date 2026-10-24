@@ -37,6 +37,9 @@ dependencies {
 	// HTML 읽기: 학교 홈페이지의 가정통신문 · 공지사항 목록에서 제목 · 날짜만 골라냅니다. (2026-10-18 멘토 허락, domain/school/SchoolHomepageCrawler)
 	// 'a.nttInfoBtn' 처럼 CSS 선택자로 골라서, 정규식보다 읽기 쉽고 홈페이지가 조금 바뀌어도 덜 깨집니다.
 	implementation 'org.jsoup:jsoup:1.23.2'
+	// 수식 계산(Symja): 변형 문제의 정답을 AI 말만 믿지 않고 직접 계산해서 맞는지 확인합니다. (docs/VARIANT-SPEC.md 6장)
+	// 파이썬 SymPy 대신 쓰는 자바 라이브러리입니다. AI 가 쓴 식은 서버 안에서 계산하지 않고, 따로 띄운 작은 자바 프로그램(샌드박스)에서만 계산합니다.
+	implementation 'org.matheclipse:matheclipse-core:3.0.0'
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'com.h2database:h2'
 	runtimeOnly 'org.postgresql:postgresql'
