@@ -281,6 +281,9 @@ class LoginRequiredFlowTest {
           new Api("POST", "/api/v1/diaries", "/api/v1/diaries", "{\"content\":\"일기\"}"),
           new Api("GET", "/api/v1/diaries", "/api/v1/diaries?from=2026-10-01&to=2026-10-07", null),
           new Api("DELETE", "/api/v1/diaries/{id}", "/api/v1/diaries/1", null),
+          // 구글 캘린더 일정 알림 (일정 제목이 들어 있어서 본인만)
+          new Api("PUT", "/api/v1/calendar-alarms", "/api/v1/calendar-alarms", "{\"events\":[]}"),
+          new Api("DELETE", "/api/v1/calendar-alarms", "/api/v1/calendar-alarms", null),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),

@@ -103,6 +103,7 @@ erDiagram
     diaries ||--o{ diary_emotions : "diary_id"
     diaries ||--o{ diary_causes : "diary_id"
     diaries ||--o{ diary_keywords : "diary_id"
+    users ||--o{ calendar_alarms : "user_id"
     users ||--o{ reflection_prescriptions : "user_id"
     users ||--o{ risk_forecasts : "user_id"
     risk_forecasts ||--o{ risk_forecast_reasons : "risk_forecast_id"
@@ -501,6 +502,14 @@ erDiagram
         bigint diary_id FK "어느 일기에서 뽑은 키워드인지"
         varchar keyword "AI 가 뽑은 반복 키워드 (20자까지)"
     }
+    calendar_alarms {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 일정의 주인"
+        varchar event_key "구글 캘린더의 일정 id (같은 일정을 다시 올렸을 때 찾는 데 씀)"
+        varchar title "일정 제목, 알림 글에 들어감 (100자까지)"
+        timestamptz starts_at "일정이 시작하는 순간"
+        timestamptz handled_at "알림을 보냈거나 연락 금지 시간이라 건너뛴 시각, 아직이면 비어 있음"
+    }
     reflection_prescriptions {
         bigint id PK "처방을 구분하는 고유 번호 (나중에 내린 것일수록 큼)"
         bigint user_id FK "처방을 받은 사람"
@@ -617,6 +626,7 @@ erDiagram
 | 하루 요약 #34 | 대기 | 현재 `DaySummary` 계산 객체만 있고 저장 엔티티 없음 |
 | 개선안·실험 #52 | 완료 | v3 자기 실험 `experiments` · `experiment_cards` (#52 · #54). 옛 v2 개선안 계산 객체는 그대로 |
 | 일기 #60 | 완료 | `diaries`와 딸린 `diary_emotions` · `diary_causes` · `diary_keywords` |
+| 구글 캘린더 일정 알림 (2026-10-24) | 완료 | `calendar_alarms` |
 | 잠금 해제 #67 | 완료 | `lock_events` 엔티티·그림·운영 SQL 반영 |
 | 동의 기록 #71 | 완료 | PR #204가 반영되어 `consent_records` 이력과 그림이 있음 |
 | 계획 루틴 #85 | 완료 | `routines`, `routine_applications` 엔티티·그림·운영 SQL 반영 |
@@ -676,6 +686,7 @@ erDiagram
 | `card_expected_fail_causes` | 카드 하나의 예상 실패 원인 글이 한 줄씩 (`@ElementCollection`, 5개까지) | #222 |
 | `checkin_emotions` | 체크인 하나에서 고른 감정 태그가 한 줄씩 (`@ElementCollection`). 안 골랐으면 줄이 없음 | #220 |
 | `diaries` | 학생이 쓴 일기 하나가 한 줄 (원문, 기분, 날짜, 쓴 시각, AI 분석 시각). 같은 날에 여러 개 가능. **원문은 본인만** | #60 |
+| `calendar_alarms` | 학생의 구글 캘린더 일정 하나가 한 줄 (일정 id, 제목, 시작 시각, 알림 처리 시각). FE 가 앞으로 7일 일정을 **덮어쓰기**로 올리고, 예약 작업이 시작 10분 전에 푸시. 지난 일정은 하루 뒤 지움 | 2026-10-24 |
 | `diary_emotions` · `diary_causes` · `diary_keywords` | 일기 하나에서 AI 가 뽑은 감정 · 실패 원인 · 키워드가 한 줄씩 (`@ElementCollection`). 일기를 지우면 같이 지워짐 | #60 |
 | `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
 | `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
@@ -805,6 +816,14 @@ erDiagram
 > - 하루 첫 태그 = 컨디션(1~5) + 감정 태그 여러 개. 감정은 한 체크인에 여러 개라서 `thinking_test_weaknesses` 처럼 딸린 테이블에 담았습니다. 엔티티는 `CheckIn` 하나입니다.
 > - 감정 이름은 이슈에 적힌 6개(`EmotionTag`)이고, DB 에도 이름 그대로 저장합니다.
 > - 감정 태그를 보내면 그날의 감정이 **전부 바뀝니다.** 다른 칸과 달리 **안 보내면 그대로 둡니다**(감정 태그를 모르는 화면이 다시 보내도 지워지지 않게). 체크인 줄이 지워지면(탈퇴) 같이 지워집니다.
+
+> `calendar_alarms` 는 2026-10-24 에 **AI 가 만든 테이블**입니다. (사용자 "캘린더 시작 10분 전에 실제 앱처럼 알람 오게", "알림에 일정 제목 넣자", **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - 서버는 구글에 직접 접속하지 않습니다. FE 가 학생의 브라우저에서 읽은 **앞으로 7일 일정**을 올립니다. (`PUT /api/v1/calendar-alarms`, 덮어쓰기)
+> - 하루 종일 일정은 "10분 전" 이 없어서 받지 않습니다. 시각이 있는 일정만 한 줄씩입니다.
+> - 한 사람의 같은 일정(`user_id` + `event_key`)은 **한 줄만** 둡니다(unique). 올리기가 동시에 두 번 오면 같은 일정이 두 줄이 되어 알림이 두 번 가던 것을 로컬에서 확인하고 막았습니다. 겹친 요청은 한 번 더 올려서 있는 줄을 고칩니다.
+> - `handled_at` 이 차 있으면 다시 보내지 않습니다. 구글에서 일정을 옮겨 `starts_at` 이 바뀌면 비워서 새 시각에 다시 알립니다.
+> - **일정 제목이 서버에 저장됩니다.** (사용자가 알림에 제목을 넣기로 정함) 알림 글에만 쓰고, 로그 · GPT 에는 보내지 않습니다. 시작한 지 하루 지난 줄은 예약 작업이 지우고, 캘린더 연결을 끊으면(`DELETE`) 바로 다 지웁니다.
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
 
 > `diaries` 와 딸린 테이블 3개는 2026-10-24 에 이슈 #60 에서 **AI 가 만든 테이블**입니다. (사용자 "이슈 완료 및 참고 자료 조건에 따라 진행", **PR 리뷰에서 학생이 꼭 확인해 주세요**)
 > - **일기 하나 = 한 줄**은 학생이 정했습니다. 같은 날에 여러 개를 쓸 수 있습니다.
