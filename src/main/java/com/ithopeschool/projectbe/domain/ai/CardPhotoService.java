@@ -23,7 +23,7 @@ import org.springframework.stereotype.Service;
 //      시험 날짜가 기준 날짜보다 빠르면 400
 //   2. 메모에 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. (#56, 어떤 기능보다 먼저)
 //   3. 맥락은 "말로 카드 만들기" 와 같습니다. (CardParseService.contextOf: 내 진행 중 목표 · 최근 카드 제목 · 한 칸 길이)
-//   4. 사진과 함께 AI 를 부릅니다. 꺼짐 · 하루 한도 · 실패면 drafts 가 null 입니다. (한도는 작은 AI 기능 묶음 ASSIST)
+//   4. 사진과 함께 AI 를 부릅니다. 꺼짐 · 실패면 drafts 가 null 입니다. (기록은 작은 AI 기능 ASSIST)
 //   5. AI 가 위기 표현이라고 하면 2번과 같이 하고, 시험 범위 사진이 아니라고 하면 drafts 가 null 입니다.
 //   6. 카드마다 "말로 카드 만들기" 와 같은 검사를 합니다. 날짜는 시험 전날까지, 14장까지입니다. (CardPhoto)
 //

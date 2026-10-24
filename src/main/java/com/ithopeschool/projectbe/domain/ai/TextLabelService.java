@@ -16,10 +16,10 @@ import org.springframework.stereotype.Service;
 // 순서
 //   1. 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. (#56, 어떤 기능보다 먼저)
 //      딴생각 메모에는 걱정이 적히기 쉬워서 특히 먼저 봅니다.
-//   2. AI 가 이름표 하나를 고릅니다. 꺼짐 · 하루 한도 · 실패 · 정해진 이름표가 아니면 label 이 null 입니다.
+//   2. AI 가 이름표 하나를 고릅니다. 꺼짐 · 실패 · 정해진 이름표가 아니면 label 이 null 입니다.
 //
 // 이 기능은 DB 를 읽지 않습니다. 글 하나의 뜻만 보면 되는 일이라, 쌓인 기록이 필요 없습니다.
-// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 한도는 사람마다 셉니다.
+// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 입니다.
 // 보낸 글과 AI 의 답은 로그에 찍지 않습니다.
 @Service
 @RequiredArgsConstructor

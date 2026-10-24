@@ -15,14 +15,14 @@ import org.springframework.stereotype.Service;
 //
 // 순서
 //   1. 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. (#56, 어떤 기능보다 먼저)
-//   2. AI 를 부릅니다. 꺼짐 · 하루 한도 · 실패면 step 이 null 입니다. (AiClient)
-//      하루 한도는 체크리스트 추천과 같은 종류(CHECKLIST)로 셉니다. 같은 기능(카드 체크리스트)의 한 부분이라서입니다.
+//   2. AI 를 부릅니다. 꺼짐 · 실패면 step 이 null 입니다. (AiClient)
+//      호출 기록은 체크리스트 추천과 같은 종류(CHECKLIST)로 남깁니다. 같은 기능(카드 체크리스트)의 한 부분이라서입니다.
 //   3. 받은 답을 검사합니다. 쓸 수 없으면 step 이 null 입니다. (FirstStep.from)
 //
 // 이 기능은 DB 를 읽지 않습니다. 지금 시작하려는 항목 하나를 쪼개는 일이라, 쌓인 기록 중에 쓸 것이 아직 없습니다.
 // (체크리스트 결과가 저장되면(#222) "자주 막히는 항목" 을 맥락으로 줄 수 있습니다)
 //
-// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 한도는 사람마다 셉니다.
+// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 입니다.
 // 보낸 글과 AI 의 답은 로그에 찍지 않습니다.
 @Service
 @RequiredArgsConstructor

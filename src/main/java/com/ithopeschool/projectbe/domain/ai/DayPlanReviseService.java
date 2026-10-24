@@ -18,10 +18,10 @@ import org.springframework.stereotype.Service;
 //
 // 순서
 //   1. 위기 표현(단어 목록)이 학생의 요청에 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. (#56)
-//   2. AI 를 부릅니다. 꺼짐 · 하루 한도 · 실패면 drafts 가 null 입니다. (한도는 ASSIST)
+//   2. AI 를 부릅니다. 꺼짐 · 실패면 drafts 가 null 입니다. (기록은 ASSIST)
 //   3. 받은 계획을 검사합니다. (DayPlanRevise.from — 시각 · 길이 · 겹침 · 하루 합 · 글)
 //
-// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 한도는 사람마다 셉니다.
+// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 입니다.
 @Service
 @RequiredArgsConstructor
 public class DayPlanReviseService {

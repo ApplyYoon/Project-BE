@@ -27,10 +27,10 @@ import org.springframework.stereotype.Service;
 //      - 보호 조치 중 (SafetyService.isActive)
 //      - 최근 7일(오늘 포함) 안에 위기 표현이 감지된 통화 · 채팅이 있음 (HabitNudgeJob · CallService 와 같은 규칙)
 //      - 보낸 글(과목 · 카드 제목 · 주제 · 시험 이름 · 준비하는 것)에 위기 표현이 있음 (#56)
-//   3. AI 를 부릅니다. 꺼짐 · 하루 한도 · 실패면 둘 다 null 입니다. (한도는 ASSIST)
+//   3. AI 를 부릅니다. 꺼짐 · 실패면 둘 다 null 입니다. (기록은 ASSIST)
 //   4. 받은 문장을 검사합니다. (CoachNudge.from — 길이 · 말투 · 위기 표현 · 지어낸 숫자)
 //
-// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 한도는 사람마다 셉니다.
+// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 입니다.
 @Service
 @RequiredArgsConstructor
 public class CoachNudgeService {

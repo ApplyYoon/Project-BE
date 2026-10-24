@@ -26,7 +26,7 @@ import org.springframework.stereotype.Service;
 //      - 내 진행 중 목표 (번호 · 제목 · D-day): AI 가 카드를 목표에 이을 수 있게
 //      - 최근 카드 제목 (최근에 만든 것부터, 겹치지 않게 10개): 평소 쓰던 제목으로 맞추려고
 //      - 내 한 칸 길이 (BlockLengthService): 길이를 말하지 않은 카드에 넣을 값
-//   3. AI 를 부릅니다. 꺼짐 · 하루 한도 · 실패면 drafts 가 null 입니다. (AiClient, 한도는 작은 AI 기능 묶음 ASSIST)
+//   3. AI 를 부릅니다. 꺼짐 · 실패면 drafts 가 null 입니다. (AiClient, 기록은 작은 AI 기능 ASSIST)
 //   4. AI 가 위기 표현이라고 하면 1번과 같이 합니다. (단어 목록과 AI 중 하나라도 걸리면 감지)
 //   5. 카드마다 검사합니다. (CardParse.from — 날짜는 코드가 세고, 내 진행 중 목표 번호만 남김)
 //
