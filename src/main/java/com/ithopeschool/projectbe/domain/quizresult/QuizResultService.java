@@ -6,6 +6,7 @@ import com.ithopeschool.projectbe.domain.quizresult.dto.QuizResultResponse;
 import com.ithopeschool.projectbe.domain.quizresult.dto.QuizStatsResponse;
 import com.ithopeschool.projectbe.domain.quizresult.dto.QuizStatsResponse.DayStats;
 import com.ithopeschool.projectbe.domain.quizresult.dto.QuizStatsResponse.SubjectStats;
+import com.ithopeschool.projectbe.domain.quizresult.dto.QuizStatsResponse.TotalDayStats;
 import com.ithopeschool.projectbe.domain.quizresult.dto.QuizStatsResponse.UnitDayStats;
 import com.ithopeschool.projectbe.domain.quizresult.dto.QuizStatsResponse.UnitStats;
 import com.ithopeschool.projectbe.domain.session.StudySession;
@@ -113,7 +114,26 @@ public class QuizResultService {
               dayStats(dates, subjectResults, studyMillisByDate(sessions, subject.getId())),
               unitStats(dates, subjectResults)));
     }
-    return new QuizStatsResponse(from, to, subjects);
+    return new QuizStatsResponse(from, to, totalDays(dates, sessions), subjects);
+  }
+
+  // 날짜별 전체 순공시간. 노는 기록(PLAY)만 빼고, 과목이 없는 기록(카드 타이머)도 셉니다.
+  private static List<TotalDayStats> totalDays(List<LocalDate> dates, List<StudySession> sessions) {
+    Map<LocalDate, Long> millisByDate = new LinkedHashMap<>();
+    for (StudySession session : sessions) {
+      if (session.getKind() == PlanKind.PLAY) {
+        continue;
+      }
+      long millis =
+          StudyTime.studyMillis(
+              session.getStartedAt(), session.getEndedAt(), session.getPausedMs());
+      millisByDate.merge(DayRule.dateOf(session.getStartedAt()), millis, Long::sum);
+    }
+    List<TotalDayStats> days = new ArrayList<>();
+    for (LocalDate date : dates) {
+      days.add(new TotalDayStats(date, StudyTime.toMinutes(millisByDate.getOrDefault(date, 0L))));
+    }
+    return days;
   }
 
   // 이 과목의 날짜별 순공시간(밀리초). 노는 기록(PLAY)과 과목 없는 기록은 빼고 셉니다.

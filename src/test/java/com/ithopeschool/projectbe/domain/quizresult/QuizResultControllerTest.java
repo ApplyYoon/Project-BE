@@ -80,7 +80,7 @@ class QuizResultControllerTest {
   @DisplayName("통계는 200 이고 과목 목록을 돌려준다")
   void stats() throws Exception {
     given(quizResultService.getStats(OCT_24.minusDays(6), OCT_24))
-        .willReturn(new QuizStatsResponse(OCT_24.minusDays(6), OCT_24, List.of()));
+        .willReturn(new QuizStatsResponse(OCT_24.minusDays(6), OCT_24, List.of(), List.of()));
 
     mockMvc
         .perform(

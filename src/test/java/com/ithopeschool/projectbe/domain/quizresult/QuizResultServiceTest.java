@@ -174,6 +174,10 @@ class QuizResultServiceTest {
 
     QuizStatsResponse stats = service.getStats(OCT_23, OCT_24);
 
+    // 전체 공부 시간: 노는 기록만 빼고 날짜별로 (10-23 = 30분, 10-24 = 45분)
+    assertThat(stats.days())
+        .extracting(d -> d.date() + " " + d.studyMinutes())
+        .containsExactly("2026-10-23 30", "2026-10-24 45");
     assertThat(stats.subjects()).hasSize(1);
     SubjectStats math = stats.subjects().get(0);
     assertThat(math.name()).isEqualTo("수학");
