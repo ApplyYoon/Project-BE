@@ -2,6 +2,7 @@ package com.ithopeschool.projectbe.domain.session;
 
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.care.MissReason;
+import com.ithopeschool.projectbe.domain.care.Stage4Service;
 import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.plan.PlanProgress;
 import com.ithopeschool.projectbe.domain.plan.PlanProgress.PlanSession;
@@ -71,6 +72,8 @@ public class StudySessionService {
   private final StudyPlanRepository studyPlanRepository;
   // 기록에 붙일 카드가 "내 카드" 인지 확인할 때 씁니다. (이슈 #224)
   private final CardRepository cardRepository;
+  // 관리 4단계면 증빙을 꼭 받고, 증빙이 있는 카드 실행이면 4단계를 풉니다. (이슈 #234)
+  private final Stage4Service stage4Service;
   // "지금 몇 시인지" 는 시계에게 묻습니다. 테스트에서 시각을 고정할 수 있습니다. (global/config/ClockConfig)
   private final Clock clock;
 
@@ -147,7 +150,16 @@ public class StudySessionService {
     session.recordMemos(memos);
     session.recordPlay(playTag, overRestMs);
 
-    return StudySessionResponse.from(studySessionRepository.save(session));
+    // 관리 4단계: 공부 기록이면 증빙이 꼭 필요한 세션으로 남기고, 증빙이 있는 카드 실행이면 4단계를 풉니다. (#234)
+    boolean stage4On = kind == PlanKind.STUDY && stage4Service.isOn(userId);
+    if (stage4On) {
+      session.requireProof();
+    }
+    StudySession saved = studySessionRepository.save(session);
+    if (stage4On && cardId != null) {
+      stage4Service.releaseIfProven(userId, saved.hasProof());
+    }
+    return StudySessionResponse.from(saved);
   }
 
   // 사후 입력 세션 하나 저장. (이슈 #225, POST /api/v1/cards/{id}/late-entry)
@@ -181,7 +193,17 @@ public class StudySessionService {
     if (endReport != null) {
       applyEndReport(session, endReport);
     }
-    return StudySessionResponse.from(studySessionRepository.save(session));
+
+    // 관리 4단계: 사후 입력도 증빙이 꼭 필요하고, 증빙이 있으면 4단계를 풉니다. (#234)
+    boolean stage4On = stage4Service.isOn(userId);
+    if (stage4On) {
+      session.requireProof();
+    }
+    StudySession saved = studySessionRepository.save(session);
+    if (stage4On) {
+      stage4Service.releaseIfProven(userId, saved.hasProof());
+    }
+    return StudySessionResponse.from(saved);
   }
 
   // 기간 안의 내 기록 목록. from ~ to 는 둘 다 포함하는 날짜이고, 없는 기간은 빈 목록입니다.

@@ -3,14 +3,17 @@ package com.ithopeschool.projectbe.domain.session;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.ithopeschool.projectbe.domain.card.Card;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.card.ChecklistItem;
+import com.ithopeschool.projectbe.domain.care.Stage4Service;
 import com.ithopeschool.projectbe.domain.plan.StudyPlanRepository;
 import com.ithopeschool.projectbe.domain.session.SessionTags.GoodReason;
 import com.ithopeschool.projectbe.domain.session.SessionTags.PauseTag;
@@ -53,6 +56,7 @@ class StudySessionCardFieldsServiceTest {
 
   private StudySessionRepository studySessionRepository;
   private CardRepository cardRepository;
+  private Stage4Service stage4Service;
   private StudySessionService studySessionService;
 
   @BeforeEach
@@ -60,6 +64,8 @@ class StudySessionCardFieldsServiceTest {
     CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     studySessionRepository = mock(StudySessionRepository.class);
     cardRepository = mock(CardRepository.class);
+    // 기본은 관리 4단계가 아닙니다. (4단계 테스트에서만 켭니다)
+    stage4Service = mock(Stage4Service.class);
     studySessionService =
         new StudySessionService(
             currentUserProvider,
@@ -67,6 +73,7 @@ class StudySessionCardFieldsServiceTest {
             mock(SubjectRepository.class),
             mock(StudyPlanRepository.class),
             cardRepository,
+            stage4Service,
             Clock.fixed(NOW, ZoneOffset.UTC));
     given(currentUserProvider.getCurrentUserId()).willReturn(ME);
     // 7번 카드만 내 것이고, 그 밖의 번호는 없거나 남의 것입니다.
@@ -413,5 +420,52 @@ class StudySessionCardFieldsServiceTest {
             "netflix", null),
         ErrorCode.VALIDATION_ERROR,
         "노는 종류는 youtube, game, sns, webtoon, rest, etc 중에서 골라 주세요");
+  }
+
+  // ---- 관리 4단계 (#234) ----
+
+  private static SessionEndReportRequest proofReport(String summary) {
+    return new SessionEndReportRequest(
+        null, null, null, new SessionEndReportRequest.Proof(null, summary), null);
+  }
+
+  @Test
+  @DisplayName("4단계가 아니면 증빙 필요로 남기지 않고, 4단계를 풀려고 하지도 않는다")
+  void notStage4() {
+    studySessionService.create(cardSession(null, null, proofReport("42~45쪽 풀었음"), null));
+
+    assertThat(savedSession().isProofRequired()).isFalse();
+    verify(stage4Service, never()).releaseIfProven(any(), anyBoolean());
+  }
+
+  @Test
+  @DisplayName("4단계에서 증빙 없이 끝낸 세션은 증빙 필요로 남고, 4단계는 풀리지 않는다 (증빙 없음으로 넘김)")
+  void stage4WithoutProof() {
+    given(stage4Service.isOn(ME)).willReturn(true);
+
+    studySessionService.create(cardSession(null, null, null, null));
+
+    StudySession saved = savedSession();
+    assertThat(saved.isProofRequired()).isTrue();
+    assertThat(saved.hasProof()).isFalse();
+    verify(stage4Service).releaseIfProven(ME, false);
+  }
+
+  @Test
+  @DisplayName("4단계에서 증빙이 있는 카드 실행을 저장하면 4단계를 풀어 달라고 한다 (사후 입력도 같음)")
+  void stage4WithProofReleases() {
+    given(stage4Service.isOn(ME)).willReturn(true);
+
+    studySessionService.create(cardSession(null, null, proofReport("42~45쪽 풀었음"), null));
+    assertThat(savedSession().isProofRequired()).isTrue();
+    verify(stage4Service).releaseIfProven(ME, true);
+
+    studySessionService.createSelfReport(
+        MY_CARD,
+        60,
+        Instant.ofEpochMilli(END + 10 * MINUTE),
+        Instant.ofEpochMilli(END + 40 * MINUTE),
+        proofReport("43쪽 풀었음"));
+    verify(stage4Service, times(2)).releaseIfProven(ME, true);
   }
 }

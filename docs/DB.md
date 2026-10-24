@@ -147,6 +147,7 @@ erDiagram
         varchar with_what "같이 한 것 (MUSIC, VIDEO, NONE 중 하나), 비어도 됨"
         varchar proof_link "산출물 증빙 링크 (300자까지), 비어도 됨"
         varchar proof_summary "산출물 증빙 2~3줄 요약 (300자까지), 비어도 됨"
+        boolean proof_required "관리 4단계라서 증빙이 꼭 필요했으면 true (옛 기록은 비어 있음 = false, #234)"
         varchar play_tag "노는 기록일 때 무엇을 했는지 (YOUTUBE, GAME, SNS, WEBTOON, REST, ETC 중 하나)"
         bigint over_rest_ms "노는 기록일 때 놀기가 끝난 뒤 더 쉰 시간(밀리초)"
     }
@@ -350,6 +351,9 @@ erDiagram
         boolean suggest_shrink "계획을 줄여 보자고 할지"
         varchar reason "왜 이 단계인지 한 줄"
         timestamptz decided_at "판정한 시각"
+        bigint forced_card_id "4단계라서 그날 하루만 절대 카드로 보는 카드 번호, 없거나 풀렸으면 비어 있음 (#234)"
+        date forced_card_date "그 카드를 절대로 보는 날짜, 비어도 됨"
+        timestamptz released_at "4단계를 푼 시각 (증빙 있는 실행 1회 → 3단계), 안 풀렸으면 비어 있음"
     }
     daily_signals {
         bigint id PK "줄을 구분하는 고유 번호"
@@ -756,6 +760,10 @@ erDiagram
 
 > `daily_care_stages` 는 2026-10-18 에 이슈 #62 에서 **AI 가 만든 테이블**입니다. (테이블 설계를 AI 에게 맡긴 범위, **PR 리뷰에서 학생이 꼭 확인해 주세요**)
 > - 하루의 단계를 **한 번 정하면 바꾸지 않습니다.** 그래서 "어제 몇 단계였나"(하루 한 칸 규칙)와 "당근 주 vs 채찍 주"(#47)를 이 표로 셉니다.
+> - 4단계 칸(`forced_card_id` · `forced_card_date` · `released_at`)은 2026-10-24 에 이슈 #234 에서 **학생이 고른 설계**입니다.
+>   - 절대 전환은 카드(`cards.priority`)를 바꾸지 않고 "그 카드 · 그 날짜만 절대" 로 이 줄에 적습니다. 풀면 두 칸을 비워서 원래대로 돌아갑니다. (FE `stage4.ts` 와 같은 방식)
+>   - 풀어도 판정한 `stage`(4)는 그대로 두고 `released_at` 만 적습니다. 응답과 다음 날 판정은 이 칸이 있으면 3단계로 봅니다.
+>   - 증빙 강제는 세션 쪽 `study_sessions.proof_required` 에 저장 순간의 값으로 남깁니다. 나중에 단계가 바뀌어도 그때 규칙이 남게 하려는 것입니다.
 > - 이유 문장(`reason`)을 그대로 남깁니다. 규칙 문장이 나중에 바뀌어도 그날 학생이 본 문장이 남게 하려는 것입니다.
 > - 계산 재료(의지력 등)는 남기지 않습니다. 의지력은 어떤 응답에도 넣지 않는 값이라서입니다. (낙인 방지, `WillpowerNotInResponseTest`)
 > - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.

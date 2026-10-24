@@ -25,7 +25,8 @@ import org.springframework.test.web.servlet.MockMvc;
 class CareStageControllerTest {
 
   private static final CareStageResponse NUDGE =
-      new CareStageResponse(LocalDate.of(2026, 10, 18), 2, "넛지", "toBase", false, "오늘은 가볍게 알려 줄게.");
+      new CareStageResponse(
+          LocalDate.of(2026, 10, 18), 2, "넛지", "toBase", false, "오늘은 가볍게 알려 줄게.", false, null);
 
   @Autowired private MockMvc mockMvc;
 

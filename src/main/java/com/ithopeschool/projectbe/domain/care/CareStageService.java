@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.care;
 
+import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.cardresult.CardResult;
 import com.ithopeschool.projectbe.domain.cardresult.CardResultService;
 import com.ithopeschool.projectbe.domain.cardresult.JudgedCardDay;
@@ -18,6 +19,8 @@ import com.ithopeschool.projectbe.domain.restday.RestDayRepository;
 import com.ithopeschool.projectbe.domain.safety.LowMoodStreak;
 import com.ithopeschool.projectbe.domain.safety.SafetyBrake;
 import com.ithopeschool.projectbe.domain.safety.SafetyService;
+import com.ithopeschool.projectbe.domain.session.StudySession;
+import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
 import com.ithopeschool.projectbe.domain.settings.CareSetting;
 import com.ithopeschool.projectbe.domain.settings.CareSettingRepository;
 import com.ithopeschool.projectbe.domain.user.User;
@@ -51,6 +54,7 @@ import org.springframework.transaction.annotation.Transactional;
 //   회복 조건   ← 휴식·미실행만 이어진 날 · 부정 감정 태그만 이어진 날 · 꼭 해야 하는 카드를 놓쳤는지
 //   재발 신호   ← 카드 하루치 판정 → RelapseSignal.judge
 //   상한        ← 내가 정한 제재 최대 한도 (care_settings) · 시험 기간 (SafetyBrake)
+//   4단계면     ← 내 카드 · 오늘 공부 기록으로 그날 하루만 절대로 볼 다음 반복 카드 1장 (Stage4.pickForcedCard, #234)
 //
 // ■ 언제 판정하나요?
 //   매일 새벽 예약 작업(care-stages)이 온보딩을 마친 모든 학생의 오늘 단계를 정해 둡니다.
@@ -87,6 +91,9 @@ public class CareStageService {
   private final CareSettingRepository careSettingRepository;
   private final UserRepository userRepository;
   private final SafetyService safetyService;
+  // 4단계일 때 절대 카드로 바꿀 다음 반복 카드를 고르려고 읽습니다. (#234)
+  private final CardRepository cardRepository;
+  private final StudySessionRepository studySessionRepository;
   private final Clock clock;
 
   // 오늘(새벽 4시 기준)의 내 관리 단계. 아직 판정하지 않았으면 지금 판정해 저장합니다.
@@ -210,7 +217,8 @@ public class CareStageService {
     CareStage.Result result =
         CareStage.decide(
             new CareStage.Input(
-                latest.map(DailyCareStage::getStage).orElse(null),
+                // 어제 4단계를 풀었으면 3단계에서 이어 갑니다. (currentStage)
+                latest.map(DailyCareStage::currentStage).orElse(null),
                 baseStage,
                 dayIndex,
                 safety,
@@ -218,7 +226,34 @@ public class CareStageService {
                 relapse,
                 maxLevel,
                 brake.examPeriod()));
-    return new DailyCareStage(userId, today, result, now);
+    DailyCareStage stage = new DailyCareStage(userId, today, result, now);
+
+    // 7) 4단계면 다음 반복 카드 1장을 그날 하루만 절대 카드로 정합니다. (#234) 고를 카드가 없으면 비워 둡니다.
+    if (result.stage() == Stage4.STAGE) {
+      Stage4.Target target =
+          Stage4.pickForcedCard(
+              cardRepository.findByUserIdOrderById(userId),
+              today,
+              now,
+              doneCardIdsOn(userId, today));
+      if (target != null) {
+        stage.forceAbsolute(target.cardId(), target.date());
+      }
+    }
+    return stage;
+  }
+
+  // 그날 공부 기록이 있는 카드 번호들 (오늘 이미 한 카드는 절대 카드로 고르지 않습니다)
+  private Set<Long> doneCardIdsOn(Long userId, LocalDate date) {
+    Set<Long> cardIds = new HashSet<>();
+    for (StudySession session :
+        studySessionRepository.findStartedBetween(
+            userId, DayRule.startOf(date), DayRule.startOf(date.plusDays(1)))) {
+      if (session.getCardId() != null) {
+        cardIds.add(session.getCardId());
+      }
+    }
+    return cardIds;
   }
 
   // 관리를 시작한 지 며칠째인지 (0 = 첫날). 온보딩을 마친 날부터 셉니다. 아직 안 마쳤으면 0
