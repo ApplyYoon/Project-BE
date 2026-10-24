@@ -41,6 +41,7 @@ class DiaryControllerTest {
         "7",
         DATE,
         "폰을 보다가 수학을 못 했다",
+        2,
         Instant.parse("2026-10-24T09:00:00Z"),
         true,
         List.of("TIRED"),
@@ -64,6 +65,7 @@ class DiaryControllerTest {
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.id").value("7"))
         .andExpect(jsonPath("$.date").value("2026-10-24"))
+        .andExpect(jsonPath("$.mood").value(2))
         .andExpect(jsonPath("$.analyzed").value(true))
         .andExpect(jsonPath("$.emotions[0]").value("TIRED"))
         .andExpect(jsonPath("$.causes[0]").value("phone"))
@@ -73,12 +75,16 @@ class DiaryControllerTest {
   }
 
   @Test
-  @DisplayName("내용이 비었거나 2000자를 넘으면 400 이고 Service 를 부르지 않는다")
+  @DisplayName("내용이 비었거나 2000자를 넘거나 기분이 1 ~ 5 밖이면 400 이고 Service 를 부르지 않는다")
   void rejectsBadContent() throws Exception {
     create("{\"content\":\"   \"}")
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     create("{\"content\":\"" + "가".repeat(2001) + "\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    // 기분은 체크인과 같은 1 ~ 5 만 받습니다.
+    create("{\"content\":\"일기\",\"mood\":6}")
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     verifyNoInteractions(diaryService);

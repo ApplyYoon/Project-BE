@@ -11,7 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 // 일기 하나를 FE 에 알려 주는 모양입니다. 본인에게만 보내는 응답이라 원문(content)이 들어 있습니다.
-//   { "id": "7", "date": "2026-10-24", "content": "오늘은 폰을 보다가 ...", "writtenAt": "...",
+//   { "id": "7", "date": "2026-10-24", "content": "오늘은 폰을 보다가 ...", "mood": 2, "writtenAt": "...",
 //     "analyzed": true, "emotions": ["TIRED"], "causes": ["phone"], "keywords": ["수학"],
 //     "showHelp": false, "helpLines": [], "helpMessage": null }
 // - id 는 다른 API 와 같이 글자로 보냅니다.
@@ -23,6 +23,7 @@ public record DiaryResponse(
     String id,
     LocalDate date,
     String content,
+    Integer mood,
     Instant writtenAt,
     boolean analyzed,
     List<String> emotions,
@@ -45,6 +46,7 @@ public record DiaryResponse(
         String.valueOf(diary.getId()),
         diary.getDiaryDate(),
         diary.getContent(),
+        diary.getMood(),
         diary.getWrittenAt(),
         diary.getAnalyzedAt() != null,
         // 늘 같은 순서가 되도록 enum 순서로 줄 세웁니다.

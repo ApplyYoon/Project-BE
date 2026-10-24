@@ -65,6 +65,9 @@ public class Diary {
   @Column(nullable = false, length = MAX_CONTENT_LENGTH)
   private String content;
 
+  // 일기와 같이 고른 오늘 기분 (1 ~ 5, 1 이 가장 처짐). 체크인 기분과 같은 척도이고, 안 골랐으면 비어 있습니다.
+  private Integer mood;
+
   // 일기를 저장한 시각
   @Column(nullable = false)
   private Instant writtenAt;
@@ -93,10 +96,11 @@ public class Diary {
   @Column(name = "keyword", length = MAX_KEYWORD_LENGTH, nullable = false)
   private Set<String> keywords = new LinkedHashSet<>();
 
-  public Diary(Long userId, LocalDate diaryDate, String content, Instant writtenAt) {
+  public Diary(Long userId, LocalDate diaryDate, String content, Integer mood, Instant writtenAt) {
     this.userId = userId;
     this.diaryDate = diaryDate;
     this.content = content;
+    this.mood = mood;
     this.writtenAt = writtenAt;
   }
 

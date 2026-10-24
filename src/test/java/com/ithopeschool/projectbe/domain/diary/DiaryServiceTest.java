@@ -85,11 +85,12 @@ class DiaryServiceTest {
                     List.of("phone", "laziness"),
                     List.of(" 수학 ", "", "폰", "아주아주아주아주아주아주아주아주긴키워드입니다", "늦잠", "학원", "숙제", "시험"))));
 
-    DiaryResponse response = service.create(new DiaryCreateRequest("  " + CONTENT + "  "));
+    DiaryResponse response = service.create(new DiaryCreateRequest("  " + CONTENT + "  ", 2));
 
     assertThat(response.id()).isEqualTo("3");
     assertThat(response.date()).isEqualTo(TODAY);
     assertThat(response.content()).isEqualTo(CONTENT);
+    assertThat(response.mood()).isEqualTo(2);
     assertThat(response.writtenAt()).isEqualTo(NOW);
     assertThat(response.analyzed()).isTrue();
     assertThat(response.emotions()).containsExactly("TIRED");
@@ -108,7 +109,7 @@ class DiaryServiceTest {
   void noConsentNoAnalysis() {
     agreed(false);
 
-    DiaryResponse response = service.create(new DiaryCreateRequest(CONTENT));
+    DiaryResponse response = service.create(new DiaryCreateRequest(CONTENT, null));
 
     assertThat(response.analyzed()).isFalse();
     assertThat(response.emotions()).isEmpty();
@@ -123,7 +124,7 @@ class DiaryServiceTest {
     given(aiClient.ask(any(), any(), any(), eq(DiaryAnalysis.Answer.class)))
         .willReturn(Optional.empty());
 
-    DiaryResponse response = service.create(new DiaryCreateRequest(CONTENT));
+    DiaryResponse response = service.create(new DiaryCreateRequest(CONTENT, null));
 
     assertThat(response.analyzed()).isFalse();
     verify(diaryRepository).save(any());
@@ -135,7 +136,7 @@ class DiaryServiceTest {
     agreed(true);
     given(safetyService.check(eq(USER_ID), any())).willReturn(true);
 
-    DiaryResponse response = service.create(new DiaryCreateRequest("다 그만두고 사라지고 싶어"));
+    DiaryResponse response = service.create(new DiaryCreateRequest("다 그만두고 사라지고 싶어", null));
 
     assertThat(response.showHelp()).isTrue();
     assertThat(response.helpLines()).isNotEmpty();
@@ -151,7 +152,7 @@ class DiaryServiceTest {
   void listsWithinRange() {
     LocalDate from = TODAY.minusDays(30);
     given(diaryRepository.findByUserIdAndDiaryDateBetweenOrderByWrittenAtDesc(USER_ID, from, TODAY))
-        .willReturn(List.of(new Diary(USER_ID, TODAY, CONTENT, NOW)));
+        .willReturn(List.of(new Diary(USER_ID, TODAY, CONTENT, 2, NOW)));
 
     assertThat(service.getDiaries(from, TODAY)).hasSize(1);
 
@@ -166,7 +167,7 @@ class DiaryServiceTest {
   @Test
   @DisplayName("지우기는 내 일기만 찾아서 지우고, 없거나 남의 일기면 404")
   void deletesOnlyMine() {
-    Diary mine = new Diary(USER_ID, TODAY, CONTENT, NOW);
+    Diary mine = new Diary(USER_ID, TODAY, CONTENT, 2, NOW);
     given(diaryRepository.findByIdAndUserId(3L, USER_ID)).willReturn(Optional.of(mine));
     given(diaryRepository.findByIdAndUserId(99L, USER_ID)).willReturn(Optional.empty());
 

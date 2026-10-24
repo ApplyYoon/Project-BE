@@ -60,7 +60,8 @@ public class DiaryService {
 
     // 2) 저장
     Instant now = clock.instant();
-    Diary diary = diaryRepository.save(new Diary(userId, DayRule.dateOf(now), content, now));
+    Diary diary =
+        diaryRepository.save(new Diary(userId, DayRule.dateOf(now), content, request.mood(), now));
 
     // 3) AI 분석 (위기 표현이 없고, 분석에 동의한 사람만)
     if (!showHelp && agreedToAnalysis(userId)) {

@@ -28,7 +28,7 @@ class DiaryRepositoryTest {
 
   // 분석까지 마친 일기 하나를 저장합니다.
   private Diary saveAnalyzed(Long userId, LocalDate date, Instant writtenAt) {
-    Diary diary = new Diary(userId, date, "폰을 보다가 수학을 못 했다", writtenAt);
+    Diary diary = new Diary(userId, date, "폰을 보다가 수학을 못 했다", 2, writtenAt);
     diary.recordAnalysis(
         EnumSet.of(EmotionTag.TIRED, EmotionTag.ANNOYED),
         EnumSet.of(MissReason.PHONE),
