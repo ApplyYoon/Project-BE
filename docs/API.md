@@ -6009,3 +6009,97 @@ POST /api/v1/diaries 요청 예: {"content":"오늘은 폰을 보다가 수학�
 GET /api/v1/diaries?from=2026-10-18&to=2026-10-24 는 기간 안의 내 일기 배열을 최근에 쓴 것부터 돌려줍니다. 양 끝 날짜 포함, 31일까지이고, 없으면 빈 배열입니다. 시작이 끝보다 늦거나 31일을 넘거나 날짜 모양이 틀리면 400 입니다. 목록의 showHelp 는 늘 false 입니다.
 
 DELETE /api/v1/diaries/{id} 는 내 일기 하나를 지우고 204 입니다. 뽑은 감정 · 원인 · 키워드도 같이 지워집니다. 없는 번호와 남의 번호는 404 입니다.
+
+## 사진 채점 (2026-10-24)
+
+학생이 공부한 문제집 · 학습지 사진을 **폰에서 올리면 AI 가 채점**하고, 결과를 저장하고, **PC 가 그날 기록을 보고**, 학생이 문제별로 판정을 고칩니다. **로그인이 필요합니다.** 내 기록만 보이고, 남의 기록 · 문제 번호는 404 입니다.
+
+- **사진은 저장하지 않습니다.** (DB · 파일 · 로그 어디에도) 메모리에서 OpenAI 로 보내고 버리며, 결과만 `answer_checks` · `answer_check_items` 에 남깁니다.
+- 모드는 학생이 폰에서 고릅니다.
+  - `MARKED` (채점했어요): 학생이 이미 O · X 로 채점한 페이지. AI 는 문제를 풀지 않고 **문제 번호와 O · X 표시만** 읽습니다. 판정은 서버 코드가 정합니다: O → `CORRECT`, X → `WRONG`, 못 읽음(표시 없음 · 세모 등) → `UNSURE`.
+  - `UNMARKED` (아직 안 했어요): AI 가 문제를 **직접 풀고** 학생 답과 비교합니다. 학생 답이나 AI 답을 못 읽었으면 서버가 `UNSURE` 로 바꿉니다.
+- 판정: `CORRECT`(맞음) · `WRONG`(틀림) · `UNSURE`(애매). AI 가 자신 없거나 글씨를 못 읽은 문제는 `UNSURE` 입니다. 억지로 `WRONG` 으로 하지 않게 지침에 강하게 적었습니다.
+- 호출 기록은 `ASSIST` 로 남깁니다. 사진을 읽느라 답을 25초까지 기다립니다.
+
+### `POST /api/v1/answer-checks` — 사진 올려 채점
+
+**요청**
+
+```json
+{ "mode": "UNMARKED", "image": "data:image/jpeg;base64,/9j/4AAQ...", "date": "2026-10-24" }
+```
+
+- `mode`: 필수, `MARKED` 또는 `UNMARKED`
+- `image`: 필수. 사진 한 장(data URL, jpeg · png · webp, 4MB). `/ai/cards/from-photo` 와 같은 규칙입니다.
+- `date`: 필수. 어느 날 공부한 것인지 (보통 오늘)
+
+**응답 200**
+
+```json
+{
+  "showHelp": false,
+  "graded": true,
+  "reason": null,
+  "id": "12",
+  "date": "2026-10-24",
+  "mode": "UNMARKED",
+  "subjectText": "수학",
+  "counts": { "correct": 2, "wrong": 1, "unsure": 1 },
+  "items": [
+    {
+      "id": "31",
+      "number": "1",
+      "myAnswer": "x = 5",
+      "aiAnswer": "x = 5",
+      "markRead": null,
+      "result": "CORRECT",
+      "correctAnswer": null,
+      "editedByUser": false
+    }
+  ],
+  "createdAt": "2026-10-24T11:02:00Z"
+}
+```
+
+- id 들은 글자입니다. `items` 는 사진 속 순서대로, 40개까지입니다.
+- `aiAnswer` 는 `UNMARKED` 에서만, `markRead`(`"O"` · `"X"` · `null`)는 `MARKED` 에서만 값이 있습니다.
+- `counts` 는 저장하지 않고 `items` 의 `result`(지금 판정)를 세어서 만듭니다.
+- `subjectText` 는 AI 가 읽은 과목(30자까지)이고, 못 읽었으면 `null` 입니다.
+- **`graded: false`** 면 채점하지 못한 것이고 **아무것도 저장하지 않았습니다.** 에러가 아니라 200 입니다. 이때 `id` · `subjectText` · `counts` · `items` · `createdAt` 은 `null` 이고, `date` · `mode` 는 보낸 값 그대로입니다.
+  - `reason: "NOT_PROBLEM"`: 문제 사진이 아니거나, 번호 있는 문제를 하나도 못 읽음
+  - `reason: "UNAVAILABLE"`: AI 꺼짐(로컬은 항상 이것) · 실패 · 시간 초과
+- **`showHelp: true`** 면 AI 가 사진 속 글에서 위기 표현을 찾았거나, 읽은 답 글에 위기 표현(단어 목록)이 있는 것입니다. 저장하지 않고 `graded: false`, `reason: null` 입니다. FE 는 도움 연결 안내를 먼저 보여 줍니다.
+
+| 상태 | 언제                                                                       |
+| ---- | -------------------------------------------------------------------------- |
+| 400  | 모드 · 사진 · 날짜가 없음 · 모드가 모르는 값 · 사진 모양이 틀림 · 4MB 초과 |
+| 401  | 로그인하지 않음                                                            |
+| 403  | 최신 동의 문구에 동의하지 않음 (`CONSENT_REQUIRED`)                        |
+
+### `GET /api/v1/answer-checks?date=2026-10-24` — 그날의 내 채점 기록
+
+- 위 응답 모양의 **배열**을 최근에 올린 것부터 돌려줍니다. 없으면 빈 배열입니다.
+- PC 가 3초마다 부르므로 DB 는 두 번(기록들 · 그 문제들)만 부릅니다.
+- `date` 가 없거나 모양이 틀리면 400, 로그인하지 않으면 401 입니다.
+
+### `PATCH /api/v1/answer-checks/{id}/items/{itemId}` — 문제 하나의 판정 고치기
+
+**요청**
+
+```json
+{ "result": "WRONG", "correctAnswer": "x = 7" }
+```
+
+- `result`: 필수, `CORRECT` · `WRONG` · `UNSURE`
+- `correctAnswer`: 선택, 학생이 적은 정답 100자까지. 비우거나 `null` 이면 지웁니다.
+
+**응답 200**: 고친 기록 **전체**(위 응답 모양 하나). `counts` 도 다시 셉니다. 고친 문제는 `editedByUser: true` 입니다.
+
+- AI 의 처음 판정은 DB(`ai_result`)에 그대로 남고, 지금 판정(`result`) · 정답 · 고친 시각(`edited_at`)만 바뀝니다.
+
+| 상태 | 언제                                                                        |
+| ---- | --------------------------------------------------------------------------- |
+| 400  | 판정이 없음 · 모르는 값 · 정답이 100자 초과 · 번호 모양이 틀림               |
+| 401  | 로그인하지 않음                                                             |
+| 403  | 최신 동의 문구에 동의하지 않음 (`CONSENT_REQUIRED`)                         |
+| 404  | 없는 기록 번호 · 남의 기록 · 그 기록에 없는 문제 번호                       |

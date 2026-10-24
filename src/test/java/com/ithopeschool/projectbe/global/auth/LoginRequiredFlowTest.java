@@ -296,6 +296,18 @@ class LoginRequiredFlowTest {
           // 구글 캘린더 일정 알림 (일정 제목이 들어 있어서 본인만)
           new Api("PUT", "/api/v1/calendar-alarms", "/api/v1/calendar-alarms", "{\"events\":[]}"),
           new Api("DELETE", "/api/v1/calendar-alarms", "/api/v1/calendar-alarms", null),
+          // 사진 채점 (아무나 부르면 GPT 비용이 나가고, 채점 결과는 본인만 봅니다)
+          new Api(
+              "POST",
+              "/api/v1/answer-checks",
+              "/api/v1/answer-checks",
+              "{\"mode\":\"MARKED\",\"image\":\"data:image/jpeg;base64,AQID\",\"date\":\"2026-10-24\"}"),
+          new Api("GET", "/api/v1/answer-checks", "/api/v1/answer-checks?date=2026-10-24", null),
+          new Api(
+              "PATCH",
+              "/api/v1/answer-checks/{id}/items/{itemId}",
+              "/api/v1/answer-checks/1/items/1",
+              "{\"result\":\"WRONG\"}"),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
