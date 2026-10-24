@@ -26,7 +26,7 @@ import org.springframework.stereotype.Service;
 //      같은 일을 하는 카드는 보통 같은 모양이고, 학생이 지난번에 직접 정한 값이 AI 의 짐작보다 정확합니다.
 //   3. 처음 보는 제목이면
 //      - 길이: 내 기록의 한 칸 길이 (BlockLengthService, AI 를 부르지 않음)
-//      - 목표 · 유형: AI 가 고릅니다. 꺼짐 · 하루 한도 · 실패면 둘 다 null 입니다. (한도는 작은 AI 기능 묶음 ASSIST)
+//      - 목표 · 유형: AI 가 고릅니다. 꺼짐 · 실패면 둘 다 null 입니다. (기록은 작은 AI 기능 ASSIST)
 //
 // currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 내 카드 · 목표 · 기록만 읽습니다.
 // 학생이 쓴 제목과 AI 의 답은 로그에 찍지 않습니다.

@@ -54,7 +54,7 @@ class SelfAnalysisServiceTest {
     given(callRecordService.getHabits())
         .willReturn(List.of(habit("계획 오류", 4), habit("상황 탓하기", 3), habit("미래의 나 믿기", 3)));
     given(
-            aiClient.askLong(
+            aiClient.askAnalysis(
                 eq(USER_ID), eq(GptUsageKind.ASSIST), any(), eq(SelfAnalysis.Answer.class)))
         .willReturn(
             Optional.of(
@@ -79,7 +79,7 @@ class SelfAnalysisServiceTest {
     assertThat(response.analysis().nextExperiment()).isNull();
 
     ArgumentCaptor<AiQuestion> question = ArgumentCaptor.forClass(AiQuestion.class);
-    verify(aiClient).askLong(eq(USER_ID), eq(GptUsageKind.ASSIST), question.capture(), any());
+    verify(aiClient).askAnalysis(eq(USER_ID), eq(GptUsageKind.ASSIST), question.capture(), any());
     String input = question.getValue().input();
     assertThat(input).contains("[distortion] callHabit2 | 통화에서 자주 보인 생각 습관: 상황 탓하기");
     assertThat(input).doesNotContain("미래의 나 믿기");
@@ -92,7 +92,7 @@ class SelfAnalysisServiceTest {
   @DisplayName("AI 가 못 쓰면 analysis 는 null 이지만 서버가 더한 숫자는 온다")
   void nullAnalysisKeepsServerFacts() {
     given(callRecordService.getHabits()).willReturn(List.of(habit("계획 오류", 3)));
-    given(aiClient.askLong(any(), any(), any(), eq(SelfAnalysis.Answer.class)))
+    given(aiClient.askAnalysis(any(), any(), any(), eq(SelfAnalysis.Answer.class)))
         .willReturn(Optional.empty());
 
     AnalysisResponse response = service.analyze(new AnalysisRequest(List.of(SLOT)));

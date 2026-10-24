@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
 // 만들기 순서
 //   1. 날짜 · 사진 검사 (틀리면 400)
 //   2. 목표 · 준비하는 것의 이름에 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp (#56)
-//   3. AI 가 할 일 목록을 씁니다. 사진이 있으면 사진과 함께. (꺼짐 · 하루 한도 · 실패면 plan 이 null, 한도는 ASSIST)
+//   3. AI 가 할 일 목록을 씁니다. 사진이 있으면 사진과 함께. (꺼짐 · 실패면 plan 이 null, 기록은 ASSIST)
 //   4. AI 가 위기 표현이라고 하면 showHelp, 공부 자료가 아닌 사진이라고 하면 plan 이 null
 //   5. 할 일을 검사하고(LongPlan.topicsOf), 코드가 날짜별 카드로 나눕니다. (LongPlanScheduler)
 // 고치기 순서
@@ -33,7 +33,7 @@ import org.springframework.stereotype.Service;
 //   2. 요청 · 목표 · 할 일 제목에 위기 표현이 있으면 showHelp
 //   3. AI 가 바꿀 칸만 채웁니다. 검사해서 뼈대에 넣고(LongPlan.revised), 코드가 다시 나눕니다.
 //
-// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 한도는 사람마다 셉니다.
+// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 입니다.
 // AI 를 기다리는 동안 DB 연결을 붙잡지 않으려고 @Transactional 을 붙이지 않았습니다. (DB 를 쓰지 않습니다)
 @Service
 @RequiredArgsConstructor

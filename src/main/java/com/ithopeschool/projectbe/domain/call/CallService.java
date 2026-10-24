@@ -42,8 +42,6 @@ import org.springframework.stereotype.Service;
 //   2. 통화를 켤 수 있는 서버인지 본다         (내 컴퓨터에서는 꺼져 있습니다 → 503)
 //   3. 오늘 끝낸 공부가 있는지 본다           (있으면 확인 통화. 없어도 통화는 걸 수 있습니다. CheckCall)
 //      처음(2026-10-18)에는 공부가 없으면 403 CALL_LOCKED 였는데, 2026-10-22 에 이 조건을 뺐습니다.
-//   3-2. 오늘 건 횟수 · 통화 시간이 한도 안인지 본다 (넘었으면 429. GptUsageGuard, 이슈 #33)
-//      오늘 남은 시간이 한 번 최대 길이보다 짧으면, 이번 통화의 최대 길이를 남은 시간으로 줄입니다.
 //   4. 최근 2주의 통화 기록을 읽는다          (CallRecord)
 //   5. 오늘 확인할 생각 습관 질문을 고른다     (BiasQuestion: 자주 보인 습관 → 어제 이유 → 시작 지연 → 가입 테스트)
 //      가입 테스트는 서버에 저장된 결과(thinking_tests)를 먼저 쓰고, 없으면 FE 가 보낸 값을 씁니다.
@@ -75,7 +73,7 @@ public class CallService {
 
   private final CurrentUserProvider currentUserProvider;
   private final CallKeyClient callKeyClient;
-  // 오늘 통화 횟수 · 시간 한도를 보고, 통화 시작을 기록합니다. (이슈 #33)
+  // 통화 시작을 기록하고, 통화 한 번의 최대 길이를 알려 줍니다. (이슈 #33. 하루 한도는 2026-10-24 에 없앰)
   private final GptUsageGuard gptUsageGuard;
   private final TokenHasher tokenHasher;
   private final CallRecordRepository callRecordRepository;
@@ -136,12 +134,6 @@ public class CallService {
     LocalDate today = DayRule.dateOf(now);
     // 오늘 끝낸 공부. 없으면 null 이고, 그러면 [방금 공부한 것] 없이 보통 통화로 시작합니다.
     CheckCall.Studied studied = checkCallService.gateOf(userId, today).studied();
-    // 이번 통화를 최대 몇 초까지 해도 되는지. 0 이면 오늘 횟수나 시간을 다 쓴 것입니다.
-    int allowedSeconds = gptUsageGuard.allowedCallSeconds(userId);
-    if (allowedSeconds <= 0) {
-      throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 통화는 다 썼어요. 내일 다시 만나요");
-    }
-
     Script script = prepareScript(userId, request, now, today, CallChannel.VOICE, studied);
     String instructions = script.instructions();
     BiasQuestion biasQuestion = script.biasQuestion();
@@ -150,7 +142,7 @@ public class CallService {
 
     Optional<CallKey> key = callKeyClient.createKey(instructions, safetyIdentifier);
     if (key.isEmpty()) {
-      // 통화가 시작되지 않았으니 통화 기록도, GPT 호출 기록도 만들지 않습니다. (그래서 오늘 횟수도 쓰지 않습니다)
+      // 통화가 시작되지 않았으니 통화 기록도, GPT 호출 기록도 만들지 않습니다.
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
     }
 
@@ -159,8 +151,8 @@ public class CallService {
     return new CallSessionResponse(
         key.get().value(),
         key.get().expiresAtMillis(),
-        // FE 는 이 시간이 되면 통화를 끊습니다. 오늘 남은 시간이 적으면 그만큼만 줍니다.
-        allowedSeconds,
+        // FE 는 이 시간이 되면 통화를 끊습니다. (통화 한 번 최대 길이, 처음 값 180초)
+        gptUsageGuard.maxCallSeconds(),
         String.valueOf(record.getId()));
   }
 

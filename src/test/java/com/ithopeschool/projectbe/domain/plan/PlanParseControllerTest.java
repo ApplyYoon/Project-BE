@@ -86,20 +86,6 @@ class PlanParseControllerTest {
   }
 
   @Test
-  @DisplayName("하루 한도를 넘으면 429 와 안내 문구이고, 에러 모양(#5)으로 답한다")
-  void dailyLimitIs429() throws Exception {
-    given(planParseService.parse(any()))
-        .willThrow(
-            new ApiException(
-                ErrorCode.TOO_MANY_REQUESTS, "오늘 AI 사용량을 다 썼어요. 계획은 직접 추가하거나 내일 다시 시도해 주세요"));
-    parse("{\"date\":\"2026-10-11\",\"text\":\"수학 2시간\"}")
-        .andExpect(status().isTooManyRequests())
-        .andExpect(jsonPath("$.error.code").value("TOO_MANY_REQUESTS"))
-        .andExpect(
-            jsonPath("$.error.message").value("오늘 AI 사용량을 다 썼어요. 계획은 직접 추가하거나 내일 다시 시도해 주세요"));
-  }
-
-  @Test
   @DisplayName("GPT 가 실패하면 빈 목록이 아니라 503 이고, 에러 모양(#5)으로 답한다")
   void gptFailureIs503() throws Exception {
     given(planParseService.parse(any()))

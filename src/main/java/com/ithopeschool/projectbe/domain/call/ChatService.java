@@ -57,12 +57,12 @@ import org.springframework.stereotype.Service;
 // 과목 쌤의 교육과정 · 찾아보기 (2026-10-18 "어느 정도 RAG 하고, 어느 정도 지식은 너가 찾는 방식으로"):
 //   - 열 때: 학년 · 교육과정 버전 · 오늘 과목으로 [교육과정] · [찾아보기] 칸을 붙이고 교육과정을 기억합니다. (CurriculumService)
 //   - 말마다: 학생의 마지막 말로 고른 성취기준 몇 줄([관련 성취기준])을 그 한 번의 답에만 붙입니다. (가벼운 RAG)
-//   - 말마다: 오늘 검색 한도가 남았으면 웹 검색 도구를 붙이고, 답에 붙은 출처(sources)를 검사해 돌려줍니다. (TutorWebSearch)
+//   - 말마다: 검색이 켜져 있으면 웹 검색 도구를 붙이고, 답에 붙은 출처(sources)를 검사해 돌려줍니다. (TutorWebSearch)
 //
 // 같은 말 되풀이 막기 (채팅 수정 3): 말 보내기마다 "직전에 한 말을 되풀이하지 마" 라는 고정 [이미 한 말] 칸을 붙이고,
 // 그래도 새 답이 직전 AI 답 3개와 같은 구절이면 한 번만 다시 받습니다. 세 방 모두 같습니다. (RepeatCheck)
 //
-// AI 의 답은 한 번마다 GPT 글 호출 하루 한도(GptUsageGuard, 이슈 #33)를 하나씩 씁니다.
+// AI 의 답은 한 번마다 GPT 호출 기록(GptUsageGuard, 이슈 #33)을 하나씩 남깁니다. 하루 한도는 2026-10-24 에 없앴습니다.
 // 모든 메서드는 로그인한 사람의 번호(CurrentUserProvider)로 시작하고, 내 채팅만 찾습니다. 남의 채팅 번호는 404 입니다.
 //
 // ⚠️ 대화 원문은 저장하지 않습니다. FE 가 들고 있다가 매번 보내고, 서버는 답을 받는 데만 씁니다. 로그에도 찍지 않습니다.
@@ -118,7 +118,7 @@ public class ChatService {
   private final PsychTestRepository psychTestRepository;
   // 과목 쌤 방의 교육과정 · 성취기준 (2026-10-18)
   private final CurriculumService curriculumService;
-  // 과목 쌤 방의 웹 검색 한도 · 출처 검사 (2026-10-18)
+  // 과목 쌤 방의 웹 검색 켜기 · 출처 검사 (2026-10-18)
   private final TutorWebSearch tutorWebSearch;
   private final Clock clock;
 
@@ -136,7 +136,7 @@ public class ChatService {
   // greet 이 false 면 AI 의 첫 인사를 받지 않고 채팅 번호만 만듭니다. (채팅 수정 1)
   //   학생이 먼저 말을 쓰고 보내는 화면에서는 첫 인사가 화면에 나오지 않고 버려졌습니다.
   //   점검에서 그 인사를 만드는 데 8.5초가 걸려서, 첫 답까지 18초가 걸렸습니다.
-  //   인사 없이 열면 GPT 를 부르지 않으니 하루 한도도 쓰지 않습니다. 응답의 reply 는 null 입니다.
+  //   인사 없이 열면 GPT 를 부르지 않습니다. 응답의 reply 는 null 입니다.
   //   대신 인사 없이 여는 것은 하루 30번까지입니다. (checkOpenLimit, 2026-10-22 QA)
   //   FE 는 받은 채팅 번호로 바로 말 보내기(POST /chats/{id}/messages)를 부르면 됩니다.
   public ChatReplyResponse start(
@@ -156,7 +156,7 @@ public class ChatService {
     // 방은 고르지 않았으면 코치입니다. 주제와 방이 어울리지 않아도(예: 틀린 문제를 코치 방에서) 그대로 엽니다.
     ChatRoom room = ChatRoom.from(request.room()).orElse(ChatRoom.COACH);
 
-    // 하루 한도는 첫 인사를 받을 때만 씁니다. 인사 없이 열어도 AI 가 꺼진 서버면 여기서 503 으로 알립니다.
+    // GPT 호출 기록은 첫 인사를 받을 때만 남깁니다. 인사 없이 열어도 AI 가 꺼진 서버면 여기서 503 으로 알립니다.
     if (greet) {
       checkAiReady(userId);
     } else {
@@ -290,7 +290,7 @@ public class ChatService {
             + OtherRoomTalk.chatSection(request.otherRooms());
     // 주제 없이 연 채팅이면 null 이고, 그러면 tags 는 빈 목록입니다.
     ChatTopic topic = chatScriptStore.findTopic(chatId, userId).orElse(null);
-    // 사진은 모양 · 크기부터 봅니다(틀리면 400). AI 한도를 쓰기 전에 거릅니다.
+    // 사진은 모양 · 크기부터 봅니다(틀리면 400). AI 를 부르기 전에 거릅니다.
     String image = request.image();
     if (image != null) {
       CardPhotoService.checkImage(image);
@@ -303,15 +303,15 @@ public class ChatService {
     ChatAiClient.ChatTurn next =
         askNext(userId, chatId, room, instructions, lines, topic, image, alreadySaid);
     // 직전 AI 답 3개와 같은 구절이면 딱 한 번만 다시 받습니다. (RepeatCheck, 채팅 수정 3)
-    //   - 다시 받는 것도 GPT 한 번이라 하루 한도를 씁니다. 한도가 없으면 다시 부르지 않고 첫 답을 씁니다.
+    //   - 다시 받는 것도 GPT 한 번이라 호출 기록을 하나 더 남깁니다.
     //   - 다시 받을 때는 첫 답의 첫 문장을 알려 주는 줄(retryHint)을 더합니다. 같은 지시면 같은 답이 또 나오기 쉬워서입니다.
     //     첫 답이 서버 고정 문구(SAFE_REPLY)면 알려 줄 것이 없어서 더하지 않습니다.
     //   - 두 번째 답도 반복이면 그대로 씁니다. (끝없이 다시 부르지 않게)
     //   - 두 답 모두 askNext 안에서 cleanTurn(깎아내리는 말 · 링크 검사)을 거친 뒤입니다. 위기 표현 검사는 이미 위에서 했습니다.
     //   - 다시 받다가 AI 와 연결하지 못하면(503) 첫 답을 씁니다. 첫 답은 이미 검사를 거친 멀쩡한 답이라,
-    //     버리고 에러를 보여 주면 학생은 한도만 두 번 쓰고 답을 못 받습니다. (2026-10-22 QA)
-    if (RepeatCheck.repeats(next.reply(), lines)
-        && gptUsageGuard.tryUseText(userId, GptUsageKind.CHAT)) {
+    //     버리고 에러를 보여 주면 학생은 답을 못 받습니다. (2026-10-22 QA)
+    if (RepeatCheck.repeats(next.reply(), lines)) {
+      gptUsageGuard.recordText(userId, GptUsageKind.CHAT);
       String hint = SAFE_REPLY.equals(next.reply()) ? "" : RepeatCheck.retryHint(next.reply());
       ChatAiClient.ChatTurn first = next;
       try {
@@ -339,7 +339,7 @@ public class ChatService {
       String image,
       String alreadySaid) {
     if (room == ChatRoom.TUTOR) {
-      // 과목 쌤: 학생의 마지막 말로 성취기준을 고르고, 검색 한도가 남았으면 웹 검색 도구를 붙입니다.
+      // 과목 쌤: 학생의 마지막 말로 성취기준을 고르고, 검색이 켜져 있으면 웹 검색 도구를 붙입니다.
       String standards =
           curriculumService.standardsSection(
               chatScriptStore.findCurriculum(chatId, userId).orElse(null),
@@ -379,22 +379,21 @@ public class ChatService {
     return callRecordService.finish(chatId, request);
   }
 
-  // AI 를 쓸 수 있는 서버인지, 오늘 한도가 남았는지 봅니다. 한도가 남았으면 한 번을 씁니다.
+  // AI 를 쓸 수 있는 서버인지 보고, GPT 를 한 번 부른다고 기록합니다. (하루 한도는 없습니다)
   private void checkAiReady(Long userId) {
     checkAiEnabled();
-    if (!gptUsageGuard.tryUseText(userId, GptUsageKind.CHAT)) {
-      throw new ApiException(ErrorCode.TOO_MANY_REQUESTS, "오늘 AI 사용량을 다 썼어요. 내일 다시 이야기해요");
-    }
+    gptUsageGuard.recordText(userId, GptUsageKind.CHAT);
   }
 
-  // AI 를 쓸 수 있는 서버인지만 봅니다. 한도는 쓰지 않습니다. (인사 없이 채팅 열기)
+  // AI 를 쓸 수 있는 서버인지만 봅니다. GPT 를 부르지 않으니 기록도 남기지 않습니다. (인사 없이 채팅 열기)
   private void checkAiEnabled() {
     if (!chatAiClient.isEnabled()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 상담이 아직 켜져 있지 않아요");
     }
   }
 
-  // 인사 없이 여는 채팅은 하루 한도를 쓰지 않아서, 오늘 연 채팅 수로 따로 막습니다. 넘으면 429 입니다. (2026-10-22 QA)
+  // 인사 없이 여는 채팅은 오늘 연 채팅 수로 막습니다. 넘으면 429 입니다. (2026-10-22 QA)
+  // 이것은 AI 비용 한도가 아니라 서버 메모리를 지키는 장치라서, AI 한도를 없앤 2026-10-24 에도 남겨 두었습니다.
   // 막지 않으면 한 사람이 수백 번 열어 서버가 기억하는 대본(ChatScriptStore, 500개까지)을 가득 채우고,
   // 가득 차면 전부 지워지므로 다른 학생의 채팅까지 끊깁니다.
   private void checkOpenLimit(Long userId, LocalDate today) {
@@ -430,7 +429,7 @@ public class ChatService {
     return cleanTurn(turn.get(), DayRule.dateOf(clock.instant()), topic);
   }
 
-  // 과목 쌤 방의 답. 오늘 검색 한도가 남았으면 웹 검색 도구를 붙이고, AI 가 실제로 검색했으면 한 번 셉니다.
+  // 과목 쌤 방의 답. 검색이 켜져 있으면 웹 검색 도구를 붙입니다.
   // image 는 학생의 마지막 말에 붙은 사진(없으면 null)입니다. 못 받았으면 503 입니다.
   private ChatAiClient.ChatTurn askTutor(
       Long userId,
@@ -438,14 +437,11 @@ public class ChatService {
       List<CallFinishRequest.Line> lines,
       ChatTopic topic,
       String image) {
-    boolean webSearch = tutorWebSearch.canSearch(userId);
+    boolean webSearch = tutorWebSearch.isEnabled();
     Optional<ChatAiClient.ChatTurn> turn =
         chatAiClient.turnForTutor(instructions, lines, image, webSearch);
     if (turn.isEmpty()) {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
-    }
-    if (turn.get().searched()) {
-      tutorWebSearch.recordSearch(userId);
     }
     return cleanTurn(turn.get(), DayRule.dateOf(clock.instant()), topic);
   }

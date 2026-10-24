@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 //   1. 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. (#56, 어떤 기능보다 먼저)
 //   2. 서버 DB 에 쌓인 내 최근 30일 실패 원인을 셉니다. 실패 원인 분석 API(#39, MissReasonService)와 같은 계산입니다.
 //   3. 원인 3개를 코드가 고릅니다. 기록이 모자라면 options 가 null 입니다. (FailCauseOptions.pick)
-//   4. AI 가 원인마다 이 카드에 맞는 장면을 씁니다. 꺼짐 · 하루 한도 · 실패 · 쓸 수 없는 답이면 options 가 null 입니다.
+//   4. AI 가 원인마다 이 카드에 맞는 장면을 씁니다. 꺼짐 · 실패 · 쓸 수 없는 답이면 options 가 null 입니다.
 //
 // currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 내 기록만 읽습니다.
 // AI 에게는 카드 제목과 원인 이름 · 날 수만 줍니다. 체크인의 '기타' 사유 글은 주지 않습니다.

@@ -10,7 +10,7 @@ import java.util.List;
 // - reason: 원인 글자 (체크인의 missReason 과 같은 글자: "tired", "phone", "tooMuch" …)
 // - text  : 이 카드에 맞춘 짧은 장면 (AI 가 씀, 30자까지)
 // - inner : 내 행동에서 나오는 원인인지 (폰·SNS · 하기 싫음). 코드가 정합니다. 3개 중 하나 이상은 true 입니다.
-// - options 가 null 이면 선지를 못 만든 것입니다. (기록이 모자람 · AI 꺼짐 · 하루 한도 · 실패) FE 는 주관식으로 받습니다.
+// - options 가 null 이면 선지를 못 만든 것입니다. (기록이 모자람 · AI 꺼짐 · 실패) FE 는 주관식으로 받습니다.
 // - showHelp 가 true 면 글에서 위기 표현이 감지된 것입니다. options 는 null 이고, FE 는 도움 연결 안내를 먼저 보여 줍니다.
 public record FailCauseResponse(boolean showHelp, List<Option> options) {
 

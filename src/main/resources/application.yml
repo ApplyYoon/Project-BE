@@ -22,18 +22,10 @@ app:
     # ⚠️ GPT 키와 모델 이름의 자리는 여기(공통)에 없고 application-prod.yml 에만 있습니다.
     #    그래서 내 컴퓨터에서는 환경변수를 넣어도 GPT 를 부르지 않습니다. AI 기능은 배포 서버에서만 켜집니다.
     #
-    # ── GPT 비용 지키기 (이슈 #33, domain/gpt/GptUsageGuard) ──
-    # 모든 GPT 호출은 gpt_usages 테이블에 기록되고, 아래 한도는 그 기록을 세서 지킵니다. (서버를 껐다 켜도 안 사라짐)
-    # 한 사람이 하루에 글을 받는 AI(통화 요약 + 코치 문단 + 말로 계획 세우기)를 부를 수 있는 횟수입니다.
-    # 넘으면 코치는 AI 글 없이 기본 문장만 나가고, 통화 요약은 429 입니다.
-    daily-limit-per-user: ${AI_DAILY_LIMIT_PER_USER:20}
-    # 한 사람이 하루에 작은 AI 기능(카드 체크리스트 추천 등, 이슈 #237)을 부를 수 있는 횟수입니다. 위의 글 호출과 따로 셉니다.
-    # 카드를 만들 때마다 불러서 넉넉하게 잡았습니다. 넘으면 AI 칸이 비고(null) FE 가 기본값을 씁니다.
-    assist-daily-limit-per-user: ${AI_ASSIST_DAILY_LIMIT_PER_USER:40}
-    # 한 사람이 하루에 AI 통화를 걸 수 있는 횟수입니다. 음성은 분 단위로 돈이 나가서 작게 잡았습니다. 넘으면 429 입니다.
-    call-daily-limit-per-user: ${AI_CALL_DAILY_LIMIT_PER_USER:3}
-    # 한 사람이 하루에 AI 와 통화할 수 있는 시간(분)입니다. 다 쓰면 429, 조금 남았으면 이번 통화를 그만큼만 합니다.
-    call-daily-minutes-per-user: ${AI_CALL_DAILY_MINUTES_PER_USER:15}
+    # ── GPT 호출 기록 (이슈 #33, domain/gpt/GptUsageGuard) ──
+    # 모든 GPT 호출은 gpt_usages 테이블에 기록됩니다. (서버를 껐다 켜도 안 사라짐)
+    # 한 사람의 하루 한도(글 호출 · 작은 AI 기능 · 통화 횟수 · 통화 시간 · 웹 검색)는 2026-10-24 에 모두 없앴습니다.
+    # 그래서 AI_DAILY_LIMIT_PER_USER 같은 환경변수는 이제 넣어도 쓰이지 않습니다.
     # 통화 한 번의 최대 길이(초)입니다. FE 가 이 시간이 되면 통화를 끊습니다.
     # 3분인 이유: 확인 통화의 복습 질문 2~3개는 3분 안에 끝나고, 대기 화면도 "1~3분" 이라고 안내합니다.
     # 길수록 주변 소리에 반응한 헛대화 요금도 늘어납니다. (통화 수정 8)
@@ -44,11 +36,9 @@ app:
     # ⚠️ 어림값이라 실제 요금은 OpenAI 사용량 화면에서 확인해 주세요.
     cost-won-per-call-minute: ${AI_COST_WON_PER_CALL_MINUTE:80}
     cost-won-per-text-call: ${AI_COST_WON_PER_TEXT_CALL:1}
-    # 과목 쌤 방의 "찾아보기"(웹 검색)를 켤지와, 한 사람이 하루에 검색한 답을 받을 수 있는 횟수입니다. (domain/call/TutorWebSearch)
-    # 검색은 글 호출보다 비싸서 따로 작게 셉니다. 서버 메모리에서만 세서 서버가 다시 켜지면 0 부터입니다.
+    # 과목 쌤 방의 "찾아보기"(웹 검색)를 켤지입니다. (domain/call/TutorWebSearch)
     # 끄려면 AI_TUTOR_WEB_SEARCH_ENABLED=false. 꺼도 과목 쌤은 성취기준 · 아는 것으로 그대로 답합니다.
     tutor-web-search-enabled: ${AI_TUTOR_WEB_SEARCH_ENABLED:true}
-    tutor-web-search-daily-limit: ${AI_TUTOR_WEB_SEARCH_DAILY_LIMIT:5}
   neis:
     # 교육부 NEIS(교육정보 개방 포털) 인증키입니다. 학교 학사일정을 받을 때 씁니다. (domain/school/NeisClient, 이슈 #282)
     # 비어 있어도 동작하지만 NEIS 가 한 번에 5건만 줘서 한 주씩 나눠 받고, 오늘부터 120일만 받습니다.

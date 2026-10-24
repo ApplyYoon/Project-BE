@@ -50,7 +50,7 @@ class CallRecordServiceTest {
   private final CallRecordRepository callRecordRepository = mock(CallRecordRepository.class);
   private final CheckInRepository checkInRepository = mock(CheckInRepository.class);
   private final CallReviewClient callReviewClient = mock(CallReviewClient.class);
-  // GPT 호출 기록 · 하루 한도는 가짜로 둡니다. 기본은 "요약을 불러도 된다" 입니다. (setUp)
+  // GPT 호출 기록은 가짜로 둡니다.
   private final GptUsageGuard gptUsageGuard = mock(GptUsageGuard.class);
 
   private final SafetyService safetyService = mock(SafetyService.class);
@@ -104,8 +104,6 @@ class CallRecordServiceTest {
     given(callReviewClient.isEnabled()).willReturn(true);
     given(callReviewClient.review(anyString(), anyString(), any()))
         .willReturn(Optional.of(GPT_ANSWER));
-    // 오늘 GPT 글 호출 한도가 남아 있습니다.
-    given(gptUsageGuard.tryUseText(any(), any())).willReturn(true);
   }
 
   private static void assertError(Runnable action, ErrorCode code, String message) {
@@ -344,36 +342,21 @@ class CallRecordServiceTest {
   // ---- GPT 비용 지키기 (이슈 #33) ----
 
   @Test
-  @DisplayName("마무리하면 이 통화의 시작~끝 시각을 GPT 호출 기록에 남기고, 요약은 '통화 요약' 종류로 한도를 본다")
-  void recordsCallTimeAndUsesTheReviewLimit() {
+  @DisplayName("마무리하면 이 통화의 시작~끝 시각을 GPT 호출 기록에 남기고, 요약은 '통화 요약' 종류로 기록한다")
+  void recordsCallTimeAndReview() {
     service.finish(CALL_ID, TRANSCRIPT);
 
     // 시작은 5분 전, 끝은 지금
     verify(gptUsageGuard).recordCallFinish(USER_ID, CALL_ID, NOW.minusSeconds(300), NOW);
-    verify(gptUsageGuard).tryUseText(USER_ID, GptUsageKind.CALL_REVIEW);
+    verify(gptUsageGuard).recordText(USER_ID, GptUsageKind.CALL_REVIEW);
   }
 
   @Test
-  @DisplayName("GPT 글 호출 한도를 다 썼으면 429 이고, GPT 를 부르지 않고 기록도 마무리하지 않는다 (내일 다시 할 수 있게)")
-  void reviewLimitReached() {
-    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.CALL_REVIEW)).willReturn(false);
-
-    assertError(
-        () -> service.finish(CALL_ID, TRANSCRIPT),
-        ErrorCode.TOO_MANY_REQUESTS,
-        "오늘 AI 사용량을 다 썼어요. 내일 다시 시도해 주세요");
-    verify(callReviewClient, never()).review(anyString(), anyString(), any());
-    assertThat(call.isFinished()).isFalse();
-    // 통화 시간은 그래도 기록합니다. (통화는 이미 했으니까요)
-    verify(gptUsageGuard).recordCallFinish(USER_ID, CALL_ID, NOW.minusSeconds(300), NOW);
-  }
-
-  @Test
-  @DisplayName("위기 표현이 있거나 학생이 말을 안 해서 GPT 를 부르지 않으면, 글 호출 한도를 쓰지 않는다")
-  void noReviewNoLimit() {
+  @DisplayName("위기 표현이 있거나 학생이 말을 안 해서 GPT 를 부르지 않으면, 글 호출 기록을 남기지 않는다")
+  void noReviewNoRecord() {
     service.finish(CALL_ID, new CallFinishRequest(List.of(new Line("ai", "안녕, 오늘 어땠어?"))));
 
-    verify(gptUsageGuard, never()).tryUseText(any(), any());
+    verify(gptUsageGuard, never()).recordText(any(), any());
   }
 
   @Test

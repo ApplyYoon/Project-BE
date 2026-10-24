@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 // 순서
 //   1. 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. (#56, 어떤 기능보다 먼저)
 //   2. 서버 DB 에 저장된 내 관리 설정을 읽습니다. 관리 설정 보기 API 와 같은 값입니다. (SettingsService.getSettings)
-//   3. AI 가 변경안을 씁니다. 꺼짐 · 하루 한도 · 실패 · 쓸 수 없는 답 · 바뀌는 칸이 없으면 proposal 이 null 입니다.
+//   3. AI 가 변경안을 씁니다. 꺼짐 · 실패 · 쓸 수 없는 답 · 바뀌는 칸이 없으면 proposal 이 null 입니다.
 //
 // 독설 수위 · 제재 한도 · 앱 잠금은 말로 바꿀 수 없습니다. AI 에게 줄 칸 모양에 아예 없습니다. (SettingsFromText)
 // currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 내 설정만 읽습니다.

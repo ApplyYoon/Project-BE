@@ -17,11 +17,11 @@ import org.springframework.stereotype.Service;
 // 순서
 //   1. 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. (#56, 어떤 기능보다 먼저)
 //      학생이 직접 쓴 글은 준비하는 것의 이름 한 줄뿐이라 그것과 과목 · 시험 이름을 봅니다.
-//   2. AI 를 부릅니다. 꺼짐 · 하루 한도 · 실패면 missions 가 null 입니다. (AiClient)
-//      하루 한도는 다른 작은 AI 기능과 같은 종류(ASSIST)로 셉니다. (새 종류를 만들면 Neon 의 kind 검사를 고쳐야 해서)
+//   2. AI 를 부릅니다. 꺼짐 · 실패면 missions 가 null 입니다. (AiClient)
+//      호출 기록은 다른 작은 AI 기능과 같은 종류(ASSIST)로 남깁니다. (새 종류를 만들면 Neon 의 kind 검사를 고쳐야 해서)
 //   3. 받은 답을 검사합니다. 쓸 미션이 없으면 null 입니다. (DailyMissions.from)
 //
-// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 한도는 사람마다 셉니다.
+// currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 입니다.
 // 보낸 글과 AI 의 답은 로그에 찍지 않습니다.
 @Service
 @RequiredArgsConstructor
