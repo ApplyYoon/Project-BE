@@ -59,7 +59,6 @@ class GoalChatServiceTest {
   void loggedInAndAiOn() {
     given(currentUserProvider.getCurrentUserId()).willReturn(USER_ID);
     given(chatAiClient.isEnabled()).willReturn(true);
-    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.CHAT)).willReturn(true);
   }
 
   private static ChatMessageRequest said(String... studentTexts) {
@@ -106,7 +105,7 @@ class GoalChatServiceTest {
     ChatReplyResponse reply = service.send(chatId, said("11월 학평 수학 3등급"));
 
     assertThat(reply.reply()).isEqualTo("좋아. 언제까지 이루고 싶어?");
-    verify(gptUsageGuard).tryUseText(USER_ID, GptUsageKind.CHAT);
+    verify(gptUsageGuard).recordText(USER_ID, GptUsageKind.CHAT);
   }
 
   @Test
@@ -156,18 +155,7 @@ class GoalChatServiceTest {
   }
 
   @Test
-  @DisplayName("하루 한도를 다 쓰면 429")
-  void limitReached() {
-    String chatId = service.start().chatId();
-    given(gptUsageGuard.tryUseText(USER_ID, GptUsageKind.CHAT)).willReturn(false);
-
-    assertThatThrownBy(() -> service.send(chatId, said("수학")))
-        .extracting("errorCode")
-        .isEqualTo(ErrorCode.TOO_MANY_REQUESTS);
-  }
-
-  @Test
-  @DisplayName("끝내면 작은 AI 기능 한도(ASSIST)로 초안을 받아 검사한 뒤 돌려주고, 대화를 닫는다")
+  @DisplayName("끝내면 작은 AI 기능(ASSIST)으로 초안을 받아 검사한 뒤 돌려주고, 대화를 닫는다")
   void finishReturnsCheckedDraft() {
     String chatId = service.start().chatId();
     GoalChatPrompt.Answer answer =

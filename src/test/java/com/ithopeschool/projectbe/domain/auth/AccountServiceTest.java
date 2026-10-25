@@ -605,6 +605,10 @@ class AccountServiceTest {
           Map.entry("GOAL_TARGET_SNAPSHOTS", new String[] {"GOALS", "GOAL_ID"}),
           // 체크인(checkins)에 매달린 하루 첫 태그의 감정들 (이슈 #220)
           Map.entry("CHECKIN_EMOTIONS", new String[] {"CHECKINS", "CHECKIN_ID"}),
+          // 일기(diaries)에 매달린 AI 가 뽑은 감정 · 원인 · 키워드 (이슈 #60)
+          Map.entry("DIARY_EMOTIONS", new String[] {"DIARIES", "DIARY_ID"}),
+          Map.entry("DIARY_CAUSES", new String[] {"DIARIES", "DIARY_ID"}),
+          Map.entry("DIARY_KEYWORDS", new String[] {"DIARIES", "DIARY_ID"}),
           // 보여 준 인사이트(insights)에 매달린 근거 날짜 (이슈 #43)
           Map.entry("INSIGHT_EVIDENCE_DATES", new String[] {"INSIGHTS", "INSIGHT_ID"}),
           // 위험 예측(risk_forecasts)에 매달린 "위험하다고 본 이유" (이슈 #49)

@@ -30,7 +30,7 @@ import org.springframework.stereotype.Service;
 //   1. 내 시험인지, 그 시험의 회고가 있는지 봅니다. 없으면 404 입니다. (서버 DB 에 저장된 것만 씁니다)
 //   2. 회고 답에 위기 표현(단어 목록)이 있으면 AI 를 부르지 않고 showHelp 를 돌려줍니다. (#56, 어떤 기능보다 먼저)
 //   3. 과목 점수(예상 · 실제)를 읽고, 다음 카드에 넣을 과목을 코드가 고릅니다. (ExamNextStep.focusOf)
-//   4. AI 가 회고 답을 보고 행동 한 가지를 씁니다. 꺼짐 · 하루 한도 · 실패 · 쓸 수 없는 답이면 nextStep 이 null 입니다.
+//   4. AI 가 회고 답을 보고 행동 한 가지를 씁니다. 꺼짐 · 실패 · 쓸 수 없는 답이면 nextStep 이 null 입니다.
 //
 // currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 내 시험·회고·과목만 읽습니다.
 // 회고 답과 AI 의 답은 로그에 찍지 않습니다.

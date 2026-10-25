@@ -23,7 +23,7 @@ public class PlanParseController {
   private final PlanParseService planParseService;
 
   // 저장하지 않으므로 201 이 아니라 200 입니다.
-  @Operation(summary = "말로 계획 세우기: 문장 → 계획 초안 (저장 안 함 · 200자까지 · AI 하루 한도 · 토큰 필요)")
+  @Operation(summary = "말로 계획 세우기: 문장 → 계획 초안 (저장 안 함 · 200자까지 · 토큰 필요)")
   @PostMapping("/parse")
   public PlanParseResponse parse(@Valid @RequestBody PlanParseRequest request) {
     return planParseService.parse(request);

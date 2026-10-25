@@ -13,7 +13,7 @@ import java.util.List;
 // - startTime 이 null 이면 문장에 시각이 없었던 것입니다. 카드는 시작 시각이 있어야 하니 FE 가 물어봅니다.
 // - durationFromRecord 가 true 면 문장에 길이가 없어서 내 기록의 한 칸 길이를 넣은 것이고, 그 이유가 durationEvidence 입니다.
 // - goalId 는 내 진행 중 목표 번호(글자)입니다. 못 골랐으면 null.
-// - drafts 가 null 이면 AI 가 만들지 못한 것입니다. (AI 꺼짐 · 하루 한도 · 실패) 에러가 아니라 200 이고,
+// - drafts 가 null 이면 AI 가 만들지 못한 것입니다. (AI 꺼짐 · 실패) 에러가 아니라 200 이고,
 //   FE 는 카드를 직접 만들게 합니다. 빈 배열([])이면 AI 는 답했지만 쓸 수 있는 카드가 없었던 것입니다.
 // - showHelp 가 true 면 문장에서 위기 표현이 감지된 것입니다. drafts 는 null 이고, FE 는 도움 연결 안내를 먼저 보여 줍니다.
 public record CardParseResponse(boolean showHelp, List<Draft> drafts, String durationEvidence) {
@@ -47,7 +47,7 @@ public record CardParseResponse(boolean showHelp, List<Draft> drafts, String dur
         false, drafts.stream().map(Draft::from).toList(), anyFromRecord ? durationEvidence : null);
   }
 
-  // AI 가 만들지 못했을 때 (꺼짐 · 하루 한도 · 실패)
+  // AI 가 만들지 못했을 때 (꺼짐 · 실패)
   public static CardParseResponse notMade() {
     return new CardParseResponse(false, null, null);
   }

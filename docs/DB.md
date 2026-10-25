@@ -64,12 +64,14 @@ erDiagram
     goals ||--o{ goal_target_snapshots : "goal_id"
     goals ||--o{ cards : "goal_id"
     users ||--o{ weekly_goals : "user_id"
+    users ||--o{ weekly_picks : "user_id"
     goals |o--o{ exams : "goal_id"
     psych_tests ||--o{ psych_test_answers : "psych_test_id"
     onboarding_answers ||--o{ onboarding_answer_failure_causes : "onboarding_answer_id"
     onboarding_answers ||--o{ onboarding_answer_subject_levels : "onboarding_answer_id"
     subjects ||--o{ study_plans : "subject_id"
     subjects ||--o{ study_sessions : "subject_id"
+    subjects ||--o{ cards : "subject_id"
     subjects ||--o{ onboarding_answer_subject_levels : "subject_id"
     users ||--o{ exams : "user_id"
     users ||--o{ experiments : "user_id"
@@ -99,7 +101,17 @@ erDiagram
     users ||--o{ card_day_marks : "user_id"
     cards ||--o{ card_day_marks : "card_id"
     users ||--o{ rest_days : "user_id"
+    users ||--o{ quiz_results : "user_id"
+    subjects ||--o{ quiz_results : "subject_id"
     checkins ||--o{ checkin_emotions : "checkin_id"
+    users ||--o{ diaries : "user_id"
+    diaries ||--o{ diary_emotions : "diary_id"
+    diaries ||--o{ diary_causes : "diary_id"
+    diaries ||--o{ diary_keywords : "diary_id"
+    users ||--o{ calendar_alarms : "user_id"
+    users ||--o{ answer_checks : "user_id"
+    users ||--o{ answer_check_items : "user_id"
+    answer_checks ||--o{ answer_check_items : "answer_check_id"
     users ||--o{ reflection_prescriptions : "user_id"
     users ||--o{ risk_forecasts : "user_id"
     risk_forecasts ||--o{ risk_forecast_reasons : "risk_forecast_id"
@@ -131,7 +143,7 @@ erDiagram
     study_sessions {
         bigint id PK "기록을 구분하는 고유 번호"
         bigint user_id FK "이 기록의 주인"
-        bigint subject_id FK "어떤 과목을 공부했는지 (노는 기록, 과목 없이 카드로 켠 기록이면 비어 있음)"
+        bigint subject_id FK "어떤 과목을 공부했는지 (노는 기록, 과목 없는 카드로 켠 기록이면 비어 있음. 카드로 켜고 과목을 안 보내면 카드의 과목, #404)"
         timestamptz started_at "공부를 시작한 시각"
         timestamptz ended_at "공부를 끝낸 시각"
         int pause_count "일시정지를 누른 횟수"
@@ -278,6 +290,17 @@ erDiagram
         int result_value "판정할 때 본 그 주의 숫자"
         timestamptz judged_at "판정한 시각"
         timestamptz created_at "목표를 정한(덮어쓴) 시각"
+    }
+    weekly_picks {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 줄의 주인 (한 사람의 한 주에 한 줄)"
+        date week_start "해 보는 주 (그 주의 월요일)"
+        varchar title "해 볼 것 한 줄 (60자까지)"
+        varchar hint "왜 하는지 짧게 (60자까지)"
+        boolean skip "이번 주는 넘어가기를 골랐으면 true"
+        timestamptz decided_at "학생이 고른 시각 (FE 가 보낸 값, 없으면 저장한 시각)"
+        timestamptz created_at "이 줄을 처음 만든 시각"
+        timestamptz updated_at "마지막으로 덮어쓴 시각"
     }
     goal_target_snapshots {
         bigint goal_id FK "어느 목표의 이력인지"
@@ -482,6 +505,57 @@ erDiagram
         bigint checkin_id FK "어느 체크인의 감정인지"
         varchar emotion "하루 첫 태그에서 고른 감정 (STUCK, ANXIOUS, TIRED, ANNOYED, CALM, MOTIVATED 중 하나)"
     }
+    diaries {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 일기의 주인 (원문은 본인만 봄)"
+        date diary_date "어느 날의 일기인지 (쓴 시각을 새벽 4시 기준 날짜로)"
+        varchar content "학생이 쓴 일기 원문 (2000자까지)"
+        int mood "일기와 같이 고른 오늘 기분 (1 ~ 5, 체크인과 같은 척도), 비어도 됨"
+        timestamptz written_at "일기를 저장한 시각"
+        timestamptz analyzed_at "AI 분석을 마친 시각, 분석 안 했으면 비어 있음"
+    }
+    diary_emotions {
+        bigint diary_id FK "어느 일기에서 뽑은 감정인지"
+        varchar emotion "AI 가 뽑은 감정 (STUCK, ANXIOUS, TIRED, ANNOYED, CALM, MOTIVATED 중 하나)"
+    }
+    diary_causes {
+        bigint diary_id FK "어느 일기에서 뽑은 원인인지"
+        varchar cause "AI 가 뽑은 실패 원인 (TIRED, EVENT, PHONE, TOO_MUCH, UNWILLING, SICK, PROCRASTINATED, ETC 중 하나)"
+    }
+    diary_keywords {
+        bigint diary_id FK "어느 일기에서 뽑은 키워드인지"
+        varchar keyword "AI 가 뽑은 반복 키워드 (20자까지)"
+    }
+    calendar_alarms {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 일정의 주인"
+        varchar event_key "구글 캘린더의 일정 id (같은 일정을 다시 올렸을 때 찾는 데 씀)"
+        varchar title "일정 제목, 알림 글에 들어감 (100자까지)"
+        timestamptz starts_at "일정이 시작하는 순간"
+        timestamptz handled_at "알림을 보냈거나 연락 금지 시간이라 건너뛴 시각, 아직이면 비어 있음"
+    }
+    answer_checks {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "이 기록의 주인"
+        date check_date "어느 날 공부한 것인지 (올릴 때 보낸 날짜, 보통 오늘)"
+        varchar mode "채점 모드 (MARKED 채점했어요, UNMARKED 아직 안 했어요)"
+        varchar subject_text "AI 가 사진에서 읽은 과목 (30자까지), 못 읽었으면 비어 있음"
+        timestamptz created_at "채점한(사진을 올린) 시각"
+    }
+    answer_check_items {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint answer_check_id FK "어느 채점 기록의 문제인지"
+        bigint user_id FK "이 줄의 주인"
+        int sort_order "사진 속 순서 (0 부터)"
+        varchar problem_number "문제 번호 글자 (예: 2, 3-1, 20자까지)"
+        varchar my_answer "AI 가 읽은 학생 답 (100자까지), 못 읽었으면 비어 있음"
+        varchar ai_answer "AI 가 직접 푼 답 (UNMARKED 만, 100자까지)"
+        varchar mark_read "AI 가 읽은 채점 표시 O 또는 X (MARKED 만), 못 읽었으면 비어 있음"
+        varchar ai_result "AI 의 처음 판정 (CORRECT, WRONG, UNSURE 중 하나), 고쳐도 안 바뀜"
+        varchar result "지금 판정 (CORRECT, WRONG, UNSURE 중 하나), 처음엔 ai_result 와 같음"
+        varchar correct_answer "학생이 직접 적은 정답 (100자까지)"
+        timestamptz edited_at "학생이 직접 고친 시각, 비어 있으면 AI 판정 그대로"
+    }
     reflection_prescriptions {
         bigint id PK "처방을 구분하는 고유 번호 (나중에 내린 것일수록 큼)"
         bigint user_id FK "처방을 받은 사람"
@@ -509,6 +583,7 @@ erDiagram
         time start_time "시작 시각, 몇 시 몇 분 (옛 계획에서 옮긴 카드만 비어 있음)"
         int duration_minutes "길이(분), 1 ~ 600"
         bigint goal_id FK "연결한 목표 번호 (목표 없음이면 비어 있음)"
+        bigint subject_id FK "어떤 과목의 카드인지 (과목 없음이면 비어 있음, 과목을 지우면 비워짐, #404)"
         varchar priority "우선순위 (ABSOLUTE 절대, FLEXIBLE 유연 중 하나)"
         varchar type "유형 (SELF 자습, LECTURE 인강 중 하나)"
         int expected_done "예상 달성 개수 (비어 있으면 체크리스트 전부)"
@@ -548,6 +623,16 @@ erDiagram
         bigint user_id FK "누가 쉰 날인지"
         date rest_date "휴식으로 처리한 날짜 (같은 사람 안에서 중복 불가)"
         timestamptz created_at "휴식으로 처리한 시각"
+    }
+    quiz_results {
+        bigint id PK "줄을 구분하는 고유 번호"
+        bigint user_id FK "누가 푼 퀴즈인지"
+        bigint subject_id FK "어느 과목의 퀴즈인지"
+        varchar unit "어느 단원의 퀴즈인지 (퀴즈 한 번 = 한 단원, 30자까지)"
+        date quiz_date "퀴즈를 푼 날짜 (새벽 4시 기준)"
+        int correct_count "맞은 문제 수"
+        int total_count "전체 문제 수"
+        varchar question_seconds "문제마다 걸린 시간(초)을 쉼표로 이은 글자 (예: 45,30,62)"
     }
     insights {
         bigint id PK "줄을 구분하는 고유 번호"
@@ -598,7 +683,10 @@ erDiagram
 | 하루 요약 #34 | 대기 | 현재 `DaySummary` 계산 객체만 있고 저장 엔티티 없음 |
 | 개선안·실험 #52 | 완료 | v3 자기 실험 `experiments` · `experiment_cards` (#52 · #54). 옛 v2 개선안 계산 객체는 그대로 |
 | 나 사용설명서 #46 | 완료 | 숨기기 `manual_hidden_items` 엔티티·그림·운영 SQL 반영. 항목은 저장하지 않고 실험·인사이트에서 모읍니다 |
-| 일기 #60 | 대기 | 저장 엔티티 없음 |
+| 일기 #60 | 완료 | `diaries`와 딸린 `diary_emotions` · `diary_causes` · `diary_keywords` |
+| 구글 캘린더 일정 알림 (2026-10-24) | 완료 | `calendar_alarms` |
+| 사진 채점 (2026-10-24) | 완료 | `answer_checks`, `answer_check_items` |
+| 이번 주에 고른 것 #406 | 완료 | `weekly_picks` |
 | 잠금 해제 #67 | 완료 | `lock_events` 엔티티·그림·운영 SQL 반영 |
 | 동의 기록 #71 | 완료 | PR #204가 반영되어 `consent_records` 이력과 그림이 있음 |
 | 계획 루틴 #85 | 완료 | `routines`, `routine_applications` 엔티티·그림·운영 SQL 반영 |
@@ -621,6 +709,7 @@ erDiagram
 | `session_memos` | 기록 하나의 딴생각 메모가 한 줄씩 (`@ElementCollection`) | #224 |
 | `card_day_marks` | 카드 한 장 · 날짜 하나를 미뤘거나(이유 · 새 날짜 · 새 시각) 실패로 기록한(원인 태그 · 사유) 것이 한 줄. 같은 카드 · 같은 날짜에는 한 줄만 | #225 |
 | `rest_days` | 한 사람이 하루를 사후에 휴식으로 처리한 것이 한 줄. 같은 날은 한 번만, 한 달에 4번까지 | #225 |
+| `quiz_results` | 확인 문제(퀴즈) 한 번이 한 줄 (과목 · 단원 · 날짜 · 맞은 개수 · 전체 개수 · 문제마다 걸린 시간). 통계 탭이 씀. **설계는 학생이 정함** (2026-10-24) | 통계 탭 |
 | `accounts` | 가입한 계정 하나가 한 줄 (이메일, 비밀번호 해시 또는 구글 고유 번호, 실명(선택), 학교, 동의). 사용자 한 명에 하나 | #97 · #19 |
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
 | `consent_records` | 개인정보 동의 한 번이 한 줄 (동의 시각, 문구 버전, 만 14세 확인). 다시 동의하면 **새 줄이 쌓여** 이력이 남음 | #71 |
@@ -652,12 +741,18 @@ erDiagram
 | `setting_changes` | 설정 칸 하나를 한 번 바꾼 것이 한 줄 (바꾼 시각, 칸 이름, 이전 값, 새 값) | #22 |
 | `school_events` | 학교 하나의 학사일정 하루치 행사가 한 줄 (날짜, 이름, 설명, 학년). **사람이 아니라 학교마다 한 벌**이고 NEIS 에서 받을 때마다 그 기간을 통째로 바꿈 | #282 |
 | `school_event_fetches` | 학교 하나가 한 줄 (교육청 코드, NEIS 에서 마지막으로 받은 시각). 다시 받을지 정할 때 봄 | #282 |
-| `gpt_usages` | GPT 를 한 번 부른 것이 한 줄 (종류, 부른 시각, 통화 번호·통화 시간, 대략적인 비용). 하루 한도는 이 기록을 세서 지킴 | #33 |
+| `gpt_usages` | GPT 를 한 번 부른 것이 한 줄 (종류, 부른 시각, 통화 번호·통화 시간, 대략적인 비용). 얼마나 썼는지 보는 기록 (하루 한도는 2026-10-24 에 없앰) | #33 |
 | `checkins` | 한 사람의 하루치 체크인이 한 줄 (컨디션, 기분, 어제 못 채운 이유와 기타 글, 예상 순공시간, 약속 두 칸, 개선안 실천 여부, 어디서 했는지). 같은 날을 다시 보내면 덮어씀. 누구·날짜·source 말고는 다 비어도 됨 | #24 |
-| `cards` | 카드 한 장이 한 줄 (제목, 날짜, 반복 요일, 시작 시각, 길이, 목표, 절대/유연, 자습/인강, 예상 달성 개수와 낮춘 이유, 알림, 계획에 쓴 시간). 반복 카드도 **한 장**이고 날마다 복사하지 않음 | #222 |
+| `cards` | 카드 한 장이 한 줄 (제목, 날짜, 반복 요일, 시작 시각, 길이, 목표, 과목, 절대/유연, 자습/인강, 예상 달성 개수와 낮춘 이유, 알림, 계획에 쓴 시간). 반복 카드도 **한 장**이고 날마다 복사하지 않음 | #222 |
 | `card_checklist_items` | 카드 하나의 체크리스트 항목이 한 줄씩 (`@ElementCollection`, 보낸 순서대로) | #222 |
 | `card_expected_fail_causes` | 카드 하나의 예상 실패 원인 글이 한 줄씩 (`@ElementCollection`, 5개까지) | #222 |
 | `checkin_emotions` | 체크인 하나에서 고른 감정 태그가 한 줄씩 (`@ElementCollection`). 안 골랐으면 줄이 없음 | #220 |
+| `diaries` | 학생이 쓴 일기 하나가 한 줄 (원문, 기분, 날짜, 쓴 시각, AI 분석 시각). 같은 날에 여러 개 가능. **원문은 본인만** | #60 |
+| `calendar_alarms` | 학생의 구글 캘린더 일정 하나가 한 줄 (일정 id, 제목, 시작 시각, 알림 처리 시각). FE 가 앞으로 7일 일정을 **덮어쓰기**로 올리고, 예약 작업이 시작 10분 전에 푸시. 지난 일정은 하루 뒤 지움 | 2026-10-24 |
+| `answer_checks` | 문제집 사진을 한 번 올려 채점한 기록 하나가 한 줄 (날짜, 모드, AI 가 읽은 과목, 채점 시각). **사진은 저장하지 않음** | 2026-10-24 |
+| `answer_check_items` | 채점 기록 하나 안의 문제 하나가 한 줄 (번호, 학생 답, AI 답 또는 O · X 표시, AI 처음 판정, 지금 판정, 학생이 적은 정답, 고친 시각) | 2026-10-24 |
+| `weekly_picks` | 한 사람이 한 주에 "해 보기로 고른 것" 하나가 한 줄 (주, 해 볼 것, 한 줄 설명, 넘어가기 여부, 고른 시각). 같은 주에 다시 고르면 덮어씀 | #406 |
+| `diary_emotions` · `diary_causes` · `diary_keywords` | 일기 하나에서 AI 가 뽑은 감정 · 실패 원인 · 키워드가 한 줄씩 (`@ElementCollection`). 일기를 지우면 같이 지워짐 | #60 |
 | `reflection_prescriptions` | 성찰일기 처방 한 번이 한 줄 (첫날·마지막 날, 처방 이유, 질문 3개). 처음 물어본 날 정해지고 기간 동안 그대로 | #61 |
 | `insights` | 학생에게 보여 준 인사이트 하나가 한 줄 (문장, 종류, 가설 여부, 보여 준 날, 누른 반응). 반응은 다시 누르면 바뀜. 반응 말고는 다 있어야 함 | #43 · #41 |
 | `insight_evidence_dates` | 인사이트 하나의 근거 날짜가 한 줄씩 (`@ElementCollection`). 날짜로 찾기 쉽게 날짜로 저장 | #43 · #41 |
@@ -737,7 +832,7 @@ erDiagram
 > - **시험인지는 저장하지 않습니다.** 이름(정기시험 · 학력평가 등)을 보고 응답할 때 코드가 정합니다. 판정 규칙을 고쳐도 다시 받지 않아도 됩니다.
 
 > `psych_tests` · `psych_test_answers` 는 2026-10-17 에 이슈 #219 · 최종 기획서 6장을 따라 **AI(Claude)가 만든** 테이블입니다. 멘토가 "데이터가 쌓여야 AI 가 분석한다" 며 심리검사 결과를 서버에 쌓자고 정했고, 칸은 생각 습관 테스트(`thinking_tests`)와 같은 모양으로 했습니다. 문장마다의 답을 그대로 남기고 척도 점수는 저장하지 않습니다.
-> - **GPT 를 한 번 부른 것 = 한 줄.** 하루 한도(통화 횟수 · 통화 시간 · 글 호출 횟수)는 이 기록을 세서 지킵니다. 예전에는 서버 메모리에서 세서 서버가 다시 켜지면 0 이 됐습니다.
+> - **GPT 를 한 번 부른 것 = 한 줄.** 예전에는 이 기록을 세서 하루 한도(통화 횟수 · 통화 시간 · 글 호출 횟수)를 지켰는데, 2026-10-24 에 한도를 없애서 지금은 비용을 보는 기록입니다.
 > - **통화 시간과 비용만 비어도 됩니다.** 코치·요약에는 통화 시간이 없고, 통화는 끝나야 시간과 비용을 알 수 있기 때문입니다.
 > - **통화 번호(`call_record_id`)** 는 "통화가 끝났을 때 어느 줄을 채울지" 알려고 더했습니다. 같은 날 통화가 여러 번이면 이것 없이는 구별할 수 없습니다.
 > - **비용은 원 단위 정수**의 어림값입니다. (읽기 쉬워서 학생이 정함) 환산 기준은 `application.yml` 의 `cost-won-*` 설정에 있습니다.
@@ -748,6 +843,10 @@ erDiagram
 > - **반복 요일은 한 칸(`repeat_days`)에 `"1,3,5"` 처럼** 적습니다. 요일은 7개뿐이라 딸린 테이블로 빼지 않았습니다. 그날 하는 카드인지는 `Card.isOnDate` 가 FE 의 `isCardOnDate` 와 같은 규칙으로 봅니다.
 > - **체크리스트 · 예상 실패 원인은 여러 개라서 딸린 테이블**에 담았습니다. `position` 은 보낸 순서입니다. 체크했는지(`doneAt`)는 카드가 아니라 **그날의 세션 기록**(#224)에 남깁니다.
 > - `goal_id` 는 목표 테이블(`goals`, #221)의 번호입니다. DB 의 외래 키는 걸지 않았습니다. 카드를 저장할 때 "내 목표인지" 검사는 #221 다음 PR 에서 더합니다.
+> - `subject_id` 는 2026-10-24 에 이슈 #404 에서 **AI 가 더한 칸**입니다. (사용자가 칸 추가를 허락함, **PR 리뷰에서 학생이 꼭 확인해 주세요**) 과목(`subjects`)의 번호이고 비어 있으면 "과목 없음" 입니다.
+>   - 카드로 켠 공부 기록에 과목을 안 보내면 서버가 카드의 과목을 `study_sessions.subject_id` 에 채웁니다. 과목별 공부 시간이 '기타' 로 묶이지 않게 하려는 것입니다.
+>   - `goal_id` 처럼 DB 외래 키는 걸지 않았습니다. 대신 **과목을 지우면 그 과목을 붙인 카드의 `subject_id` 를 비웁니다.** (카드는 지우지 않음, `SubjectService.delete`) 과목 없는 카드도 있어서, 그림의 선은 "과목 하나에 카드 여러 장(0장도 됨)" 이라는 논리적인 관계입니다.
+>   - 카드를 저장할 때 "내 과목인지" 를 검사합니다. 없는 과목 · 남의 과목은 404 입니다.
 > - 알림 세 칸(`alert_*`)이 모두 비어 있으면 **기본 알림**(정각 · 메시지 · 기본 문구)입니다.
 > - 모든 줄에 `user_id` 가 있어서(딸린 테이블은 카드를 따라) 탈퇴하면 같이 지워집니다.
 
@@ -796,6 +895,38 @@ erDiagram
 > - 감정 이름은 이슈에 적힌 6개(`EmotionTag`)이고, DB 에도 이름 그대로 저장합니다.
 > - 감정 태그를 보내면 그날의 감정이 **전부 바뀝니다.** 다른 칸과 달리 **안 보내면 그대로 둡니다**(감정 태그를 모르는 화면이 다시 보내도 지워지지 않게). 체크인 줄이 지워지면(탈퇴) 같이 지워집니다.
 
+> `answer_checks` 와 `answer_check_items` 는 2026-10-24 에 **학생이 직접 설계한** 사진 채점 테이블입니다. (AI 는 설계대로 코드로 옮기고 글자 칸 길이만 정했습니다)
+> - **사진 한 번 올린 것 = `answer_checks` 한 줄, 그 안의 문제 하나 = `answer_check_items` 한 줄.** 사진은 저장하지 않고 결과만 남깁니다.
+> - 맞음 · 틀림 개수는 저장하지 않고 `answer_check_items` 의 `result` 를 세어서 보여 줍니다. 학생이 판정을 고치면 개수도 바로 바뀝니다.
+> - AI 의 처음 판정(`ai_result`)은 고쳐도 바뀌지 않습니다. 고치면 `result` · `correct_answer` 만 바뀌고 `edited_at` 이 찹니다. (`edited_at` 이 차 있으면 "직접 고침")
+> - `ai_answer` 는 "아직 안 했어요"(`UNMARKED`) 에서만, `mark_read` 는 "채점했어요"(`MARKED`) 에서만 값이 있습니다.
+> - **AI 가 정한 글자 칸 길이:** 과목 30자, 문제 번호 20자, 학생 답 · AI 답 · 정답 100자. 요청 검사(정답 100자)와 같은 값입니다. 짧거나 길면 알려 주세요.
+> - `answer_check_id` 는 다른 테이블처럼 **번호만 적고 DB 외래 키 제약은 걸지 않았습니다.** 그림의 선은 논리적인 관계입니다. (탈퇴는 `user_id` 가 있는 테이블을 하나씩 지우는데, 외래 키가 있으면 지우는 순서에 따라 실패할 수 있어서)
+> - 두 테이블 모두 `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
+
+> `weekly_picks` 는 2026-10-24 에 이슈 #406 에서 **AI 가 만든 테이블**입니다. (사용자가 새 테이블을 허락하고 칸을 정함, **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - 주간 리포트 아래 [다음 주에 하나만 해 볼까요?] 에서 고른 것입니다. 전에는 FE 의 이 기기(localStorage, `src/lib/weeklyPicks.ts`)에만 있었고, 칸 이름은 그 모양을 그대로 따랐습니다.
+> - **한 사람의 한 주(월요일)에 한 줄**입니다. (`uk_weekly_picks_user_id_week_start`) 다시 고르면 새 줄을 만들지 않고 그 줄을 덮어씁니다.
+> - "이번 주는 넘어가기" 도 한 줄로 남기고 `skip` 을 `true` 로 둡니다. 이때도 `title` · `hint` 에는 보기 글자가 들어 있습니다.
+> - "지켰어?" 는 따로 적지 않습니다. 그 주에 해냈는지는 타이머 기록으로 봅니다.
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
+
+> `calendar_alarms` 는 2026-10-24 에 **AI 가 만든 테이블**입니다. (사용자 "캘린더 시작 10분 전에 실제 앱처럼 알람 오게", "알림에 일정 제목 넣자", **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - 서버는 구글에 직접 접속하지 않습니다. FE 가 학생의 브라우저에서 읽은 **앞으로 7일 일정**을 올립니다. (`PUT /api/v1/calendar-alarms`, 덮어쓰기)
+> - 하루 종일 일정은 "10분 전" 이 없어서 받지 않습니다. 시각이 있는 일정만 한 줄씩입니다.
+> - 한 사람의 같은 일정(`user_id` + `event_key`)은 **한 줄만** 둡니다(unique). 올리기가 동시에 두 번 오면 같은 일정이 두 줄이 되어 알림이 두 번 가던 것을 로컬에서 확인하고 막았습니다. 겹친 요청은 한 번 더 올려서 있는 줄을 고칩니다.
+> - `handled_at` 이 차 있으면 다시 보내지 않습니다. 구글에서 일정을 옮겨 `starts_at` 이 바뀌면 비워서 새 시각에 다시 알립니다.
+> - **일정 제목이 서버에 저장됩니다.** (사용자가 알림에 제목을 넣기로 정함) 알림 글에만 쓰고, 로그 · GPT 에는 보내지 않습니다. 시작한 지 하루 지난 줄은 예약 작업이 지우고, 캘린더 연결을 끊으면(`DELETE`) 바로 다 지웁니다.
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다.
+
+> `diaries` 와 딸린 테이블 3개는 2026-10-24 에 이슈 #60 에서 **AI 가 만든 테이블**입니다. (사용자 "이슈 완료 및 참고 자료 조건에 따라 진행", **PR 리뷰에서 학생이 꼭 확인해 주세요**)
+> - **일기 하나 = 한 줄**은 학생이 정했습니다. 같은 날에 여러 개를 쓸 수 있습니다.
+> - `mood`(기분 1 ~ 5)는 FE 짝 이슈(Project-FE#63)의 `DiaryEntry.mood` 에 맞춰 더했습니다. FE 는 필수로 고르지만 서버는 비어도 받습니다.
+> - 뽑은 감정 · 원인 · 키워드는 한 일기에 여러 개라서 `checkin_emotions` 처럼 딸린 테이블에 담았습니다. 일기 줄을 지우면 같이 지워집니다. (이슈 완료 조건)
+> - 감정은 체크인 감정 태그(`EmotionTag`), 원인은 체크인 못 채운 이유(`MissReason`)와 **같은 값**입니다. 실패 원인 분석(#39)에서 같이 셀 수 있습니다.
+> - `analyzed_at` 이 비어 있으면 분석을 안 한 것입니다(분석 동의 안 함 · 위기 표현 · AI 꺼짐 · 실패). 그때 딸린 줄이 없는 것은 "없음" 이 아니라 "모름" 입니다.
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다. 딸린 테이블은 `AccountServiceTest` 의 `CHILD_TABLES` 에 더했습니다.
+
 > `reflection_prescriptions` 는 2026-10-17 에 **선생님이 "FE·BE·테이블까지 AI 가 만들라" 고 맡긴 기능**(통화 기록·회고·성찰)에서 AI 가 만든 테이블입니다. (이슈 #61)
 > - **처방 한 번 = 한 줄.** 언제 처방하는지는 `ReflectionRule` 과 docs/API.md "성찰일기 처방" 에 있습니다.
 > - **질문 글을 그대로 저장합니다.** 질문 세트(`ReflectionQuestions`)를 나중에 고쳐도 이미 내린 처방의 질문이 바뀌지 않게 하려는 것입니다. 질문은 늘 3개라서 `reviews` 처럼 칸 3개에 담았습니다.
@@ -816,6 +947,9 @@ erDiagram
 > `study_plans` 의 `start_time` · `kind` · `routine_id` 는 2026-10-12 에 이슈 #12 에서 더했습니다. (칸 이름과 뜻은 Project#12 의 표, 시작 시각을 `time` 으로 저장하는 것은 학생이 정함)
 > - 공부 계획(`STUDY`)은 `subject_id` 가 꼭 있어야 하고, 노는 계획(`PLAY`)만 비어도 됩니다. DB 에도 검사 규칙(`ck_study_plans_study_has_subject`)으로 걸어 두었습니다.
 > - 루틴으로 만든 계획은 routine_id를 기록합니다(#85). 루틴 삭제 후에도 원본 번호와 적용 기록을 유지하므로 그림의 선은 논리적인 관계이고 DB의 삭제 제약은 아닙니다.
+
+> **운영 DB 에만 있는 `seed_6m_rows` 표** — 2026-10-24 발표용 가상 데이터 6개월치를 넣으면서, 넣은 줄의 번호를 적어 둔 표입니다.
+> 엔티티가 없어서 위 그림 · `db/schema.sql` 에는 없습니다. 지울 때 이 표를 씁니다. → [DEMO-SEED.md](./DEMO-SEED.md)
 
 ## 그림 읽는 법
 

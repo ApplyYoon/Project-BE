@@ -40,7 +40,7 @@ import org.springframework.stereotype.Service;
 //      - 지난 같은 카드: 최근 4주(오늘 빼고) 같은 제목의 공부 계획, 최근 것부터 5개. 목표 시간 · 실제 순공 · 끝냈는지
 //      - 계획 성향: 가장 최근 심리검사의 "계획 낙관" 이 높은지 (안 했으면 예전 생각 습관 테스트로, 둘 다 없으면 낙관 아님)
 //   3. 개수를 코드가 정합니다. (ChecklistPrompt.countOf)
-//   4. AI 를 부릅니다. 꺼짐 · 하루 한도 · 실패면 items 가 null 입니다. (AiClient)
+//   4. AI 를 부릅니다. 꺼짐 · 실패면 items 가 null 입니다. (AiClient)
 //   5. 받은 항목을 검사합니다. 쓸 만한 항목이 모자라면 items 가 null 입니다. (ChecklistDraft)
 //
 // currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 내 기록만 읽습니다.
@@ -63,7 +63,7 @@ public class ChecklistService {
   private final Clock clock;
 
   // AI 를 기다리는 동안 DB 연결을 붙잡지 않으려고 @Transactional 을 붙이지 않았습니다.
-  // (한도 기록은 GptUsageGuard 가 따로 저장합니다)
+  // (호출 기록은 GptUsageGuard 가 따로 저장합니다)
   public ChecklistResponse suggest(ChecklistRequest request) {
     Long userId = currentUserProvider.getCurrentUserId();
 

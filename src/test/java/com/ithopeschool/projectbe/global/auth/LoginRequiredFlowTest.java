@@ -172,6 +172,18 @@ class LoginRequiredFlowTest {
           new Api("POST", "/api/v1/rest-days/{date}", "/api/v1/rest-days/2026-10-12", null),
           new Api(
               "GET", "/api/v1/rest-days", "/api/v1/rest-days?from=2026-10-01&to=2026-10-07", null),
+          // 퀴즈 결과 · 통계 탭 (2026-10-24)
+          new Api(
+              "POST",
+              "/api/v1/quiz-results",
+              "/api/v1/quiz-results",
+              "{\"subjectId\":1,\"unit\":\"함수\",\"correctCount\":1,\"totalCount\":2,"
+                  + "\"questionSeconds\":[30,40]}"),
+          new Api(
+              "GET",
+              "/api/v1/quiz-results/stats",
+              "/api/v1/quiz-results/stats?from=2026-10-01&to=2026-10-07",
+              null),
           // 카드 결과 (이슈 #229)
           new Api(
               "GET",
@@ -284,6 +296,42 @@ class LoginRequiredFlowTest {
           new Api(
               "GET", "/api/v1/checkins/today/questions", "/api/v1/checkins/today/questions", null),
           new Api("DELETE", "/api/v1/checkins", "/api/v1/checkins", null),
+          // 일기 (원문은 본인만 봅니다, 이슈 #60)
+          new Api("POST", "/api/v1/diaries", "/api/v1/diaries", "{\"content\":\"일기\"}"),
+          new Api("GET", "/api/v1/diaries", "/api/v1/diaries?from=2026-10-01&to=2026-10-07", null),
+          new Api("DELETE", "/api/v1/diaries/{id}", "/api/v1/diaries/1", null),
+          // 구글 캘린더 일정 알림 (일정 제목이 들어 있어서 본인만)
+          new Api("PUT", "/api/v1/calendar-alarms", "/api/v1/calendar-alarms", "{\"events\":[]}"),
+          new Api("DELETE", "/api/v1/calendar-alarms", "/api/v1/calendar-alarms", null),
+          // 사진 채점 (아무나 부르면 GPT 비용이 나가고, 채점 결과는 본인만 봅니다)
+          new Api(
+              "POST",
+              "/api/v1/answer-checks",
+              "/api/v1/answer-checks",
+              "{\"mode\":\"MARKED\",\"image\":\"data:image/jpeg;base64,AQID\",\"date\":\"2026-10-24\"}"),
+          new Api("GET", "/api/v1/answer-checks", "/api/v1/answer-checks?date=2026-10-24", null),
+          // 같은 주소를 기간(from · to)으로 불러도 401 인지 봅니다. (주간 리포트)
+          new Api(
+              "GET",
+              "/api/v1/answer-checks",
+              "/api/v1/answer-checks?from=2026-10-18&to=2026-10-24",
+              null),
+          new Api(
+              "PATCH",
+              "/api/v1/answer-checks/{id}/items/{itemId}",
+              "/api/v1/answer-checks/1/items/1",
+              "{\"result\":\"WRONG\"}"),
+          // 이번 주에 고른 것 (이슈 #406, 내가 고른 것은 본인만 봅니다)
+          new Api(
+              "PUT",
+              "/api/v1/weekly-picks/{weekStart}",
+              "/api/v1/weekly-picks/2026-10-26",
+              "{\"title\":\"폰을 다른 방에 두기\",\"hint\":\"손이 안 닿으면 덜 멈춰요\",\"skip\":false}"),
+          new Api(
+              "GET",
+              "/api/v1/weekly-picks",
+              "/api/v1/weekly-picks?from=2026-10-01&to=2026-10-31",
+              null),
           // AI 메시지
           new Api("GET", "/api/v1/messages", "/api/v1/messages", null),
           new Api("PATCH", "/api/v1/messages/{id}/read", "/api/v1/messages/1/read", null),
@@ -424,7 +472,7 @@ class LoginRequiredFlowTest {
           new Api("GET", "/api/v1/school/notices", "/api/v1/school/notices", null),
           // 카드 체크리스트 추천 (내 지난 기록을 보고 AI 를 부릅니다. 이슈 #236)
           new Api("POST", "/api/v1/ai/checklist", "/api/v1/ai/checklist", "{\"title\":\"수학 문제집\"}"),
-          // 첫 준비 행동 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #236)
+          // 첫 준비 행동 (AI 를 부르고 호출 기록을 사람마다 남깁니다. 이슈 #236)
           new Api(
               "POST", "/api/v1/ai/first-step", "/api/v1/ai/first-step", "{\"item\":\"단어 외우기\"}"),
           // 예상 실패 원인 선지 (내 최근 30일 실패 원인을 봅니다. 이슈 #237)
@@ -439,13 +487,13 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/exam-next-step",
               "/api/v1/ai/exam-next-step",
               "{\"examId\":\"1\"}"),
-          // 글에 이름표 붙이기 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #237)
+          // 글에 이름표 붙이기 (AI 를 부르고 호출 기록을 사람마다 남깁니다. 이슈 #237)
           new Api(
               "POST",
               "/api/v1/ai/classify-text",
               "/api/v1/ai/classify-text",
               "{\"kind\":\"memo\",\"text\":\"문자 보내기\"}"),
-          // 루틴 카드 제안 (AI 를 부르고 하루 한도를 사람마다 셉니다. 이슈 #239)
+          // 루틴 카드 제안 (AI 를 부르고 호출 기록을 사람마다 남깁니다. 이슈 #239)
           new Api(
               "POST",
               "/api/v1/ai/routine-cards",

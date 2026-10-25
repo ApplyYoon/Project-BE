@@ -12,7 +12,7 @@ import java.util.List;
 //
 // - goalDraft 칸은 목표 저장(POST /api/v1/goals)의 요청과 같은 이름입니다. FE 는 저장 화면에 채워 학생에게 확인받습니다.
 //   대화에서 정하지 못했거나 규칙에 안 맞는 칸은 null 입니다. (GoalDraft)
-// - goalDraft 가 null 이면 초안을 만들지 못한 것입니다. (AI 꺼짐 · 하루 한도 · 실패 · 남은 칸 없음)
+// - goalDraft 가 null 이면 초안을 만들지 못한 것입니다. (AI 꺼짐 · 실패 · 남은 칸 없음)
 //   에러가 아니라 200 이고, FE 는 빈 저장 화면(직접 쓰기)으로 보냅니다.
 // - showHelp 가 true 면 학생의 말에서 위기 표현이 감지된 것입니다. goalDraft 는 null 이고 helpLines 에 도움받을 곳이 있습니다.
 public record GoalChatFinishResponse(

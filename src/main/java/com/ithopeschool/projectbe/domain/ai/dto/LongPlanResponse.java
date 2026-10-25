@@ -10,7 +10,7 @@ import java.util.List;
 //                   "title": "미적분 1단원 개념 (1/2)", "checklist": ["교과서 12~20쪽 읽기"] } ],
 //     "overflow": false }
 // - plan    : 계획의 뼈대. 고칠 때 그대로 다시 보냅니다. null 이면 만들거나 고치지 못한 것입니다.
-//             (AI 꺼짐 · 하루 한도 · 실패 · 공부 자료가 아닌 사진) 고치기였다면 FE 는 지금 계획을 그대로 둡니다.
+//             (AI 꺼짐 · 실패 · 공부 자료가 아닌 사진) 고치기였다면 FE 는 지금 계획을 그대로 둡니다.
 // - drafts  : 뼈대를 코드가 날짜별로 나눈 카드 초안. 모양은 계획 핑퐁(/ai/day-plan/revise)과 같습니다.
 //             학생이 [이대로 할게] 를 누르면 FE 가 카드로 저장합니다.
 // - overflow: 할 일이 하루 공부 시간 안에 다 들어가지 않아 줄이거나 뺐으면 true. FE 가 "하루 시간을 늘릴까?" 를 물을 수 있습니다.
@@ -28,7 +28,7 @@ public record LongPlanResponse(
     return new LongPlanResponse(false, reply, plan, drafts, overflow);
   }
 
-  // AI 가 못 만들었을 때 (꺼짐 · 한도 · 실패 · 공부 자료가 아닌 사진)
+  // AI 가 못 만들었을 때 (꺼짐 · 실패 · 공부 자료가 아닌 사진)
   public static LongPlanResponse notMade() {
     return new LongPlanResponse(false, null, null, null, false);
   }
