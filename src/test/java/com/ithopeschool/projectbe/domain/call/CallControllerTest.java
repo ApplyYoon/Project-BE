@@ -124,6 +124,65 @@ class CallControllerTest {
         .andExpect(status().isOk());
   }
 
+  @Test
+  @DisplayName("학생 카드의 '지난 통화 이후' 칸(#28)을 받는다. 범위 밖 숫자 · 모르는 글자는 400 이 아니라 null(모름)이다")
+  void acceptsSinceLastCallFields() throws Exception {
+    given(callService.startSession(any()))
+        .willReturn(new CallSessionResponse("ek_abc123", 1791700000000L, 300, "12"));
+
+    // FE src/lib/callCard.ts 가 보내는 모양 (옛 칸과 같이 옵니다)
+    start(
+            "{\"careLevel\":1,\"maxHarshness\":3,\"card\":{\"yesterdayStudyMinutes\":190,"
+                + "\"hoursSinceLastCall\":5,\"doneCardCount\":4,\"cardRunRate\":80,"
+                + "\"missedCardCount\":2,\"unhandledCardCount\":1,\"mainMissCause\":\"procrastinated\","
+                + "\"nextCardCount\":3,\"nextAbsoluteCardCount\":1,\"emotionTagsMissing\":true,"
+                + "\"callModule\":\"review4\"}}")
+        .andExpect(status().isOk());
+    // 범위 밖 · 모르는 글자 (FE 가 칸을 조금 다르게 보내도 통화는 막지 않음)
+    start(
+            "{\"careLevel\":1,\"maxHarshness\":3,\"card\":{\"hoursSinceLastCall\":9000,"
+                + "\"doneCardCount\":51,\"cardRunRate\":101,\"missedCardCount\":-1,"
+                + "\"unhandledCardCount\":99,\"mainMissCause\":\"lazy\",\"nextCardCount\":-3,"
+                + "\"nextAbsoluteCardCount\":60,\"callModule\":\"quiz\"}}")
+        .andExpect(status().isOk());
+
+    ArgumentCaptor<CallSessionRequest> captor = ArgumentCaptor.forClass(CallSessionRequest.class);
+    verify(callService, org.mockito.Mockito.times(2)).startSession(captor.capture());
+    CallSessionRequest.Card good = captor.getAllValues().get(0).card();
+    assertThat(good.yesterdayStudyMinutes()).isEqualTo(190);
+    assertThat(good.hoursSinceLastCall()).isEqualTo(5);
+    assertThat(good.doneCardCount()).isEqualTo(4);
+    assertThat(good.cardRunRate()).isEqualTo(80);
+    assertThat(good.missedCardCount()).isEqualTo(2);
+    assertThat(good.unhandledCardCount()).isEqualTo(1);
+    assertThat(good.mainMissCause()).isEqualTo("procrastinated");
+    assertThat(good.nextCardCount()).isEqualTo(3);
+    assertThat(good.nextAbsoluteCardCount()).isEqualTo(1);
+    assertThat(good.emotionTagsMissing()).isTrue();
+    assertThat(good.callModule()).isEqualTo("review4");
+
+    CallSessionRequest.Card bad = captor.getAllValues().get(1).card();
+    assertThat(bad.hoursSinceLastCall()).isNull();
+    assertThat(bad.doneCardCount()).isNull();
+    assertThat(bad.cardRunRate()).isNull();
+    assertThat(bad.missedCardCount()).isNull();
+    assertThat(bad.unhandledCardCount()).isNull();
+    assertThat(bad.mainMissCause()).isNull();
+    assertThat(bad.nextCardCount()).isNull();
+    assertThat(bad.nextAbsoluteCardCount()).isNull();
+    assertThat(bad.emotionTagsMissing()).isNull();
+    assertThat(bad.callModule()).isNull();
+  }
+
+  @Test
+  @DisplayName("옛 칸은 예전처럼 범위를 벗어나면 400 이다 (새 칸만 null 로 받음)")
+  void oldCardFieldsStayStrict() throws Exception {
+    expectRejected(
+        "{\"careLevel\":1,\"maxHarshness\":3,\"card\":{\"yesterdayStudyMinutes\":2000,"
+            + "\"doneCardCount\":4}}",
+        "yesterdayStudyMinutes 는 0 ~ 1440 이에요");
+  }
+
   // otherRooms 칸에 넣을 줄 count 개 (한 줄은 text). JSON 배열 글자로 만듭니다.
   private static String otherRoomsJson(int count, String text) {
     return "[" + String.join(",", java.util.Collections.nCopies(count, "\"" + text + "\"")) + "]";

@@ -54,6 +54,7 @@ import org.springframework.stereotype.Service;
 //      대본 끝에 시험 · 목표 · 가입 심리검사를 "[기록에서 꺼낸 것]" 으로 붙입니다. 위로하는 통화에서는 붙이지 않습니다. (CallContext)
 //      오늘 끝낸 공부가 있으면 "[방금 공부한 것]" 을 붙여 확인 통화로 시작합니다. 위로하는 통화에서는 붙이지 않습니다.
 //      음성 통화는 코드가 고른 주제 하나만 깊게 이야기합니다. (CallTopic, 2026-10-25 #434 "통화도 마찬가지 — 계속 물어봄")
+//        FE 카드의 조건부 모듈(callModule, BE #28)이 오면 그 모듈이 주제이고, 안전 브레이크 · 회복 모드면 위로하는 통화(0)로 합니다.
 //        생각 습관이 오늘 주제가 아니면 질문을 묻지 않으니, 통화 기록에도 "물어본 질문" 을 남기지 않습니다.
 //      음성 통화 대본 끝에는 계획 방(#431)과 같은 "[오늘 쓸 수 있는 시간]"(DayPlanService.todayTime)과
 //      FE 가 보낸 오늘 채팅 이야기 "[다른 방에서 오늘 한 이야기]"(OtherRoomTalk.callSection)를 붙입니다. 학원 · 빈 시간 · 오늘 카드를 또
@@ -218,6 +219,11 @@ public class CallService {
         serverCard == null
             ? request.card()
             : CallCardLoader.withFocusFrom(serverCard, request.card());
+    // 음성 통화: FE 가 조건부 모듈로 안전 브레이크 · 회복 모드를 보내면 위로하는 통화(0)로 합니다. 채팅은 그대로입니다. (#28 · #434)
+    if (channel == CallChannel.VOICE) {
+      careLevel = CallScript.voiceCareLevel(careLevel, card);
+    }
+
     // 생각 습관 테스트 결과. 서버에 저장된 것이 있으면 그것을, 없으면 FE 가 보낸 것을 씁니다.
     CallScript.SelfReport selfReport = selfReportOf(userId, request, recentCalls);
 
@@ -263,7 +269,7 @@ public class CallService {
               new CallScript.VoiceCall(gptUsageGuard.maxCallSeconds(), checkCall));
       // 생각 습관이 오늘 주제가 아니면 대본에 그 질문이 없으니, 통화 기록에 "물어본 질문" 으로 남기지 않습니다. (#434)
       CallTopic topic = CallScript.voiceTopic(careLevel, card, biasQuestion, pastCalls, checkCall);
-      if (topic != CallTopic.BIAS) {
+      if (!topic.usesBiasQuestion()) {
         biasQuestion = null;
       }
     }

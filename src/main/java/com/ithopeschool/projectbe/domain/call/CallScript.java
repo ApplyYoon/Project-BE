@@ -159,7 +159,7 @@ public final class CallScript {
       RiskLevel riskLevel,
       VoiceCall voice) {
     return build(
-        careLevel,
+        voiceCareLevel(careLevel, card),
         maxHarshness,
         card,
         biasQuestion,
@@ -171,6 +171,14 @@ public final class CallScript {
         voice);
   }
 
+  // 음성 통화의 관리 강도. FE 가 조건부 모듈로 안전 브레이크 · 회복 모드를 보내면 0(위로)이고, 그 밖에는 그대로입니다. (#28 · #434)
+  // FE 기기의 기록으로 켜진 안전 신호도 따릅니다. 더 부드러운 쪽으로만 바꾸기 때문입니다. (안전이 먼저, CLAUDE.md 4장)
+  // CallService 도 같은 함수를 써서, 위로하는 통화의 다른 규칙(기록 칸 빼기 · 생각 습관 안 묻기)이 같이 따라옵니다.
+  public static int voiceCareLevel(int careLevel, CallSessionRequest.Card card) {
+    boolean comfort = CallTopic.moduleOf(card).map(CallModule::isComfort).orElse(false);
+    return comfort ? 0 : careLevel;
+  }
+
   // 음성 통화의 오늘 주제입니다. 대본(build)과 통화 기록(CallService — 생각 습관 질문을 남길지)이 같은 값을 쓰게 여기서 고릅니다. (#434)
   public static CallTopic voiceTopic(
       int careLevel,
@@ -179,7 +187,11 @@ public final class CallScript {
       List<PastCall> pastCalls,
       boolean checkCall) {
     return CallTopic.pick(
-        isSupportive(careLevel, card), checkCall, card, lastPromise(pastCalls), biasQuestion);
+        isSupportive(voiceCareLevel(careLevel, card), card),
+        checkCall,
+        card,
+        lastPromise(pastCalls),
+        biasQuestion);
   }
 
   // 상담 채팅(이슈 #238)의 지침입니다. 통화와 같은 대본이고, 맨 앞의 두 줄(전화 · 3분)만 글 채팅에 맞게 바꿉니다.
@@ -304,7 +316,8 @@ public final class CallScript {
     lines.add(toneRule(careLevel, maxHarshness, card));
     lines.add("");
     lines.add("[오늘의 사실]");
-    lines.addAll(facts(card));
+    // 음성 통화는 "지난 통화 이후" 숫자(카드 결산 · 다음 통화까지의 카드)도 적습니다. 채팅은 예전 그대로입니다. (#28 · #434)
+    lines.addAll(isVoice ? voiceFacts(card) : facts(card));
     lines.add("");
     // 위로하는 통화는 이미 부드럽게 말하므로 따로 적지 않습니다.
     if (!supportive && riskLevel.isRisky()) {
@@ -320,7 +333,7 @@ public final class CallScript {
     }
     // 계획 방에는 생각 습관 질문을 넣지 않습니다. 계획을 짜는 중에 생각 습관을 캐물으면 되묻기만 늘어납니다. (#431)
     // 음성 통화는 오늘 주제가 생각 습관일 때만 넣습니다. 다른 주제인 날에 신호 단어마다 질문하면 주제가 흩어집니다. (#434)
-    boolean withBiasRules = isVoice ? topic == CallTopic.BIAS : !supportive && !planner;
+    boolean withBiasRules = isVoice ? topic.usesBiasQuestion() : !supportive && !planner;
     if (withBiasRules) {
       lines.add("[생각 습관]");
       lines.addAll(biasRules());
@@ -344,6 +357,12 @@ public final class CallScript {
     // 음성 통화는 주제 하나로 순서를 만들고, 끝에 계획 도구 규칙을 붙입니다. (#434)
     if (isVoice) {
       lines.addAll(voiceOrder(topic, card, pastCalls, biasQuestion));
+      List<String> closing = closingLines(topic, card);
+      if (!closing.isEmpty()) {
+        lines.add("[마무리 때 함께]");
+        lines.addAll(closing);
+        lines.add("");
+      }
       lines.add("[앱 도구와 안내]");
       lines.addAll(voiceToolRules());
       return String.join("\n", lines);
@@ -399,6 +418,12 @@ public final class CallScript {
       lines.add("3. 오늘은 10분만 해도 된다고 말하고, 할 수 있는 것 하나를 같이 골라.");
       lines.add("4. " + PROMISE_STEP);
       lines.add("- 질문은 한 답에 하나만 해.");
+      // 회복 모드(FE 모듈 recovery): What if 기법 — 최악의 상황 상정 → 지금 할 수 있는 최선 찾기, 계획 축소 제안 (기획서 「회복 모드」)
+      if (CallTopic.moduleOf(card).orElse(null) == CallModule.RECOVERY) {
+        lines.add(
+            "- 오늘은 회복 모드야. 학생이 괜찮다고 하면 What if 로 같이 생각해:"
+                + " 가장 걱정되는 일을 하나 말해 보고, 그래도 지금 할 수 있는 가장 작은 것 하나를 찾아. 계획은 줄이자고 먼저 말해.");
+      }
       lines.add("");
       return lines;
     }
@@ -407,7 +432,10 @@ public final class CallScript {
     lines.add("- 학생이 먼저 다른 공부 이야기(고민, 오늘 계획 짜 줘)를 꺼내면 그게 오늘 주제야. 그 이야기를 따라가고, 끝은 똑같이 약속 하나야.");
     lines.add("");
     lines.add("[통화 순서]");
-    lines.add("1. " + voiceOpening(card));
+    lines.add(
+        "1. "
+            + voiceOpening(
+                card, Boolean.TRUE.equals(card == null ? null : card.emotionTagsMissing())));
     lines.add(
         "2. 오늘 주제를 학생 답에 맞춰 2~3번 주고받으며 깊게 이야기해."
             + " 답을 들으면 먼저 짧게 맞장구치고, 그 답에서 한 걸음 더 들어가는 질문 하나만 해. 다른 주제로 넘어가지 마.");
@@ -422,14 +450,56 @@ public final class CallScript {
     return lines;
   }
 
-  // [통화 순서] 1번. 어제 숫자는 질문이 아니라 한 문장으로 말하고 바로 주제로 갑니다.
-  //   어제 기록이 있음 → "짧게 인사하고, 어제 한 것을 한 문장으로 말해 줘. 예: "어제 순공 3시간 10분, 계획의 79%야." 묻지 말고 …"
-  //   어제 기록이 없음 → "짧게 인사하고, 오늘 컨디션을 한 번만 물어본 뒤 바로 오늘 주제를 꺼내."
-  static String voiceOpening(CallSessionRequest.Card card) {
-    if (card == null || card.yesterdayStudyMinutes() == null) {
-      return "짧게 인사하고, 오늘 컨디션을 한 번만 물어본 뒤 바로 오늘 주제를 꺼내.";
+  // [통화 순서] 1번. 결산 숫자는 질문이 아니라 한 문장으로 말하고 바로 주제로 갑니다.
+  //   지난 통화 뒤 카드가 있음 → "… 결산을 질문 말고 한 문장으로 말해 줘. 예: "지난 통화 뒤로 카드 4장 했고 평균 80%, 2장은 못 했어." …" (#28)
+  //   그 칸이 없고 어제 기록이 있음 → "… 어제 한 것을 한 문장으로 말해 줘. 예: "어제 순공 3시간 10분, 계획의 79%야." …"
+  //   둘 다 없음 → "짧게 인사하고, 오늘 컨디션을 한 번만 물어본 뒤 바로 오늘 주제를 꺼내."
+  // askEmotion 이 true(오늘 감정 기록이 없음)이면 결산 전에 기분을 한 번만 묻습니다. (기획서 "그날 감정 태그가 없으면 1번 전에 묻는다")
+  static String voiceOpening(CallSessionRequest.Card card, boolean askEmotion) {
+    String greet = "짧게 인사하고, ";
+    if (askEmotion) {
+      greet += "오늘 감정 기록이 없으니 기분을 한 번만 물어봐. 답을 들은 뒤 ";
     }
-    return "짧게 인사하고, " + openingStep(card) + " 묻지 말고 말로 해 주고, 그다음 바로 오늘 주제를 꺼내.";
+    String settlement = settlementSentence(card);
+    if (settlement != null) {
+      return greet + "결산을 질문 말고 한 문장으로 말해 줘. 예: \"" + settlement + "\" 그다음 바로 오늘 주제를 꺼내.";
+    }
+    if (card == null || card.yesterdayStudyMinutes() == null) {
+      return askEmotion ? greet + "바로 오늘 주제를 꺼내." : "짧게 인사하고, 오늘 컨디션을 한 번만 물어본 뒤 바로 오늘 주제를 꺼내.";
+    }
+    return greet + openingStep(card) + " 묻지 말고 말로 해 주고, 그다음 바로 오늘 주제를 꺼내.";
+  }
+
+  // 첫마디의 결산 한 문장 예. "지난 통화 이후" 칸으로 코드가 만듭니다. 그 칸이 없거나 카드가 0장이면 null 입니다. (#28)
+  //   (했음 4 · 평균 80 · 못 함 2) → "지난 통화 뒤로 카드 4장 했고 평균 80%, 2장은 못 했어."
+  //   (했음 3 · 평균 90 · 못 함 0) → "지난 통화 뒤로 카드 3장 했고 평균 90%야."
+  //   (했음 0 · 못 함 2)            → "지난 통화 뒤로 카드 2장은 아직 못 했어."
+  //   지난 통화가 없으면(hoursSinceLastCall null) "지난 통화 뒤로" 대신 "최근 하루 동안" (FE 가 최근 24시간으로 셈)
+  static String settlementSentence(CallSessionRequest.Card card) {
+    if (card == null || (card.doneCardCount() == null && card.missedCardCount() == null)) {
+      return null;
+    }
+    int done = card.doneCardCount() == null ? 0 : card.doneCardCount();
+    int missed = card.missedCardCount() == null ? 0 : card.missedCardCount();
+    if (done == 0 && missed == 0) {
+      return null;
+    }
+    String period = card.hoursSinceLastCall() == null ? "최근 하루 동안" : "지난 통화 뒤로";
+    if (done == 0) {
+      return period + " 카드 " + missed + "장은 아직 못 했어.";
+    }
+    String rate = card.cardRunRate() == null ? "" : " 평균 " + card.cardRunRate() + "%";
+    if (missed == 0) {
+      return period + " 카드 " + done + "장 했고" + (rate.isEmpty() ? "." : rate + "야.");
+    }
+    return period
+        + " 카드 "
+        + done
+        + "장 했고"
+        + (rate.isEmpty() ? "," : rate + ",")
+        + " "
+        + missed
+        + "장은 못 했어.";
   }
 
   // [오늘 주제] 칸의 줄들. 첫 줄이 "오늘 통화는 이 주제 하나만 깊게 이야기해: …" 이고, 그 주제를 어떻게 따라갈지가 이어집니다.
@@ -442,6 +512,46 @@ public final class CallScript {
     String head = "- 오늘 통화는 이 주제 하나만 깊게 이야기해: ";
     List<String> lines = new ArrayList<>();
     switch (topic) {
+      case UNHANDLED_CARDS -> {
+        String cause =
+            card.mainMissCause() == null
+                ? ""
+                : " (못 한 이유 1위: " + missReasonLabel(card.mainMissCause()) + ")";
+        lines.add(head + "아직 정리 안 한 카드 " + card.unhandledCardCount() + "장" + cause);
+        lines.add("- 결산 다음에 그 카드를 네가 먼저 꺼내고, 무엇 때문에 못 했는지 하나만 물어봐. 못 한 걸 탓하지 마.");
+        lines.add(
+            "- 답을 따라 카드마다 셋 중 하나로 같이 정해: 원인을 정해 못 한 것으로 남기기 · 더 작게 나누기 · 쉬기(휴식 처리)."
+                + " 쉬기는 아프거나 지쳐서 어쩔 수 없던 날에 권해. 정하는 건 학생이야.");
+      }
+      case REVIEW4 -> {
+        lines.add(head + "4칸 회고 (앱이 최근 카드 기록에서 다시 미끄러지는 신호를 봤어)");
+        lines.add(
+            "- 먼저 격려 한 줄을 하고, 아래 네 칸을 한 번에 하나씩 물어봐. 학생 답에 이미 나온 칸은 건너뛰어. 신호 · 재발 같은 말로 겁주지 마.");
+        lines.add("  ① 사실: 무슨 일이 있었어?");
+        lines.add("  ② 내 선택: 그때 내가 한 선택은 뭐였어?");
+        lines.add("  ③ 대처: 같은 상황이 또 오면 어떻게 할래?");
+        lines.add("  ④ 카드 수정: 카드를 어떻게 고칠까? (시간 · 체크리스트)");
+        lines.add("- 감정과 사실을 나눠서 듣고, 탓하지 마. ④ 는 시간 · 체크리스트처럼 구체적인 한 가지로 정해.");
+      }
+      case GOAL_CHECK -> {
+        lines.add(head + "목표 점검 (2주마다 하는 점검)");
+        lines.add(
+            "- '기록에서 꺼낸 것' 칸의 목표 하나를 골라 지금 페이스를 적힌 숫자로 한 문장 말해 줘."
+                + " 목표가 그 칸에 없으면 어떤 목표인지 하나만 물어봐.");
+        lines.add("- 유지 / 수정 / 포기 중 무엇으로 할지 물어봐. 정하는 건 학생이야. 포기도 실패가 아니라 고르는 거라고 말해 줘.");
+        lines.add("- 수정이나 포기를 고르면, 처음에 이 목표로 이루고 싶었던 좋은 점을 한 번 떠올리게 하고 이유를 한 줄 들어.");
+      }
+      case PREDICT_REVEAL -> {
+        PredictNumber number = predictNumberOf(card);
+        lines.add(head + "예측 후 공개 (" + number.name() + ")");
+        lines.add("- 숫자를 말하기 전에 학생이 먼저 맞혀 보게 해: \"" + number.question() + "\"");
+        lines.add(
+            "- 학생이 답하면 실제 값("
+                + number.answer()
+                + ")을 말해 줘. 가까우면 칭찬하고, 차이가 크면 탓하지 말고 '생각과 실제가 이만큼 달랐네' 로만 짚은 뒤"
+                + " 왜 달랐을지 하나만 같이 생각해.");
+        lines.add("- 학생이 맞히기 전에는 이 숫자를 말하지 마. 첫마디 결산에도 넣지 마.");
+      }
       case PROMISE -> {
         lines.add(head + "지난 통화에서 정한 약속 '" + lastPromise(pastCalls) + "'");
         lines.add("- 첫마디 다음에 그 약속을 네가 먼저 꺼내고, 해 봤는지 하나만 물어봐.");
@@ -467,9 +577,16 @@ public final class CallScript {
         lines.add("- 나간 것을 탓하지 마. 숫자를 한 문장으로 말하고, 그때 무엇 때문에 나가게 됐는지 하나만 물어봐.");
         lines.add("- 답을 따라, 나가고 싶어지는 순간에 바로 할 수 있는 작은 방법 하나를 같이 찾아.");
       }
-      case BIAS -> {
+      case BIAS, DISTORTION -> {
         CognitiveBias bias = biasQuestion.bias();
-        lines.add(head + "생각 습관 '" + bias.getLabel() + "'(" + bias.getDescription() + ")");
+        String kind = topic == CallTopic.DISTORTION ? "생각 습관 피드백 '" : "생각 습관 '";
+        lines.add(head + kind + bias.getLabel() + "'(" + bias.getDescription() + ")");
+        // 왜곡 경향 피드백(FE 모듈 distortionFeedback, 주 1~2회): 학생이 알아차리기를 기다리기 전에 기록 하나를 먼저 짚어 줍니다.
+        if (topic == CallTopic.DISTORTION) {
+          lines.add(
+              "- 이번 주 생각 습관 피드백 날이야. 기록(지난 통화에서 보인 생각 습관 · 어제 이유 · 생각과 실제가 달랐던 점)에서"
+                  + " 이 생각과 이어지는 일을 하나 골라, 탓하지 말고 짧게 먼저 짚어 줘.");
+        }
         // 오늘 습관이 어제 고른 이유에서 나왔으면(폰 → 미래의 나 믿기 등) 이유는 다시 묻지 않고 그때의 생각부터 묻습니다.
         String reason = card == null ? null : card.yesterdayMissReason();
         if (reason != null && BiasQuestion.biasOfMissReason(reason) == bias) {
@@ -527,6 +644,56 @@ public final class CallScript {
       case "tooMuch" -> chosen + "이유를 다시 묻지 말고, 오늘은 줄인 계획을 먼저 제안해.";
       default -> chosen + "이유를 캐묻지 말고 오늘 할 수 있는 것에 집중해.";
     };
+  }
+
+  // [마무리 때 함께] 칸의 줄들. 오늘 주제와 따로, 약속을 정할 때 한 줄로만 다룰 것입니다. 없으면 빈 목록입니다. (#28)
+  //   - 아직 정리 안 한 카드가 있는데 오늘 주제가 그 카드가 아니면: 원인 · 나누기 · 쉬기 중 하나를 한 줄로
+  //   - 다음 통화까지 절대 카드가 있으면: 언제 할지 한 번 확인
+  //   - 확인 통화 날에 오늘 감정 기록이 없으면: 약속 전에 기분을 한 번 (확인 통화는 첫마디를 방금 한 공부로 시작해서 여기에 둡니다)
+  // 위로하는 통화에는 넣지 않습니다. 힘든 날에 못 한 카드 · 해야 할 카드를 꺼내지 않으려는 것입니다.
+  static List<String> closingLines(CallTopic topic, CallSessionRequest.Card card) {
+    List<String> lines = new ArrayList<>();
+    if (topic == CallTopic.COMFORT || card == null) {
+      return lines;
+    }
+    if (card.unhandledCardCount() != null
+        && card.unhandledCardCount() > 0
+        && topic != CallTopic.UNHANDLED_CARDS) {
+      lines.add(
+          "- 아직 정리 안 한 카드 "
+              + card.unhandledCardCount()
+              + "장: 약속을 정할 때 원인 · 나누기 · 쉬기 중 하나를 한 줄로만 정해. 길게 묻지 마.");
+    }
+    if (card.nextAbsoluteCardCount() != null && card.nextAbsoluteCardCount() > 0) {
+      lines.add(
+          "- 다음 통화까지 절대 카드 " + card.nextAbsoluteCardCount() + "장이 있어. 약속을 정할 때 언제 할지 한 번만 확인해.");
+    }
+    if (topic == CallTopic.CHECK_STUDY && Boolean.TRUE.equals(card.emotionTagsMissing())) {
+      lines.add("- 오늘 감정 기록이 없어. 약속 전에 오늘 기분을 한 번만 물어봐.");
+    }
+    return lines;
+  }
+
+  // 예측 후 공개(FE 모듈 predictReveal)에서 학생이 먼저 맞혀 볼 숫자. 이름 · 질문 · 실제 값입니다.
+  public record PredictNumber(String name, String question, String answer) {}
+
+  // 맞혀 볼 숫자를 고릅니다. 이번 주 계획 대비 실제가 먼저, 없으면 평균 시작 지연, 둘 다 없으면 null 입니다.
+  // 숫자는 코드가 정하고 AI 는 그 숫자만 말합니다. 첫마디 결산(카드 실행률)과 겹치지 않는 숫자만 고릅니다.
+  static PredictNumber predictNumberOf(CallSessionRequest.Card card) {
+    if (card == null) {
+      return null;
+    }
+    if (card.weekPlanRate() != null) {
+      return new PredictNumber(
+          "이번 주 계획 대비 실제", "이번 주에 계획한 시간 중 실제로 공부한 건 몇 %였을 것 같아?", card.weekPlanRate() + "%");
+    }
+    if (card.weekStartDelayMinutes() != null) {
+      return new PredictNumber(
+          "이번 주 평균 시작 지연",
+          "이번 주에 계획한 시각보다 평균 몇 분 늦게 시작했을 것 같아?",
+          card.weekStartDelayMinutes() + "분");
+    }
+    return null;
   }
 
   // 음성 통화의 [앱 도구와 안내] 줄들입니다. 도구 이름 · 인자는 FE 의 통화 도구(src/lib/callTools.ts)와 같아야 합니다.
@@ -1145,6 +1312,76 @@ public final class CallScript {
       lines.add("- 아직 기록이 없어. 처음 통화하는 것처럼 대해.");
     }
     return lines;
+  }
+
+  // 음성 통화의 [오늘의 사실]: 위의 사실에 "지난 통화 이후" 숫자를 더합니다. (#28 · #434)
+  // 옛 칸이 하나도 없고 새 칸만 있으면 "아직 기록이 없어" 줄은 빼고 새 칸만 적습니다. (FE 가 옛 칸을 지운 뒤)
+  static List<String> voiceFacts(CallSessionRequest.Card card) {
+    List<String> since = sinceLastCallFacts(card);
+    List<String> base = facts(card);
+    if (since.isEmpty()) {
+      return base;
+    }
+    List<String> lines = new ArrayList<>();
+    if (!(base.size() == 1 && base.get(0).startsWith("- 아직 기록이 없어"))) {
+      lines.addAll(base);
+    }
+    lines.addAll(since);
+    return lines;
+  }
+
+  // "지난 통화 이후" 숫자 줄들. FE 가 기기의 카드 기록으로 센 값입니다. 모르는 값(null)은 줄을 만들지 않습니다. (#28)
+  //   - 지난 통화(5시간 전) 뒤로 실행한 카드: 4장, 평균 실행률 80%
+  //   - 지난 통화(5시간 전) 뒤로 미루거나 못 한 카드: 2장
+  //   - 그중 아직 정리 안 한 카드(미루기 · 실패를 안 고름): 1장
+  //   - 못 한 카드의 이유 1위(학생이 고른 것): 미루다 보니
+  //   - 다음 통화까지(앞으로 24시간) 할 카드: 3장 (그중 절대 카드 1장)
+  //   - 오늘 감정 기록: 아직 없음
+  static List<String> sinceLastCallFacts(CallSessionRequest.Card card) {
+    List<String> lines = new ArrayList<>();
+    if (card == null) {
+      return lines;
+    }
+    String period = sincePeriod(card.hoursSinceLastCall());
+    if (card.doneCardCount() != null) {
+      String line = "- " + period + " 실행한 카드: " + card.doneCardCount() + "장";
+      if (card.cardRunRate() != null) {
+        line += ", 평균 실행률 " + card.cardRunRate() + "%";
+      }
+      lines.add(line);
+    }
+    if (card.missedCardCount() != null) {
+      lines.add("- " + period + " 미루거나 못 한 카드: " + card.missedCardCount() + "장");
+    }
+    if (card.unhandledCardCount() != null && card.unhandledCardCount() > 0) {
+      lines.add("- 그중 아직 정리 안 한 카드(미루기 · 실패를 안 고름): " + card.unhandledCardCount() + "장");
+    }
+    if (card.mainMissCause() != null) {
+      lines.add("- 못 한 카드의 이유 1위(학생이 고른 것): " + missReasonLabel(card.mainMissCause()));
+    }
+    if (card.nextCardCount() != null) {
+      String line = "- 다음 통화까지(앞으로 24시간) 할 카드: " + card.nextCardCount() + "장";
+      if (card.nextAbsoluteCardCount() != null && card.nextAbsoluteCardCount() > 0) {
+        line += " (그중 절대 카드 " + card.nextAbsoluteCardCount() + "장)";
+      }
+      lines.add(line);
+    }
+    if (Boolean.TRUE.equals(card.emotionTagsMissing())) {
+      lines.add("- 오늘 감정 기록: 아직 없음");
+    }
+    return lines;
+  }
+
+  // "지난 통화 뒤로" 의 기간 말. 지난 통화가 없으면 FE 가 최근 24시간으로 셉니다.
+  //   null → "최근 24시간(지난 통화 없음)" / 5 → "지난 통화(5시간 전) 뒤로" / 50 → "지난 통화(2일 전) 뒤로"
+  static String sincePeriod(Integer hoursSinceLastCall) {
+    if (hoursSinceLastCall == null) {
+      return "최근 24시간(지난 통화 없음)";
+    }
+    if (hoursSinceLastCall < 24) {
+      return "지난 통화(" + hoursSinceLastCall + "시간 전) 뒤로";
+    }
+    return "지난 통화(" + hoursSinceLastCall / 24 + "일 전) 뒤로";
   }
 
   // 어제의 달성률(%). 팀의 달성률 식(AchievementRate)으로 서버가 직접 계산합니다. 계산할 수 없으면 null 입니다.

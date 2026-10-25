@@ -1,7 +1,9 @@
 package com.ithopeschool.projectbe.domain.call.dto;
 
+import com.ithopeschool.projectbe.domain.call.CallModule;
 import com.ithopeschool.projectbe.domain.call.ChatRoom;
 import com.ithopeschool.projectbe.domain.call.OtherRoomTalk;
+import com.ithopeschool.projectbe.domain.care.MissReason;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -203,5 +205,98 @@ public record CallSessionRequest(
       // 어제 집중 모드를 스스로 푼 횟수 (설정·안전 브레이크 때문에 저절로 풀린 것은 세지 않습니다)
       @Min(value = 0, message = "yesterdayUnlockCount 는 0 ~ 50 이에요")
           @Max(value = 50, message = "yesterdayUnlockCount 는 0 ~ 50 이에요")
-          Integer yesterdayUnlockCount) {}
+          Integer yesterdayUnlockCount,
+      // ---- 지난 통화 이후 (FE src/lib/callCard.ts 의 SinceLastCallFields, FE #414 · BE #28. 받기 시작
+      // 2026-10-25 #434) ----
+      // 위의 칸과 달리 범위를 벗어나거나 모르는 글자면 400 대신 null(모름)로 바꿔 받습니다. (아래 compact constructor)
+      // FE 가 이미 보내던 칸이라, 모양이 조금 달라도 통화 자체가 막히지 않게 하려는 것입니다. 대본에는 아는 값만 들어갑니다.
+      // 지난 통화가 끝난 뒤 몇 시간 (0 ~ 8760). 통화한 적이 없으면 null → FE 는 최근 24시간으로 셉니다
+      Integer hoursSinceLastCall,
+      // 지난 통화 이후 실행한 카드 수 (0 ~ 50)
+      Integer doneCardCount,
+      // 실행한 카드의 평균 실행률 (0 ~ 100). 실행한 카드가 없으면 null
+      Integer cardRunRate,
+      // 미루거나 못 한 카드 수 (0 ~ 50)
+      Integer missedCardCount,
+      // 그중 아직 미루기 · 실패를 고르지 않은 카드 수 (0 ~ 50). 통화에서 원인 · 나누기 · 쉬기를 정합니다
+      Integer unhandledCardCount,
+      // 미실행 원인 1위. MissReason 글자(tired · event · phone · tooMuch · unwilling · sick ·
+      // procrastinated · etc)
+      String mainMissCause,
+      // 다음 통화까지(앞으로 24시간) 할 카드 수 (0 ~ 50)
+      Integer nextCardCount,
+      // 그중 절대(미룰 수 없는) 카드 수 (0 ~ 50)
+      Integer nextAbsoluteCardCount,
+      // 오늘 감정 태그를 안 골랐으면 true (결산 전에 기분을 한 번 묻습니다)
+      Boolean emotionTagsMissing,
+      // 이번 통화에 넣을 조건부 모듈 하나 (CallModule 의 글자). 없으면 null
+      String callModule) {
+
+    // 지난 통화 뒤 시간 · 카드 수 · 실행률의 범위
+    public static final int MAX_HOURS_SINCE_LAST_CALL = 8760;
+    public static final int MAX_CARD_COUNT = 50;
+
+    // "지난 통화 이후" 칸을 정리합니다. 범위 밖 숫자 · 모르는 글자는 null(모름)입니다. 위의 옛 칸은 그대로 둡니다.
+    //   doneCardCount 51 → null / cardRunRate -1 → null / mainMissCause "lazy" → null / callModule
+    // "quiz" → null
+    public Card {
+      hoursSinceLastCall = inRangeOrNull(hoursSinceLastCall, MAX_HOURS_SINCE_LAST_CALL);
+      doneCardCount = inRangeOrNull(doneCardCount, MAX_CARD_COUNT);
+      cardRunRate = inRangeOrNull(cardRunRate, 100);
+      missedCardCount = inRangeOrNull(missedCardCount, MAX_CARD_COUNT);
+      unhandledCardCount = inRangeOrNull(unhandledCardCount, MAX_CARD_COUNT);
+      mainMissCause = MissReason.fromValue(mainMissCause) == null ? null : mainMissCause;
+      nextCardCount = inRangeOrNull(nextCardCount, MAX_CARD_COUNT);
+      nextAbsoluteCardCount = inRangeOrNull(nextAbsoluteCardCount, MAX_CARD_COUNT);
+      callModule = CallModule.from(callModule).isPresent() ? callModule : null;
+    }
+
+    // "지난 통화 이후" 칸 없이 만드는 모양 (서버 카드 · 테스트 · #434 전의 FE). 새 칸은 모두 null(모름)입니다.
+    public Card(
+        Integer yesterdayStudyMinutes,
+        Integer yesterdayPlanMinutes,
+        String yesterdayMissReason,
+        Integer todayPlanCount,
+        Integer todayPlanMinutes,
+        String todayFirstStart,
+        Integer weekPlanRate,
+        Integer weekCompletionRate,
+        Integer weekStartDelayMinutes,
+        List<Integer> recentMoods,
+        Integer streakDays,
+        Integer yesterdayAwayCount,
+        Integer yesterdayAwayPeakHour,
+        Integer yesterdayUnlockCount) {
+      this(
+          yesterdayStudyMinutes,
+          yesterdayPlanMinutes,
+          yesterdayMissReason,
+          todayPlanCount,
+          todayPlanMinutes,
+          todayFirstStart,
+          weekPlanRate,
+          weekCompletionRate,
+          weekStartDelayMinutes,
+          recentMoods,
+          streakDays,
+          yesterdayAwayCount,
+          yesterdayAwayPeakHour,
+          yesterdayUnlockCount,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null);
+    }
+
+    // 0 ~ max 안이면 그대로, 아니면 null(모름)
+    private static Integer inRangeOrNull(Integer value, int max) {
+      return value == null || value < 0 || value > max ? null : value;
+    }
+  }
 }

@@ -979,4 +979,76 @@ class CallServiceTest {
     // 채팅은 주제를 고르지 않아서, 생각 습관 질문을 예전처럼 기록합니다.
     assertThat(script.biasQuestion()).isNotNull();
   }
+
+  // ---- FE 조건부 모듈 (BE #28) ----
+
+  // REQUEST 카드(폰 때문에 못 채움)에 조건부 모듈만 더한 카드
+  private static Card cardWithModule(String module) {
+    return new Card(
+        100,
+        240,
+        "phone",
+        3,
+        180,
+        "19:00",
+        64,
+        55,
+        10,
+        List.of(3, 3),
+        4,
+        null,
+        null,
+        null,
+        5,
+        2,
+        70,
+        1,
+        0,
+        null,
+        3,
+        0,
+        false,
+        module);
+  }
+
+  @Test
+  @DisplayName("FE 카드의 모듈이 safetyBrake 면 관리 강도와 상관없이 위로하는 통화다 (생각 습관 · 확인 통화 없음, 채팅은 그대로)")
+  void comfortModuleFromFeMakesSupportiveCall() {
+    given(checkCallService.gateOf(USER_ID, TODAY)).willReturn(CheckCall.Gate.open(STUDIED));
+    CallSessionRequest request =
+        new CallSessionRequest(3, 5, cardWithModule("safetyBrake"), null, null);
+
+    callService.startSession(request);
+
+    assertThat(sentInstructions())
+        .contains("위로하고 응원하는 말만")
+        .doesNotContain("[생각 습관]")
+        .doesNotContain("[방금 공부한 것]");
+    assertThat(savedRecord().getAskedBias()).isNull();
+    // 상담 채팅은 모듈을 보지 않습니다.
+    assertThat(
+            callService
+                .prepareScript(USER_ID, request, NOW, TODAY, CallChannel.CHAT)
+                .instructions())
+        .doesNotContain("위로하고 응원하는 말만");
+  }
+
+  @Test
+  @DisplayName("FE 모듈 distortionFeedback 이면 생각 습관 피드백이 주제라서, 고른 생각 습관 질문을 통화 기록에 남긴다")
+  void distortionModuleKeepsTheBiasQuestion() {
+    callService.startSession(
+        new CallSessionRequest(2, 3, cardWithModule("distortionFeedback"), null, null));
+
+    assertThat(sentInstructions()).contains("생각 습관 피드백 '미래의 나 믿기'", "[생각 습관]");
+    assertThat(savedRecord().getAskedQuestionKey()).isEqualTo("FUTURE_SELF-0");
+  }
+
+  @Test
+  @DisplayName("FE 모듈 review4 면 4칸 회고가 주제라서 생각 습관 질문은 기록하지 않는다")
+  void review4ModuleDropsTheBiasQuestion() {
+    callService.startSession(new CallSessionRequest(2, 3, cardWithModule("review4"), null, null));
+
+    assertThat(sentInstructions()).contains("4칸 회고").doesNotContain("[생각 습관]");
+    assertThat(savedRecord().getAskedBias()).isNull();
+  }
 }

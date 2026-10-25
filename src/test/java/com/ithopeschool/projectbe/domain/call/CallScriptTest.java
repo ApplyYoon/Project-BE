@@ -1100,4 +1100,239 @@ class CallScriptTest {
     assertThat(CallScript.voiceTopic(0, ORDINARY, question, withPromise, true))
         .isEqualTo(CallTopic.COMFORT);
   }
+
+  // ---- 지난 통화 이후 · 조건부 모듈 (BE #28, FE src/lib/callCard.ts) ----
+
+  // 보통 날 카드(ORDINARY 와 같은 옛 칸)에 "지난 통화 이후" 칸을 더합니다.
+  private static Card since(
+      Integer hours,
+      Integer done,
+      Integer rate,
+      Integer missed,
+      Integer unhandled,
+      String cause,
+      Integer nextAbsolute,
+      Boolean emotionMissing,
+      String module) {
+    return new Card(
+        190,
+        240,
+        "phone",
+        3,
+        180,
+        "19:00",
+        64,
+        55,
+        10,
+        List.of(3, 3, 4),
+        4,
+        null,
+        null,
+        null,
+        hours,
+        done,
+        rate,
+        missed,
+        unhandled,
+        cause,
+        3,
+        nextAbsolute,
+        emotionMissing,
+        module);
+  }
+
+  @Test
+  @DisplayName("첫마디 결산 한 문장: 지난 통화 뒤 카드 수 · 평균 실행률 · 못 한 수를 질문이 아니라 말로 한다")
+  void settlementSentence() {
+    assertThat(CallScript.settlementSentence(since(5, 4, 80, 2, 0, null, 0, false, null)))
+        .isEqualTo("지난 통화 뒤로 카드 4장 했고 평균 80%, 2장은 못 했어.");
+    assertThat(CallScript.settlementSentence(since(5, 3, 90, 0, 0, null, 0, false, null)))
+        .isEqualTo("지난 통화 뒤로 카드 3장 했고 평균 90%야.");
+    assertThat(CallScript.settlementSentence(since(5, 3, null, 1, 0, null, 0, false, null)))
+        .isEqualTo("지난 통화 뒤로 카드 3장 했고, 1장은 못 했어.");
+    assertThat(CallScript.settlementSentence(since(5, 0, null, 2, 2, null, 0, false, null)))
+        .isEqualTo("지난 통화 뒤로 카드 2장은 아직 못 했어.");
+    // 지난 통화가 없으면 FE 가 최근 24시간으로 셉니다.
+    assertThat(CallScript.settlementSentence(since(null, 2, 70, 0, 0, null, 0, false, null)))
+        .isEqualTo("최근 하루 동안 카드 2장 했고 평균 70%야.");
+    // 새 칸이 없거나 카드가 0장이면 결산 문장이 없고, 첫마디는 예전처럼 어제 숫자로 말합니다.
+    assertThat(CallScript.settlementSentence(ORDINARY)).isNull();
+    assertThat(CallScript.settlementSentence(since(5, 0, null, 0, 0, null, 0, false, null)))
+        .isNull();
+
+    String script = CallScript.instructions(2, 3, since(5, 4, 80, 2, 0, null, 0, false, null));
+    assertThat(script)
+        .contains("1. 짧게 인사하고, 결산을 질문 말고 한 문장으로 말해 줘. 예: \"지난 통화 뒤로 카드 4장 했고 평균 80%, 2장은 못 했어.\"")
+        .doesNotContain("어제 한 것을 한 문장으로 말해 줘");
+    assertThat(CallScript.instructions(2, 3, ORDINARY)).contains("어제 한 것을 한 문장으로 말해 줘");
+  }
+
+  @Test
+  @DisplayName("[오늘의 사실] 에 '지난 통화 이후' 숫자를 적는다 (음성 통화만, 채팅은 그대로)")
+  void sinceLastCallFacts() {
+    Card card = since(5, 4, 80, 2, 1, "procrastinated", 1, true, null);
+
+    assertThat(CallScript.sinceLastCallFacts(card))
+        .containsExactly(
+            "- 지난 통화(5시간 전) 뒤로 실행한 카드: 4장, 평균 실행률 80%",
+            "- 지난 통화(5시간 전) 뒤로 미루거나 못 한 카드: 2장",
+            "- 그중 아직 정리 안 한 카드(미루기 · 실패를 안 고름): 1장",
+            "- 못 한 카드의 이유 1위(학생이 고른 것): 미루다 보니",
+            "- 다음 통화까지(앞으로 24시간) 할 카드: 3장 (그중 절대 카드 1장)",
+            "- 오늘 감정 기록: 아직 없음");
+    assertThat(CallScript.sincePeriod(null)).isEqualTo("최근 24시간(지난 통화 없음)");
+    assertThat(CallScript.sincePeriod(50)).isEqualTo("지난 통화(2일 전) 뒤로");
+    // 옛 칸이 하나도 없고 새 칸만 있으면 "아직 기록이 없어" 는 빼고 새 칸만 적습니다.
+    Card onlySince =
+        new Card(
+            null, null, null, null, null, null, null, null, null, null, null, null, null, null, 5,
+            4, 80, 0, 0, null, null, null, null, null);
+    assertThat(CallScript.voiceFacts(onlySince))
+        .containsExactly(
+            "- 지난 통화(5시간 전) 뒤로 실행한 카드: 4장, 평균 실행률 80%", "- 지난 통화(5시간 전) 뒤로 미루거나 못 한 카드: 0장");
+
+    assertThat(CallScript.instructions(2, 3, card)).contains("- 다음 통화까지(앞으로 24시간) 할 카드: 3장");
+    assertThat(CallScript.chatInstructions(2, 3, card, null, List.of(), CallScript.SelfReport.NONE))
+        .doesNotContain("지난 통화(5시간 전)")
+        .doesNotContain("절대 카드");
+  }
+
+  @Test
+  @DisplayName("오늘 감정 기록이 없으면 결산 전에 기분을 한 번만 묻는다 (위로하는 날은 이미 기분부터라 따로 넣지 않음)")
+  void asksEmotionOnceBeforeSettlement() {
+    Card card = since(5, 4, 80, 0, 0, null, 0, true, null);
+
+    assertThat(CallScript.instructions(2, 3, card))
+        .contains("1. 짧게 인사하고, 오늘 감정 기록이 없으니 기분을 한 번만 물어봐. 답을 들은 뒤 결산을 질문 말고 한 문장으로 말해 줘.");
+    assertThat(CallScript.instructions(0, 3, card)).doesNotContain("오늘 감정 기록이 없으니");
+    // 확인 통화 날은 첫마디가 방금 한 공부라서, 약속 전에 한 번 묻습니다.
+    assertThat(
+            CallScript.instructions(
+                2,
+                3,
+                card,
+                null,
+                List.of(),
+                CallScript.SelfReport.NONE,
+                RiskLevel.NONE,
+                new CallScript.VoiceCall(300, true)))
+        .contains("[마무리 때 함께]", "- 오늘 감정 기록이 없어. 약속 전에 오늘 기분을 한 번만 물어봐.");
+  }
+
+  @Test
+  @DisplayName("정리 안 한 카드가 주제면 원인 · 나누기 · 쉬기 중 하나를 정하고, 다른 주제면 약속 때 한 줄로만 다룬다")
+  void unhandledCardsTopicAndClosing() {
+    String topic =
+        CallScript.instructions(
+            2, 3, since(5, 2, 70, 2, 2, "procrastinated", 0, false, null), null);
+    assertThat(topic)
+        .contains("이 주제 하나만 깊게 이야기해: 아직 정리 안 한 카드 2장 (못 한 이유 1위: 미루다 보니)")
+        .contains("원인을 정해 못 한 것으로 남기기 · 더 작게 나누기 · 쉬기(휴식 처리)")
+        .doesNotContain("[마무리 때 함께]");
+
+    List<CallScript.PastCall> withPromise =
+        List.of(past(LocalDate.of(2026, 10, 13), "요약", null, "만약 A → B", null));
+    String promiseDay =
+        CallScript.instructions(
+            2, 3, since(5, 2, 70, 2, 2, null, 1, false, null), null, withPromise);
+    assertThat(promiseDay)
+        .contains("이 주제 하나만 깊게 이야기해: 지난 통화에서 정한 약속")
+        .contains("[마무리 때 함께]")
+        .contains("- 아직 정리 안 한 카드 2장: 약속을 정할 때 원인 · 나누기 · 쉬기 중 하나를 한 줄로만 정해.")
+        .contains("- 다음 통화까지 절대 카드 1장이 있어. 약속을 정할 때 언제 할지 한 번만 확인해.");
+    // 위로하는 날에는 못 한 카드 · 해야 할 카드를 꺼내지 않습니다.
+    assertThat(CallScript.instructions(0, 3, since(5, 2, 70, 2, 2, null, 1, false, null)))
+        .doesNotContain("[마무리 때 함께]");
+  }
+
+  @Test
+  @DisplayName("FE 모듈 safetyBrake · recovery 는 관리 강도와 상관없이 위로하는 통화다 (회복 모드는 What if 한 줄)")
+  void comfortModulesMakeASupportiveCall() {
+    String brake =
+        CallScript.instructions(3, 5, since(5, 2, 70, 2, 2, null, 1, false, "safetyBrake"));
+    String recovery =
+        CallScript.instructions(3, 5, since(5, 2, 70, 2, 2, null, 1, false, "recovery"));
+
+    for (String script : List.of(brake, recovery)) {
+      assertThat(script)
+          .contains("위로하고 응원하는 말만 해")
+          .contains("1. 짧게 인사하고, 요즘 기분이 어떤지 먼저 물어봐.")
+          .doesNotContain("[생각 습관]", "[오늘 주제]", "돌려 말하지 말고 짚어");
+    }
+    assertThat(recovery).contains("오늘은 회복 모드야.", "What if");
+    assertThat(brake).doesNotContain("회복 모드");
+    assertThat(CallScript.voiceCareLevel(3, since(5, 2, 70, 2, 2, null, 1, false, "safetyBrake")))
+        .isZero();
+    assertThat(CallScript.voiceCareLevel(3, since(5, 2, 70, 2, 2, null, 1, false, "review4")))
+        .isEqualTo(3);
+    // 상담 채팅은 모듈을 보지 않습니다. (채팅 대본은 그대로)
+    assertThat(
+            CallScript.chatInstructions(
+                3,
+                5,
+                since(5, 2, 70, 2, 2, null, 1, false, "safetyBrake"),
+                null,
+                List.of(),
+                CallScript.SelfReport.NONE))
+        .doesNotContain("위로하고 응원하는 말만 해");
+  }
+
+  @Test
+  @DisplayName("FE 모듈이 오늘 주제가 된다: 4칸 회고 · 목표 점검 · 생각 습관 피드백 · 예측 후 공개")
+  void moduleTopics() {
+    assertThat(CallScript.instructions(2, 3, since(5, 2, 70, 1, 0, null, 0, false, "review4")))
+        .contains("이 주제 하나만 깊게 이야기해: 4칸 회고")
+        .contains("① 사실: 무슨 일이 있었어?", "② 내 선택:", "③ 대처:", "④ 카드 수정: 카드를 어떻게 고칠까? (시간 · 체크리스트)")
+        .doesNotContain("[생각 습관]");
+    assertThat(CallScript.instructions(2, 3, since(5, 2, 70, 1, 0, null, 0, false, "goalCheck")))
+        .contains("이 주제 하나만 깊게 이야기해: 목표 점검 (2주마다 하는 점검)", "유지 / 수정 / 포기");
+
+    // 왜곡 경향 피드백은 생각 습관 질문과 [생각 습관] 칸을 씁니다.
+    String distortion =
+        CallScript.instructions(
+            2,
+            3,
+            since(5, 2, 70, 1, 0, null, 0, false, "distortionFeedback"),
+            new BiasQuestion(CognitiveBias.FUTURE_SELF, 0));
+    assertThat(distortion)
+        .contains("[생각 습관]")
+        .contains("이 주제 하나만 깊게 이야기해: 생각 습관 피드백 '미래의 나 믿기'")
+        .contains("이번 주 생각 습관 피드백 날이야.");
+
+    // 예측 후 공개: 이번 주 계획 대비 실제(64%)를 먼저 맞혀 보게 하고, 맞히기 전에는 말하지 않게 합니다.
+    String predict =
+        CallScript.instructions(2, 3, since(5, 2, 70, 1, 0, null, 0, false, "predictReveal"));
+    assertThat(predict)
+        .contains("이 주제 하나만 깊게 이야기해: 예측 후 공개 (이번 주 계획 대비 실제)")
+        .contains("\"이번 주에 계획한 시간 중 실제로 공부한 건 몇 %였을 것 같아?\"")
+        .contains("실제 값(64%)")
+        .contains("학생이 맞히기 전에는 이 숫자를 말하지 마");
+    Card onlyDelay =
+        new Card(
+            190,
+            240,
+            null,
+            3,
+            180,
+            "19:00",
+            null,
+            55,
+            23,
+            null,
+            4,
+            null,
+            null,
+            null,
+            5,
+            2,
+            70,
+            1,
+            0,
+            null,
+            3,
+            0,
+            false,
+            "predictReveal");
+    assertThat(CallScript.predictNumberOf(onlyDelay).answer()).isEqualTo("23분");
+  }
 }

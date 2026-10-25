@@ -76,4 +76,92 @@ class CallTopicTest {
     // 기록이 없는 첫 통화
     assertThat(CallTopic.pick(false, false, null, null, null)).isEqualTo(CallTopic.TODAY);
   }
+
+  // ---- FE 조건부 모듈 · 지난 통화 이후 카드 (BE #28) ----
+
+  // 보통 날 카드에 조건부 모듈 · 정리 안 한 카드 수만 더한 카드 (주간 계획 대비 실제 64% · 시작 지연 10분)
+  private static Card withModule(String module, Integer unhandled) {
+    return new Card(
+        190, 240, null, 3, 180, "19:00", 64, 55, 10, null, 4, 0, null, null, 5, 4, 80, 2, unhandled,
+        null, 3, 0, false, module);
+  }
+
+  @Test
+  @DisplayName("FE 모듈 safetyBrake · recovery 는 위로하는 통화다 (확인 통화 · 약속보다 먼저)")
+  void comfortModules() {
+    assertThat(CallTopic.pick(false, true, withModule("safetyBrake", 0), PROMISE, QUESTION))
+        .isEqualTo(CallTopic.COMFORT);
+    assertThat(CallTopic.pick(false, false, withModule("recovery", 0), PROMISE, QUESTION))
+        .isEqualTo(CallTopic.COMFORT);
+  }
+
+  @Test
+  @DisplayName("FE 모듈이 오면 그 모듈이 오늘 주제다 (약속 · 정리 안 한 카드 · 습관보다 먼저, 확인 통화보다는 뒤)")
+  void moduleBecomesTheTopic() {
+    assertThat(CallTopic.pick(false, false, withModule("review4", 2), PROMISE, QUESTION))
+        .isEqualTo(CallTopic.REVIEW4);
+    assertThat(CallTopic.pick(false, false, withModule("goalCheck", 2), PROMISE, QUESTION))
+        .isEqualTo(CallTopic.GOAL_CHECK);
+    assertThat(CallTopic.pick(false, false, withModule("distortionFeedback", 0), PROMISE, QUESTION))
+        .isEqualTo(CallTopic.DISTORTION);
+    assertThat(CallTopic.pick(false, false, withModule("predictReveal", 0), PROMISE, QUESTION))
+        .isEqualTo(CallTopic.PREDICT_REVEAL);
+    // 확인 통화(오늘 끝낸 공부)는 위로 쪽이 아닌 모듈보다 먼저입니다.
+    assertThat(CallTopic.pick(false, true, withModule("review4", 0), null, null))
+        .isEqualTo(CallTopic.CHECK_STUDY);
+  }
+
+  @Test
+  @DisplayName("모듈을 할 재료가 없으면(짚을 생각 습관 · 맞혀 볼 숫자 없음) 서버 규칙으로 고른다")
+  void moduleWithoutMaterialFallsBack() {
+    assertThat(CallTopic.pick(false, false, withModule("distortionFeedback", 0), PROMISE, null))
+        .isEqualTo(CallTopic.PROMISE);
+    Card noWeekNumbers =
+        new Card(
+            190,
+            240,
+            null,
+            3,
+            180,
+            "19:00",
+            null,
+            null,
+            null,
+            null,
+            4,
+            0,
+            null,
+            null,
+            5,
+            4,
+            80,
+            2,
+            0,
+            null,
+            3,
+            0,
+            false,
+            "predictReveal");
+    assertThat(CallTopic.pick(false, false, noWeekNumbers, null, null)).isEqualTo(CallTopic.TODAY);
+  }
+
+  @Test
+  @DisplayName("정리 안 한 카드가 있으면 약속 다음, 시작 지연 · 생각 습관보다 먼저 주제가 된다")
+  void unhandledCards() {
+    assertThat(CallTopic.pick(false, false, withModule(null, 2), null, QUESTION))
+        .isEqualTo(CallTopic.UNHANDLED_CARDS);
+    assertThat(CallTopic.pick(false, false, withModule(null, 2), PROMISE, QUESTION))
+        .isEqualTo(CallTopic.PROMISE);
+    assertThat(CallTopic.pick(false, false, withModule(null, 0), null, QUESTION))
+        .isEqualTo(CallTopic.BIAS);
+  }
+
+  @Test
+  @DisplayName("생각 습관 질문은 BIAS · DISTORTION 주제에서만 쓴다 (그날만 [생각 습관] 칸 · 질문 기록)")
+  void onlyBiasTopicsUseTheQuestion() {
+    for (CallTopic topic : CallTopic.values()) {
+      assertThat(topic.usesBiasQuestion())
+          .isEqualTo(topic == CallTopic.BIAS || topic == CallTopic.DISTORTION);
+    }
+  }
 }
