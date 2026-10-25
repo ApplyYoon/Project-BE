@@ -44,6 +44,23 @@ class CallScriptTest {
   // ---- 말투 ----
 
   @Test
+  @DisplayName("회복 말투는 학생이 직접 정한 양을 줄이라고 하지 않는다 (\"1시간만\" 에 \"10분만\" 으로 어긋나던 것)")
+  void supportToneKeepsStudentChoice() {
+    assertThat(CallScript.toneRule(0, 3, ORDINARY))
+        .contains("학생이 할 양을 아직 안 정했으면 오늘은 10분만 해도 충분하다고")
+        .contains("학생이 직접 정한 양(예: 1시간)은 그대로 두고 줄이라고 하지 마");
+  }
+
+  @Test
+  @DisplayName("[오늘 학교] 칸은 다른 날 시간표를 '오늘 배운' 과목으로 말하지 말라고 적는다 (주말)")
+  void schoolSectionWarnsAboutOtherDayTimetable() {
+    String section = CallScript.schoolSection(List.of("- 월요일(10/26) 시간표: 1교시 대수, 2교시 문학"));
+
+    assertThat(section).contains("[오늘 학교]").contains("'오늘 배운' 이라고 하지 말고 그날 수업 예습으로만 말해");
+    assertThat(CallScript.schoolSection(List.of())).isEmpty();
+  }
+
+  @Test
   @DisplayName("관리 강도에 따라 말투가 달라진다 (회복·당근·넛지·채찍)")
   void toneFollowsCareLevel() {
     assertThat(CallScript.toneRule(0, 3, ORDINARY)).contains("위로하고 응원하는 말만");

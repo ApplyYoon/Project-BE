@@ -811,6 +811,10 @@ public final class CallScript {
     lines.add("- 학생이 다니는 학교의 공개된 오늘 정보야. 적힌 것만 말하고 지어내지 마.");
     lines.addAll(schoolLines);
     lines.add("- 인사할 때 이 중 하나만 가볍게 꺼내(예: 급식, 오늘 배운 과목). 오늘 할 공부를 오늘 배운 과목과 이어 줘.");
+    // 주말에는 시간표 줄이 "월요일(10/26) 시간표" 로 오는데, 위 지시 때문에 AI 가 "오늘 배운 대수" 라고 말했습니다. (#451)
+    lines.add(
+        "- 시간표가 '오늘' 이 아니라 '월요일(10/26)' 처럼 다른 날이면 아직 배우지 않은 과목이야."
+            + " '오늘 배운' 이라고 하지 말고 그날 수업 예습으로만 말해.");
     lines.add("- 시험이 가까우면 남은 날만 말하고 겁주지 마.");
     return String.join("\n", lines);
   }
@@ -1206,7 +1210,11 @@ public final class CallScript {
   //   관리 강도 3·4(채찍) + 독설 수위 3 이상   -> 솔직하게 짚되 사람은 깎아내리지 않기
   static String toneRule(int careLevel, int maxHarshness, CallSessionRequest.Card card) {
     return switch (ToneGuide.toneOf(careLevel, maxHarshness, isMoodLow(card))) {
-      case SUPPORT -> "위로하고 응원하는 말만 해. 아쉬운 점을 지적하지 마. 오늘은 10분만 해도 충분하다고 말해 줘.";
+      // 학생이 "1시간만 할래" 처럼 양을 정했는데 "10분만 해도 충분" 이라고 해서 말이 어긋났습니다. (#451)
+      case SUPPORT ->
+          "위로하고 응원하는 말만 해. 아쉬운 점을 지적하지 마."
+              + " 학생이 할 양을 아직 안 정했으면 오늘은 10분만 해도 충분하다고 말해 줘."
+              + " 학생이 직접 정한 양(예: 1시간)은 그대로 두고 줄이라고 하지 마.";
       case PRAISE -> "잘한 점을 숫자와 함께 구체적으로 칭찬해. 아쉬운 점은 한 가지만, 부드럽게 말해.";
       case PLAIN -> "담백하게 사실만 말해. 칭찬도 지적도 길게 하지 마. 꾸짖는 말은 쓰지 마.";
       case FRANK ->
