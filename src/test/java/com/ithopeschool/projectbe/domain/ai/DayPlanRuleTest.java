@@ -167,6 +167,20 @@ class DayPlanRuleTest {
   }
 
   @Test
+  @DisplayName("먼저 할 것이 있으면 이름이 겹치는 목표를 첫 칸으로 옮기고, 없으면 첫 칸은 목표 없이 둔다")
+  void withFirstTask() {
+    DayPlanRule.GoalInfo words = new DayPlanRule.GoalInfo("4", "기말 전 영단어장 1회독", 13, "22쪽");
+    DayPlanRule.GoalInfo math = new DayPlanRule.GoalInfo("5", "11월 학평 수학 3등급", 33, null);
+
+    assertThat(DayPlanRule.withFirstTask(List.of(words, math), "수학 오답"))
+        .containsExactly(math, words);
+    assertThat(DayPlanRule.withFirstTask(List.of(words, words), "국어 비문학"))
+        .containsExactly(null, words);
+    assertThat(DayPlanRule.withFirstTask(List.of(words, math), null)).containsExactly(words, math);
+    assertThat(DayPlanRule.withFirstTask(List.of(), "수학 오답")).isEmpty();
+  }
+
+  @Test
   @DisplayName("완주형 하루 분량은 남은 분량 ÷ 남은 날(그날 포함) 올림 (FE getDailyPace 와 같은 예시)")
   void dailyPace() {
     assertThat(DayPlanRule.dailyPaceOf(300, 9)).isEqualTo(30);

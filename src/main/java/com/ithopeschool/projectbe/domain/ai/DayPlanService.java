@@ -276,10 +276,16 @@ public class DayPlanService {
       goalInfos.add(new DayPlanRule.GoalInfo(id, goal.getTitle(), daysLeft, pace));
       goalsById.put(id, goal);
     }
-    List<DayPlanRule.GoalInfo> rotation = DayPlanRule.goalRotation(goalInfos, placed.size());
+    // 학생이 계획 방에서 먼저 할 것을 정했으면 첫 칸을 그것으로 합니다. (#454)
+    List<DayPlanRule.GoalInfo> rotation =
+        DayPlanRule.withFirstTask(
+            DayPlanRule.goalRotation(goalInfos, placed.size()), request.firstTask());
     String goalLine =
         rotation.isEmpty() ? "진행 중인 목표가 없어서 최근 카드로 채웠어요" : "D-day 가 가까운 목표를 더 많이 넣었어요";
     List<String> evidence = evidenceOf(headline, timeLines, block, goalLine, total);
+    if (request.firstTask() != null) {
+      evidence.add("계획 방에서 「" + request.firstTask() + "」 을 먼저 하기로 해서 첫 칸에 넣었어요");
+    }
 
     // 4) 글 (AI, 안 되면 기본 글)
     List<Card> myCards = cardRepository.findByUserIdOrderById(userId);
@@ -317,7 +323,8 @@ public class DayPlanService {
               date,
               DayPlanRule.timeTextOf(placed.get(i).start()),
               placed.get(i).minutes(),
-              texts.get(i).title(),
+              // 첫 칸 제목은 학생이 정한 그대로 둡니다. (AI 가 목표 이름으로 바꿔 쓰지 않게)
+              i == 0 && request.firstTask() != null ? request.firstTask() : texts.get(i).title(),
               texts.get(i).checklist(),
               goal == null ? null : goal.id()));
     }
@@ -630,6 +637,9 @@ public class DayPlanService {
     }
     if (!request.subjects().isEmpty()) {
       lines.add("오늘 배운 과목: " + String.join(", ", request.subjects()));
+    }
+    if (request.firstTask() != null) {
+      lines.add("먼저 할 것(첫 칸): " + request.firstTask());
     }
     // 위기 표현이 있는 줄은 빼고, 6줄 · 80자로 줄여서 한 줄로 붙입니다. (OtherRoomTalk)
     OtherRoomTalk.planLine(request.otherRooms()).ifPresent(lines::add);
