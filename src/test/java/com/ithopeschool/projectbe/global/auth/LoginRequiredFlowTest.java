@@ -203,6 +203,9 @@ class LoginRequiredFlowTest {
               "/api/v1/weekly-goals",
               "/api/v1/weekly-goals?from=2026-10-01&to=2026-10-31",
               null),
+          // 주간 점수 (내 퀴즈 결과 · 계획 · 기록을 봅니다. 이슈 #412)
+          new Api(
+              "GET", "/api/v1/weekly-scores/{weekStart}", "/api/v1/weekly-scores/2026-10-19", null),
           // 달력 (내 카드 결과 · 체크인을 봅니다. 이슈 #235)
           new Api("GET", "/api/v1/calendar", "/api/v1/calendar?month=2026-10", null),
           // 관리 단계 (내 카드 결과 · 체크인으로 판정해 저장합니다. 이슈 #62)
