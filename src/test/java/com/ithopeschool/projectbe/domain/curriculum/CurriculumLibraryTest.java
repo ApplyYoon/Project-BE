@@ -3,7 +3,10 @@ package com.ithopeschool.projectbe.domain.curriculum;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,6 +42,20 @@ class CurriculumLibraryTest {
             });
     assertThat(all.stream().map(AchievementStandard::code).distinct().count())
         .isEqualTo(all.size());
+  }
+
+  @Test
+  @DisplayName("한 과목의 코드는 앞부분이 모두 같다 (해설에 잘못 적힌 '[12동역-01-01]' 같은 줄이 섞이지 않게)")
+  void codesShareSubjectPrefix() {
+    // 코드 끝의 "두자리-두자리" 를 뗀 앞부분. 12동역01-01 → "12동역", 10공수1-01-01 → "10공수1-"
+    Map<String, Set<String>> prefixes = new TreeMap<>();
+    for (AchievementStandard s : library.standards("2022")) {
+      prefixes
+          .computeIfAbsent(s.subject(), subject -> new TreeSet<>())
+          .add(s.code().replaceAll("\\d\\d-\\d\\d$", ""));
+    }
+
+    assertThat(prefixes).allSatisfy((subject, set) -> assertThat(set).as(subject).hasSize(1));
   }
 
   @Test
