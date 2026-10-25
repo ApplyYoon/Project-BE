@@ -174,6 +174,26 @@ public class CallService {
       LocalDate today,
       CallChannel channel,
       CheckCall.Studied studied) {
+    return prepareScript(userId, request, now, today, channel, studied, null);
+  }
+
+  // 상담 채팅(ChatService)의 대본입니다. 방(room)에 따라 대본이 조금 달라집니다. (2026-10-25 #431)
+  // 계획 방(PLANNER)이면 [생각 습관] · [통화 순서] 를 넣지 않고(CallScript.chatInstructions),
+  // 생각 습관 질문도 고르지 않습니다(biasQuestion 은 null). 묻지 않은 질문이 "물어본 질문" 으로 기록에 남지 않게 하려는 것입니다.
+  Script prepareChatScript(
+      Long userId, CallSessionRequest request, Instant now, LocalDate today, ChatRoom room) {
+    return prepareScript(userId, request, now, today, CallChannel.CHAT, null, room);
+  }
+
+  // room 은 상담 채팅의 방입니다. 음성 통화 · 방을 모르는 채팅은 null 이고, 그러면 상담 방과 같습니다.
+  private Script prepareScript(
+      Long userId,
+      CallSessionRequest request,
+      Instant now,
+      LocalDate today,
+      CallChannel channel,
+      CheckCall.Studied studied,
+      ChatRoom room) {
     // 최근 2주의 내 통화 기록 (최근 것이 앞)
     List<CallRecord> recentCalls =
         callRecordRepository.findByUserIdAndCallDateGreaterThanEqualOrderByStartedAtDescIdDesc(
@@ -192,14 +212,17 @@ public class CallService {
     // 생각 습관 테스트 결과. 서버에 저장된 것이 있으면 그것을, 없으면 FE 가 보낸 것을 씁니다.
     CallScript.SelfReport selfReport = selfReportOf(userId, request, recentCalls);
 
+    // 계획 방은 생각 습관 질문을 하지 않아서 고르지 않습니다. (#431)
     BiasQuestion biasQuestion =
-        BiasQuestion.pick(
-            CallScript.isSupportive(careLevel, card),
-            card == null ? null : card.yesterdayMissReason(),
-            card == null ? null : card.weekStartDelayMinutes(),
-            foundBiasesOf(recentCalls),
-            askedQuestionKeysOf(recentCalls),
-            selfReport.biases());
+        room == ChatRoom.PLANNER
+            ? null
+            : BiasQuestion.pick(
+                CallScript.isSupportive(careLevel, card),
+                card == null ? null : card.yesterdayMissReason(),
+                card == null ? null : card.weekStartDelayMinutes(),
+                foundBiasesOf(recentCalls),
+                askedQuestionKeysOf(recentCalls),
+                selfReport.biases());
     // 오늘이 무너지기 쉬운 날이면 대본에 "표시" 로 넘깁니다. 이유(수면 등)는 넘기지 않고 위험 정도만 넘깁니다.
     RiskLevel riskLevel = riskService.levelOn(userId, today);
     String instructions =
@@ -211,7 +234,8 @@ public class CallService {
                 biasQuestion,
                 pastCallsOf(recentCalls),
                 selfReport,
-                riskLevel)
+                riskLevel,
+                room == null ? ChatRoom.COACH : room)
             : CallScript.instructions(
                 careLevel,
                 request.maxHarshness(),

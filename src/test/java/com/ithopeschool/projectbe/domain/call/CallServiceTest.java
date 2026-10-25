@@ -747,6 +747,29 @@ class CallServiceTest {
   }
 
   @Test
+  @DisplayName("계획 방 채팅 대본은 [생각 습관] · [통화 순서] 가 없고 생각 습관 질문도 고르지 않는다 (#431)")
+  void plannerChatScriptHasNoBiasQuestion() {
+    CallService.Script coach =
+        callService.prepareChatScript(USER_ID, REQUEST, NOW, TODAY, ChatRoom.COACH);
+    CallService.Script planner =
+        callService.prepareChatScript(USER_ID, REQUEST, NOW, TODAY, ChatRoom.PLANNER);
+
+    assertThat(coach.instructions()).contains("[생각 습관]", "[통화 순서]");
+    assertThat(planner.instructions())
+        .contains("글로 이야기하는 공부 코치", "다섯 문장까지")
+        .doesNotContain("[생각 습관]")
+        .doesNotContain("[통화 순서]");
+    // 묻지 않는 질문이 "물어본 질문" 으로 채팅 기록에 남지 않게 null 입니다.
+    assertThat(planner.biasQuestion()).isNull();
+    // 상담 방은 예전 길(prepareScript)과 같은 대본입니다.
+    assertThat(coach.instructions())
+        .isEqualTo(
+            callService
+                .prepareScript(USER_ID, REQUEST, NOW, TODAY, CallChannel.CHAT)
+                .instructions());
+  }
+
+  @Test
   @DisplayName("위험한 날이 아니면 [오늘 예측] 을 적지 않는다")
   void normalDayHasNoRiskSection() {
     callService.startSession(REQUEST);

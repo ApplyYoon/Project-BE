@@ -586,6 +586,65 @@ class CallScriptTest {
     assertThat(chat.lines().skip(2).toList()).isEqualTo(voice.lines().skip(2).toList());
   }
 
+  @Test
+  @DisplayName("계획 방 대본에는 [생각 습관] · [통화 순서] 가 없고, 두세 문장 대신 다섯 문장 · 짧은 목록까지 쓴다 (#431)")
+  void plannerChatHasNoBiasRulesNorCallOrder() {
+    Card card = card(190, 240, "phone", List.of(3, 3));
+    BiasQuestion question = BiasQuestion.pick(false, "phone", null, List.of(), List.of());
+    String coach =
+        CallScript.chatInstructions(2, 3, card, question, List.of(), CallScript.SelfReport.NONE);
+    String planner =
+        CallScript.chatInstructions(
+            2,
+            3,
+            card,
+            question,
+            List.of(),
+            CallScript.SelfReport.NONE,
+            RiskLevel.NONE,
+            ChatRoom.PLANNER);
+
+    assertThat(coach).contains("[생각 습관]", "[통화 순서]", "두세 문장");
+    assertThat(planner)
+        .contains("다섯 문장까지, 또는 짧은 목록 3~5줄")
+        .contains("[꼭 지킬 것]", "[말투]", "[오늘의 사실]")
+        .doesNotContain("[생각 습관]")
+        .doesNotContain("[통화 순서]")
+        .doesNotContain("두세 문장")
+        .doesNotContain("열 번 안팎")
+        .doesNotContain("생각 습관 확인")
+        .doesNotEndWith("\n");
+    // 상담 · 과목 쌤 방은 예전 대본 그대로입니다.
+    assertThat(
+            CallScript.chatInstructions(
+                2,
+                3,
+                card,
+                question,
+                List.of(),
+                CallScript.SelfReport.NONE,
+                RiskLevel.NONE,
+                ChatRoom.TUTOR))
+        .isEqualTo(coach);
+  }
+
+  @Test
+  @DisplayName("위로하는 날의 계획 방도 [통화 순서] 없이 [말투] 의 위로 규칙은 그대로 둔다")
+  void supportivePlannerKeepsTheComfortTone() {
+    String planner =
+        CallScript.chatInstructions(
+            0,
+            3,
+            card(190, 240, "phone", List.of(3, 3)),
+            null,
+            List.of(),
+            CallScript.SelfReport.NONE,
+            RiskLevel.NONE,
+            ChatRoom.PLANNER);
+
+    assertThat(planner).contains("위로하고 응원하는 말만 해").doesNotContain("[통화 순서]");
+  }
+
   // ─── 오늘 예측 (위험한 날, 이슈 #49) ───
 
   private static String withRisk(int careLevel, RiskLevel riskLevel) {

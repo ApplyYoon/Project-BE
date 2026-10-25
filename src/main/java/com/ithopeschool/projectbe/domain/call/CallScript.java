@@ -129,7 +129,8 @@ public final class CallScript {
         pastCalls,
         selfReport,
         riskLevel,
-        CallChannel.VOICE);
+        CallChannel.VOICE,
+        null);
   }
 
   // 상담 채팅(이슈 #238)의 지침입니다. 통화와 같은 대본이고, 맨 앞의 두 줄(전화 · 3분)만 글 채팅에 맞게 바꿉니다.
@@ -147,6 +148,7 @@ public final class CallScript {
   }
 
   // 상담 채팅의 지침입니다. riskLevel 은 통화와 같습니다. (위험한 날은 채팅에서도 부드럽게 말합니다)
+  // 방은 상담(COACH)으로 봅니다.
   public static String chatInstructions(
       int careLevel,
       int maxHarshness,
@@ -155,6 +157,31 @@ public final class CallScript {
       List<PastCall> pastCalls,
       SelfReport selfReport,
       RiskLevel riskLevel) {
+    return chatInstructions(
+        careLevel,
+        maxHarshness,
+        card,
+        biasQuestion,
+        pastCalls,
+        selfReport,
+        riskLevel,
+        ChatRoom.COACH);
+  }
+
+  // 상담 채팅의 지침입니다. room 이 계획 방(PLANNER)이면 계획 방에 맞게 바꿉니다. (2026-10-25 #431)
+  //   - 둘째 줄의 "두세 문장 · 열 번 안팎" 대신 "다섯 문장까지 또는 짧은 목록 3~5줄"
+  //   - [생각 습관] · [통화 순서] 칸을 넣지 않습니다. 계획 방의 순서는 [이번 방: 계획] 칸(ChatRoom.section)이 정합니다.
+  //     ("계속 물어봐서 깊게 대화가 안 됨" — 계획 방에도 생각 습관 질문 · 통화 순서의 질문이 그대로 들어가 있었습니다)
+  // 상담 · 과목 쌤 방은 지금과 똑같습니다.
+  public static String chatInstructions(
+      int careLevel,
+      int maxHarshness,
+      CallSessionRequest.Card card,
+      BiasQuestion biasQuestion,
+      List<PastCall> pastCalls,
+      SelfReport selfReport,
+      RiskLevel riskLevel,
+      ChatRoom room) {
     return build(
         careLevel,
         maxHarshness,
@@ -163,9 +190,11 @@ public final class CallScript {
         pastCalls,
         selfReport,
         riskLevel,
-        CallChannel.CHAT);
+        CallChannel.CHAT,
+        room);
   }
 
+  // room 은 상담 채팅의 방입니다. 음성 통화는 null 입니다.
   private static String build(
       int careLevel,
       int maxHarshness,
@@ -174,12 +203,18 @@ public final class CallScript {
       List<PastCall> pastCalls,
       SelfReport selfReport,
       RiskLevel riskLevel,
-      CallChannel channel) {
+      CallChannel channel,
+      ChatRoom room) {
     boolean supportive = isSupportive(careLevel, card);
+    boolean planner = room == ChatRoom.PLANNER;
     List<String> lines = new ArrayList<>();
     if (channel == CallChannel.CHAT) {
       lines.add("너는 고등학생과 하루에 한 번 글로 이야기하는 공부 코치야. 한국어 반말로 써.");
-      lines.add("한 번에 두세 문장만 쓰고, 학생이 답할 때까지 기다려. 아래에서 '통화' 는 이 채팅을 뜻해." + " 열 번 안팎으로 주고받고 마무리해.");
+      if (planner) {
+        lines.add("한 번에 다섯 문장까지, 또는 짧은 목록 3~5줄로 쓰고, 학생이 답할 때까지 기다려. 아래에서 '통화' 는 이 채팅을 뜻해.");
+      } else {
+        lines.add("한 번에 두세 문장만 쓰고, 학생이 답할 때까지 기다려. 아래에서 '통화' 는 이 채팅을 뜻해." + " 열 번 안팎으로 주고받고 마무리해.");
+      }
     } else {
       lines.add("너는 고등학생에게 하루에 한 번 짧게 전화하는 공부 코치야. 한국어 반말로 말해.");
       lines.add("한 번에 한두 문장만 말하고, 학생이 대답할 때까지 기다려. 통화 전체는 3분 안에 끝내.");
@@ -213,7 +248,8 @@ public final class CallScript {
       lines.addAll(pastCallLines(pastCalls));
       lines.add("");
     }
-    if (!supportive) {
+    // 계획 방에는 생각 습관 질문을 넣지 않습니다. 계획을 짜는 중에 생각 습관을 캐물으면 되묻기만 늘어납니다. (#431)
+    if (!supportive && !planner) {
       lines.add("[생각 습관]");
       lines.addAll(biasRules());
       if (!selfReport.biases().isEmpty()) {
@@ -226,6 +262,12 @@ public final class CallScript {
         lines.addAll(gapLines(selfReport.gapNotes()));
       }
       lines.add("");
+    }
+    // 계획 방은 [통화 순서] 를 넣지 않습니다. 순서는 [이번 방: 계획] 칸이 정합니다. (#431)
+    // 위의 칸들은 모두 빈 줄로 끝나므로, 그 마지막 빈 줄을 지우고 돌려줍니다.
+    if (planner) {
+      lines.remove(lines.size() - 1);
+      return String.join("\n", lines);
     }
     lines.add("[통화 순서]");
     // 생각 습관 질문이 들어가는 날은 순서가 하나 늘어서, 번호를 세어 가며 붙입니다.
