@@ -41,15 +41,17 @@ class CurriculumLibraryTest {
   }
 
   @Test
-  @DisplayName("2015 개정(2026년 고3) 국어 · 수학 · 영어의 고등학교 성취기준도 읽는다")
+  @DisplayName("2015 개정(2026년 고3) 국어 · 수학 · 영어 · 과학 · 사회 · 도덕의 고등학교 성취기준도 읽는다")
   void loads2015Files() {
     List<AchievementStandard> all = library.standards("2015");
     Set<String> subjects =
         all.stream().map(AchievementStandard::subject).collect(Collectors.toSet());
 
-    assertThat(all).hasSizeGreaterThan(500);
+    assertThat(all).hasSizeGreaterThan(1100);
     assertThat(subjects)
-        .contains("국어", "화법과 작문", "언어와 매체", "수학", "수학Ⅰ", "수학Ⅱ", "미적분", "확률과 통계", "영어Ⅰ", "영어Ⅱ");
+        .contains("국어", "화법과 작문", "언어와 매체", "수학", "수학Ⅰ", "수학Ⅱ", "미적분", "확률과 통계", "영어Ⅰ", "영어Ⅱ")
+        .contains("통합사회", "한국사", "한국지리", "사회･문화", "생활과 윤리", "윤리와 사상")
+        .contains("통합과학", "물리학Ⅰ", "화학Ⅰ", "생명과학Ⅰ", "지구과학Ⅰ");
     assertThat(all).allSatisfy(s -> assertThat(s.curriculum()).isEqualTo("2015"));
   }
 
@@ -63,7 +65,8 @@ class CurriculumLibraryTest {
         .allSatisfy(
             s -> {
               assertThat(s.code()).matches("1[02].+-\\d\\d");
-              assertThat(s.text()).isNotBlank().endsWith(".");
+              // 문장은 마침표로 끝납니다. 2015 '고전과 윤리' 만 뒤에 "(『고전』 - 주제)" 가 붙어 있습니다.
+              assertThat(s.text()).isNotBlank().containsPattern("\\.(\\s+\\(.+\\))?$");
             });
     assertThat(all.stream().map(AchievementStandard::code).distinct().count())
         .isEqualTo(all.size());
