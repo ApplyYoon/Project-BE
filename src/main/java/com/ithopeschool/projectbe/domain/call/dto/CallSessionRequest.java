@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.call.dto;
 
 import com.ithopeschool.projectbe.domain.call.ChatRoom;
+import com.ithopeschool.projectbe.domain.call.OtherRoomTalk;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -17,6 +18,7 @@ import java.util.List;
 // ⚠️ 카드에는 숫자와 정해진 분류값만 담습니다. 계획 내용·일기·이름 같은 글 원문은 받지 않습니다.
 //    그래서 모든 값의 범위와 모양을 좁게 정해 두었습니다. (이 값들이 AI 의 지침에 들어가기 때문입니다)
 //    예외: 공부 신호(StudySignals)의 "틀린 확인 문제 주제" 는 30자 · 3개짜리 글입니다. 이유는 StudySignals 주석.
+//    예외: 다른 방 이야기(otherRooms)는 학생이 오늘 채팅 방에서 쓴 말 몇 줄입니다. 이유는 아래 칸 주석. (#434)
 public record CallSessionRequest(
     // 오늘의 관리 강도. 0 회복 · 1 당근 · 2 넛지 · 3 심리적 채찍 · 4 강제적 채찍(말투는 3 과 같게 씁니다)
     @NotNull(message = "오늘의 관리 강도(careLevel)를 보내 주세요")
@@ -57,7 +59,19 @@ public record CallSessionRequest(
     @Pattern(regexp = ROOMS, message = "방(room)은 COACH · PLANNER · TUTOR 중 하나예요") String room,
     // 공부 신호: 기기에만 있는 최근 7일 집중도 · 폰 든 횟수 · 확인 문제 결과 (2026-10-18, StudySignals)
     // 통화와 채팅 둘 다 씁니다. 없으면 null 이고, 그러면 대본에 [공부 신호] 칸이 없습니다.
-    @Valid StudySignals studySignals) {
+    @Valid StudySignals studySignals,
+    // 다른 방 이야기 (2026-10-25 #434, 음성 통화만): 학생이 오늘 채팅 방에서 쓴 말 몇 줄. "방 이름: 말" 모양입니다.
+    //   ["계획: 오늘 2시간만 할래", "과목 쌤: 곱의 미분법 알려 줘"]
+    // 오늘 채팅에서 정한 것을 통화에서 또 묻지 않게, 통화 대본 끝 [다른 방에서 오늘 한 이야기] 칸에 넣습니다. (OtherRoomTalk.callSection)
+    // 모양은 채팅 말 보내기(ChatMessageRequest.otherRooms)와 같습니다. 12줄 · 한 줄 200자까지 받고, 쓸 때는 6줄 · 80자로 줄입니다.
+    // 저장 · 로그 안 함. 위기 표현이 있는 줄은 넣지 않습니다. 채팅 열기(POST /chats)는 이 칸을 쓰지 않습니다. 없으면 null
+    @Size(max = 12, message = "다른 방 이야기(otherRooms)는 12줄까지 보낼 수 있어요")
+        List<
+                @Size(
+                    max = OtherRoomTalk.MAX_REQUEST_LINE_LENGTH,
+                    message = "다른 방 이야기 한 줄은 200자 이하로 보내 주세요")
+                String>
+            otherRooms) {
 
   // 받을 수 있는 방 이름들입니다. ChatRoom 에 방을 더하면 여기에도 더해야 합니다. (ChatRoomTest 가 확인)
   // 맨 끝의 GOAL_MATE 는 예전 이름이라 받기만 하고 PLANNER 로 바꿉니다. (ChatRoom.from)
@@ -98,6 +112,28 @@ public record CallSessionRequest(
         selfReportedWeaknesses,
         about,
         room,
+        null);
+  }
+
+  // 다른 방 이야기 없이 보내는 모양 (채팅 · 테스트에서 씀, #434 전의 모양)
+  public CallSessionRequest(
+      Integer careLevel,
+      Integer maxHarshness,
+      Card card,
+      List<String> selfReportedBiases,
+      List<String> selfReportedWeaknesses,
+      ChatAbout about,
+      String room,
+      StudySignals studySignals) {
+    this(
+        careLevel,
+        maxHarshness,
+        card,
+        selfReportedBiases,
+        selfReportedWeaknesses,
+        about,
+        room,
+        studySignals,
         null);
   }
 

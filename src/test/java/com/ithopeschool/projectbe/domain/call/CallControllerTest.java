@@ -124,6 +124,44 @@ class CallControllerTest {
         .andExpect(status().isOk());
   }
 
+  // otherRooms 칸에 넣을 줄 count 개 (한 줄은 text). JSON 배열 글자로 만듭니다.
+  private static String otherRoomsJson(int count, String text) {
+    return "[" + String.join(",", java.util.Collections.nCopies(count, "\"" + text + "\"")) + "]";
+  }
+
+  @Test
+  @DisplayName("다른 방 이야기(otherRooms)는 12줄 · 한 줄 200자까지 받아서 그대로 넘긴다 (#434)")
+  void acceptsOtherRooms() throws Exception {
+    given(callService.startSession(any()))
+        .willReturn(new CallSessionResponse("ek_abc123", 1791700000000L, 300, "12"));
+
+    start(
+            "{\"careLevel\":1,\"maxHarshness\":3,\"otherRooms\":"
+                + otherRoomsJson(12, "가".repeat(200))
+                + "}")
+        .andExpect(status().isOk());
+    start("{\"careLevel\":1,\"maxHarshness\":3,\"otherRooms\":[\"계획: 오늘 2시간만 할래\"]}")
+        .andExpect(status().isOk());
+
+    ArgumentCaptor<CallSessionRequest> captor = ArgumentCaptor.forClass(CallSessionRequest.class);
+    verify(callService, org.mockito.Mockito.times(2)).startSession(captor.capture());
+    assertThat(captor.getAllValues().get(0).otherRooms()).hasSize(12);
+    assertThat(captor.getAllValues().get(1).otherRooms()).containsExactly("계획: 오늘 2시간만 할래");
+  }
+
+  @Test
+  @DisplayName("다른 방 이야기가 13줄이거나 한 줄이 201자면 400 이고 로직을 부르지 않는다")
+  void rejectsTooMuchOtherRooms() throws Exception {
+    expectRejected(
+        "{\"careLevel\":1,\"maxHarshness\":3,\"otherRooms\":" + otherRoomsJson(13, "상담: 응") + "}",
+        "다른 방 이야기(otherRooms)는 12줄까지 보낼 수 있어요");
+    expectRejected(
+        "{\"careLevel\":1,\"maxHarshness\":3,\"otherRooms\":"
+            + otherRoomsJson(1, "가".repeat(201))
+            + "}",
+        "다른 방 이야기 한 줄은 200자 이하로 보내 주세요");
+  }
+
   @Test
   @DisplayName("공부 신호의 맞힌 수가 푼 수보다 많거나 틀린 주제가 3개를 넘으면 400")
   void rejectsBadStudySignals() throws Exception {
