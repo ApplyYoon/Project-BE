@@ -17,15 +17,25 @@ class CurriculumLibraryTest {
   private final CurriculumLibrary library = new CurriculumLibrary();
 
   @Test
-  @DisplayName("2022 개정 국어 · 수학 · 영어 · 과학 · 사회의 고등학교 성취기준을 읽는다")
+  @DisplayName("2022 개정 국어 · 수학 · 영어 · 과학 · 사회 · 도덕의 고등학교 성취기준을 읽는다")
   void loadsAllFiles() {
     List<AchievementStandard> all = library.standards("2022");
     Set<String> subjects =
         all.stream().map(AchievementStandard::subject).collect(Collectors.toSet());
 
-    assertThat(all).hasSizeGreaterThan(1000);
+    assertThat(all).hasSizeGreaterThan(1100);
     assertThat(subjects)
-        .contains("공통수학1", "대수", "미적분Ⅰ", "확률과 통계", "공통영어1", "공통국어1", "통합과학1", "통합사회1");
+        .contains(
+            "공통수학1",
+            "대수",
+            "미적분Ⅰ",
+            "확률과 통계",
+            "공통영어1",
+            "공통국어1",
+            "통합과학1",
+            "통합사회1",
+            "현대사회와 윤리",
+            "윤리와 사상");
     assertThat(library.standards("2015")).isEmpty();
   }
 
