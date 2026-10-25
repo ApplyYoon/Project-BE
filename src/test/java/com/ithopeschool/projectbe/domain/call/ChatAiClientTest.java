@@ -14,6 +14,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest.Line;
 import com.ithopeschool.projectbe.domain.call.dto.ChatReplyResponse;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -161,6 +162,42 @@ class ChatAiClientTest {
 
     assertThat(ChatAiClient.parseTurn(text).action())
         .isEqualTo(new ChatReplyResponse.Action("make_plan", null, "중간고사 미적분", "2026-11-02"));
+  }
+
+  @Test
+  @DisplayName("하루 계획 버튼(day_plan)은 총 분 · 먼저 할 것 · 시작 시각(startTime)까지 읽는다 (#431)")
+  void parseTurnReadsDayPlan() {
+    String text =
+        "{\"reply\":\"이렇게 짜 볼게\",\"quickReplies\":[],\"action\":{\"type\":\"day_plan\","
+            + "\"minutes\":120,\"title\":\"수학 먼저\",\"date\":null,\"startTime\":\"21:00\"},"
+            + "\"tags\":[]}";
+
+    assertThat(ChatAiClient.parseTurn(text).action())
+        .isEqualTo(new ChatReplyResponse.Action("day_plan", 120, "수학 먼저", null, "21:00"));
+  }
+
+  @Test
+  @DisplayName("답 모양의 action 은 day_plan 을 고를 수 있고, startTime 칸도 꼭 채우게 한다 (strict)")
+  void schemaHasDayPlanAndStartTime() {
+    Map<?, ?> properties = (Map<?, ?>) ChatAiClient.TURN_SCHEMA.get("properties");
+    Map<?, ?> action = (Map<?, ?>) properties.get("action");
+    Map<?, ?> actionProperties = (Map<?, ?>) action.get("properties");
+    Map<?, ?> type = (Map<?, ?>) actionProperties.get("type");
+
+    assertThat(action.get("required"))
+        .isEqualTo(List.of("type", "minutes", "title", "date", "startTime"));
+    assertThat(type.get("enum"))
+        .isEqualTo(
+            List.of(
+                "none",
+                "start_timer",
+                "shrink_today",
+                "create_card",
+                "make_plan",
+                "start_quiz",
+                "day_plan"));
+    assertThat(actionProperties.get("startTime"))
+        .isEqualTo(Map.of("type", List.of("string", "null")));
   }
 
   @Test

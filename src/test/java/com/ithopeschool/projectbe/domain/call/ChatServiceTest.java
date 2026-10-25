@@ -554,6 +554,69 @@ class ChatServiceTest {
         .isNull();
   }
 
+  @Test
+  @DisplayName("행동 검사: 하루 계획(day_plan)은 총 분 20~600 · 먼저 할 것 30자 · 시작 시각 HH:mm, 틀린 칸만 null (#431)")
+  void cleansDayPlan() {
+    // 맞는 값은 그대로, 먼저 할 것은 앞뒤 공백 · 줄바꿈을 정리, date 는 늘 null
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("day_plan", 120, " 수학\n먼저 ", "2026-11-02", "21:00"),
+                TODAY))
+        .isEqualTo(new ChatReplyResponse.Action("day_plan", 120, "수학 먼저", null, "21:00"));
+    // 범위 밖 분 · 모양이 틀린 시각 · 빈 제목은 그 칸만 null 이고, 버튼은 남는다
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("day_plan", 900, " ", null, "9시"), TODAY))
+        .isEqualTo(new ChatReplyResponse.Action("day_plan", null, null, null, null));
+    assertThat(
+            ChatService.cleanAction(
+                    new ChatReplyResponse.Action("day_plan", 19, null, null, "25:00"), TODAY)
+                .minutes())
+        .isNull();
+    assertThat(
+            ChatService.cleanAction(
+                    new ChatReplyResponse.Action("day_plan", 20, null, null, null), TODAY)
+                .minutes())
+        .isEqualTo(20);
+    // 먼저 할 것: 30자가 넘으면 30자로 자르고, 깎아내리는 말이 있으면 null
+    assertThat(
+            ChatService.cleanAction(
+                    new ChatReplyResponse.Action("day_plan", null, "가".repeat(40), null, null),
+                    TODAY)
+                .title())
+        .isEqualTo("가".repeat(30));
+    assertThat(
+            ChatService.cleanAction(
+                    new ChatReplyResponse.Action("day_plan", null, "한심해도 수학", null, null), TODAY)
+                .title())
+        .isNull();
+  }
+
+  @Test
+  @DisplayName("시작 시각은 00:00 ~ 23:59 의 HH:mm 만 받는다")
+  void startTimeShape() {
+    assertThat(ChatService.startTimeOf(" 09:30 ")).isEqualTo("09:30");
+    assertThat(ChatService.startTimeOf("23:59")).isEqualTo("23:59");
+    assertThat(ChatService.startTimeOf("9:30")).isNull();
+    assertThat(ChatService.startTimeOf("24:00")).isNull();
+    assertThat(ChatService.startTimeOf("21:60")).isNull();
+    assertThat(ChatService.startTimeOf(null)).isNull();
+  }
+
+  @Test
+  @DisplayName("day_plan 이 아닌 행동은 startTime 을 버린다")
+  void otherActionsDropStartTime() {
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("start_timer", null, null, null, "21:00"), TODAY))
+        .isEqualTo(new ChatReplyResponse.Action("start_timer", null, null, null, null));
+    assertThat(
+            ChatService.cleanAction(
+                new ChatReplyResponse.Action("make_plan", null, "중간고사", "2026-11-02", "21:00"),
+                TODAY))
+        .isEqualTo(new ChatReplyResponse.Action("make_plan", null, "중간고사", "2026-11-02", null));
+  }
+
   // ---- 코치랑 이야기하기 (주제가 있는 채팅, 2026-10-18) ----
 
   private static CallSessionRequest startAbout(String kind, String... facts) {

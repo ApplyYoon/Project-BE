@@ -55,8 +55,10 @@ public class ChatAiClient {
 
   // 상담 채팅 답의 모양(JSON schema)입니다. OpenAI 가 이 모양으로만 답하게 합니다. (turn)
   //   { "reply": "…", "quickReplies": ["…"], "action": { "type": "none", "minutes": null, "title":
-  // null, "date": null }, "tags": [] }
+  // null, "date": null, "startTime": null }, "tags": [] }
   // tags 는 "코치랑 이야기하기" 주제(ChatTopic)가 있을 때 AI 가 학생 말에서 짐작한 이유 값입니다. (2026-10-18)
+  // day_plan 과 startTime(시작 시각 "HH:mm")은 계획 방의 "오늘 계획 짜 줘" 행동입니다. (2026-10-25 #431)
+  // strict 모드는 모든 칸이 required 여야 해서, startTime 을 쓰지 않는 행동도 null 로 채웁니다.
   // 개수 · 길이 제한은 schema 대신 서버가 검사합니다. (ChatService.cleanTurn)
   static final Map<String, Object> TURN_SCHEMA =
       Map.of(
@@ -79,7 +81,7 @@ public class ChatAiClient {
                   "additionalProperties",
                   false,
                   "required",
-                  List.of("type", "minutes", "title", "date"),
+                  List.of("type", "minutes", "title", "date", "startTime"),
                   "properties",
                   Map.of(
                       "type",
@@ -93,12 +95,15 @@ public class ChatAiClient {
                               "shrink_today",
                               "create_card",
                               "make_plan",
-                              "start_quiz")),
+                              "start_quiz",
+                              "day_plan")),
                       "minutes",
                       Map.of("type", List.of("integer", "null")),
                       "title",
                       Map.of("type", List.of("string", "null")),
                       "date",
+                      Map.of("type", List.of("string", "null")),
+                      "startTime",
                       Map.of("type", List.of("string", "null")))),
               "tags",
               Map.of("type", "array", "items", Map.of("type", "string"))));
@@ -381,7 +386,8 @@ public class ChatAiClient {
                   raw.action().type(),
                   raw.action().minutes(),
                   raw.action().title(),
-                  raw.action().date());
+                  raw.action().date(),
+                  raw.action().startTime());
       return new ChatTurn(
           raw.reply().trim(),
           raw.quickReplies() == null ? List.of() : raw.quickReplies(),
@@ -462,7 +468,7 @@ public class ChatAiClient {
   record RawTurn(String reply, List<String> quickReplies, RawAction action, List<String> tags) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record RawAction(String type, Integer minutes, String title, String date) {}
+    record RawAction(String type, Integer minutes, String title, String date, String startTime) {}
   }
 
   // 받는 모양에서 우리가 읽는 부분만 적었습니다. 나머지 필드는 무시합니다.

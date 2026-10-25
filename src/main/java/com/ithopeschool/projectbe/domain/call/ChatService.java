@@ -95,8 +95,11 @@ public class ChatService {
   // 빠른 답 버튼은 이만큼까지, 한 버튼은 이 글자 수까지
   static final int MAX_QUICK_REPLIES = 3;
   static final int MAX_QUICK_REPLY_LENGTH = 20;
-  // 행동 버튼 make_plan 의 목표 · start_quiz 의 주제는 이 글자 수까지
+  // 행동 버튼 make_plan 의 목표 · start_quiz 의 주제 · day_plan 의 먼저 할 것은 이 글자 수까지
   static final int MAX_ACTION_TOPIC_LENGTH = 30;
+  // 행동 버튼 day_plan 의 하루 총 공부 분은 이 범위만 (AI 하루 계획 요청의 totalMinutes 와 같은 범위, #431)
+  static final int MIN_DAY_PLAN_MINUTES = 20;
+  static final int MAX_DAY_PLAN_MINUTES = 600;
   // AI 가 짐작한 이유 값(tags)은 이만큼까지
   static final int MAX_TAGS = 3;
   // 인사 없이 여는 채팅(greet=false)은 하루에 이만큼까지 (checkOpenLimit)
@@ -530,11 +533,17 @@ public class ChatService {
   //   make_plan    : 목표 1 ~ 30자(깎아내리는 말 없음). 마감 날은 내일 ~ 30일 뒤만 (긴 계획 /ai/long-plan 의 범위).
   //                  모양이 틀리거나 범위 밖이면 버튼은 두고 date 만 null (FE 가 날짜를 다시 물음)
   //   start_quiz   : 주제 1 ~ 30자(깎아내리는 말 없음)
+  //   day_plan     : 계획 방의 "오늘 계획 짜 줘" (2026-10-25 #431). 버튼은 늘 두고, 칸마다 틀린 것만 null 로 바꿉니다.
+  //                  minutes(하루 총 분)는 20 ~ 600 이 아니면 null, startTime 은 "HH:mm" 이 아니면 null,
+  //                  title(먼저 할 것)은 비었거나 깎아내리는 말이 있으면 null · 30자가 넘으면 30자로 자름. date 는 늘 null.
+  //                  null 인 칸은 FE 가 보내지 않고, 서버(/ai/day-plan)가 기록으로 정합니다.
   //
   //   today = 2026-10-18
   //   make_plan "중간고사 미적분", "2026-11-02"  →  그대로
   //   make_plan "중간고사 미적분", "2026-12-25"  →  date 만 null (30일 넘음)
   //   start_quiz "  "                           →  null
+  //   day_plan 120, " 수학 먼저 ", "21:00"         →  120, "수학 먼저", "21:00"
+  //   day_plan 900, "", "9시"                     →  null, null, null (버튼은 그대로)
   static ChatReplyResponse.Action cleanAction(ChatReplyResponse.Action action, LocalDate today) {
     if (action == null || action.type() == null) {
       return null;
@@ -567,9 +576,44 @@ public class ChatService {
       case "start_quiz":
         String topic = topicOf(action.title());
         return topic == null ? null : new ChatReplyResponse.Action("start_quiz", null, topic);
+      case "day_plan":
+        return new ChatReplyResponse.Action(
+            "day_plan",
+            dayPlanMinutesOf(action.minutes()),
+            firstThingOf(action.title()),
+            null,
+            startTimeOf(action.startTime()));
       default:
         return null;
     }
+  }
+
+  // day_plan 의 하루 총 공부 분. 20 ~ 600 이 아니면 null
+  private static Integer dayPlanMinutesOf(Integer minutes) {
+    if (minutes == null || minutes < MIN_DAY_PLAN_MINUTES || minutes > MAX_DAY_PLAN_MINUTES) {
+      return null;
+    }
+    return minutes;
+  }
+
+  // day_plan 의 먼저 할 것 한 줄. 비었거나 깎아내리는 말이 있으면 null, 30자가 넘으면 30자로 자릅니다.
+  //   " 수학\n먼저 " → "수학 먼저"
+  private static String firstThingOf(String raw) {
+    String text = raw == null ? "" : raw.replaceAll("\\s+", " ").trim();
+    if (text.isEmpty() || ToneGuide.hasBannedExpression(text)) {
+      return null;
+    }
+    return CallScript.cutKeepingEmoji(text, MAX_ACTION_TOPIC_LENGTH);
+  }
+
+  // day_plan 의 시작 시각. "HH:mm"(00:00 ~ 23:59)이 아니면 null
+  //   "21:00" → "21:00",  "9시" · "25:00" · "9:00" → null
+  static String startTimeOf(String raw) {
+    if (raw == null) {
+      return null;
+    }
+    String text = raw.trim();
+    return text.matches("([01]\\d|2[0-3]):[0-5]\\d") ? text : null;
   }
 
   // 목표 · 주제 한 줄. 비었거나 30자를 넘거나 깎아내리는 말이 있으면 null
