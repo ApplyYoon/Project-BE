@@ -25,9 +25,12 @@ import com.ithopeschool.projectbe.domain.onboarding.Chronotype;
 import com.ithopeschool.projectbe.domain.onboarding.Grade;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswer;
 import com.ithopeschool.projectbe.domain.onboarding.OnboardingAnswerRepository;
+import com.ithopeschool.projectbe.domain.plan.PlanKind;
 import com.ithopeschool.projectbe.domain.psychtest.PsychTestRepository;
 import com.ithopeschool.projectbe.domain.school.SchoolEvent;
 import com.ithopeschool.projectbe.domain.school.SchoolEventRepository;
+import com.ithopeschool.projectbe.domain.session.SessionMode;
+import com.ithopeschool.projectbe.domain.session.StudySession;
 import com.ithopeschool.projectbe.domain.session.StudySessionRepository;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -286,6 +289,55 @@ class DayPlanServiceTest {
 
     assertThat(response.drafts()).isEmpty();
     assertThat(response.totalMinutes()).isZero();
+    assertThat(response.evidence().get(0)).isEqualTo("그날은 이미 충분히 계획했어요");
+  }
+
+  @Test
+  @DisplayName("오늘 시간이 지났는데 기록이 없는 카드는 이미 계획한 시간에 넣지 않는다 (지금부터 1시간을 부탁하면 1시간을 짠다)")
+  void missedCardsTodayDoNotCount() {
+    aiAnswers(null);
+    // 지금은 토요일 12:00. 07:10 20분 · 10:00 60분 카드는 시간이 지났고 기록이 없다
+    given(cards.findCandidatesOn(USER_ID, TODAY))
+        .willReturn(
+            List.of(
+                card("아침 영단어", TODAY, LocalTime.of(7, 10), 20),
+                card("오답 복습", TODAY, LocalTime.of(10, 0), 60)));
+
+    DayPlanResponse response =
+        service.suggest(new DayPlanRequest(TODAY, null, null, null, null, 60, null, null));
+
+    assertThat(response.totalMinutes()).isEqualTo(50);
+    assertThat(response.drafts()).hasSize(1);
+    assertThat(response.evidence())
+        .contains("시간이 지났는데 못 한 카드 80분은 이미 계획한 시간으로 세지 않았어요")
+        .doesNotContain("그날은 이미 충분히 계획했어요");
+  }
+
+  @Test
+  @DisplayName("오늘 시간이 지났어도 공부 기록이 있는 카드는 이미 계획한 시간에 넣는다")
+  void studiedCardsTodayStillCount() {
+    Card done = card("오답 복습", TODAY, LocalTime.of(10, 0), 60);
+    ReflectionTestUtils.setField(done, "id", 7L);
+    given(cards.findCandidatesOn(USER_ID, TODAY)).willReturn(List.of(done));
+    StudySession studied =
+        new StudySession(
+            USER_ID,
+            null,
+            Instant.parse("2026-10-17T01:00:00Z"),
+            Instant.parse("2026-10-17T02:00:00Z"),
+            0,
+            0,
+            null,
+            60,
+            null,
+            PlanKind.STUDY);
+    studied.recordCard(7L, SessionMode.NORMAL, false);
+    given(sessions.findStartedBetween(eq(USER_ID), any(), any())).willReturn(List.of(studied));
+
+    DayPlanResponse response =
+        service.suggest(new DayPlanRequest(TODAY, null, null, null, null, 60, null, null));
+
+    assertThat(response.drafts()).isEmpty();
     assertThat(response.evidence().get(0)).isEqualTo("그날은 이미 충분히 계획했어요");
   }
 

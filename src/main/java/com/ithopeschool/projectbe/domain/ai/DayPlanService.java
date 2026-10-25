@@ -41,9 +41,11 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -113,13 +115,15 @@ public class DayPlanService {
   //   cards          : 그날 카드 (시각이 없는 카드도 넣음)
   //   spans          : 차지한 시간 (고정 일정 + 수업 시간 + 시작 시각이 있는 카드)
   //   alreadyPlanned : 그날 카드 시간의 합(분) / timedCards : 시작 시각이 있는 카드 수
+  //   missedMinutes  : 오늘 카드 중 시간이 이미 끝났는데 공부 기록이 없는 카드 시간의 합(분). alreadyPlanned 에 안 넣음
   private record DayBusy(
       List<FixedBlock> fixedBlocks,
       String classHoursLine,
       List<Card> cards,
       List<DayPlanRule.Span> spans,
       int alreadyPlanned,
-      int timedCards) {}
+      int timedCards,
+      int missedMinutes) {}
 
   private final CurrentUserProvider currentUserProvider;
   private final StudySessionRepository studySessionRepository;
@@ -190,6 +194,9 @@ public class DayPlanService {
     int alreadyPlanned = day.alreadyPlanned();
     if (day.timedCards() > 0) {
       timeLines.add("그날 이미 있는 카드 " + day.timedCards() + "장의 앞뒤 10분을 비웠어요");
+    }
+    if (day.missedMinutes() > 0) {
+      timeLines.add("시간이 지났는데 못 한 카드 " + day.missedMinutes() + "분은 이미 계획한 시간으로 세지 않았어요");
     }
 
     // 3) 숫자 · 시각
@@ -411,19 +418,45 @@ public class DayPlanService {
     List<Card> cards = new ArrayList<>();
     int alreadyPlanned = 0;
     int timedCards = 0;
+    int missedMinutes = 0;
+    // 오늘이면, 오늘 공부 기록이 있는 카드 번호를 모읍니다. (시간이 지난 카드를 했는지 보려고)
+    boolean isToday = date.equals(DayRule.dateOf(clock.instant()));
+    Set<Long> studiedCardIds = isToday ? studiedCardIdsOn(userId, date) : Set.of();
+    int nowMinutes = DayPlanRule.dayMinutesOf(clock.instant().atZone(SEOUL).toLocalTime());
     for (Card card : cardRepository.findCandidatesOn(userId, date)) {
       if (!card.isOnDate(date)) {
         continue;
       }
       cards.add(card);
-      alreadyPlanned += card.getDurationMinutes();
       if (card.getStartTime() != null) {
         int start = DayPlanRule.dayMinutesOf(card.getStartTime());
-        spans.add(new DayPlanRule.Span(start, start + card.getDurationMinutes()));
+        int end = start + card.getDurationMinutes();
+        spans.add(new DayPlanRule.Span(start, end));
         timedCards++;
+        // 오늘 카드 중 시간이 이미 끝났는데 기록이 없으면(못 한 카드) 이미 계획한 시간에 넣지 않습니다.
+        // 넣으면 "지금부터 1시간" 을 부탁해도 놓친 카드 시간만큼 빠져서 "이미 충분히 계획했어요" 가 됩니다. (#447)
+        if (isToday && end <= nowMinutes && !studiedCardIds.contains(card.getId())) {
+          missedMinutes += card.getDurationMinutes();
+          continue;
+        }
+      }
+      alreadyPlanned += card.getDurationMinutes();
+    }
+    return new DayBusy(
+        fixedBlocks, classHoursLine, cards, spans, alreadyPlanned, timedCards, missedMinutes);
+  }
+
+  // 그날 시작한 공부 기록이 있는 카드 번호들. 노는 기록 · 카드 없이 켠 기록은 뺍니다.
+  private Set<Long> studiedCardIdsOn(Long userId, LocalDate date) {
+    Set<Long> cardIds = new HashSet<>();
+    for (StudySession session :
+        studySessionRepository.findStartedBetween(
+            userId, DayRule.startOf(date), DayRule.startOf(date.plusDays(1)))) {
+      if (session.getKind() == PlanKind.STUDY && session.getCardId() != null) {
+        cardIds.add(session.getCardId());
       }
     }
-    return new DayBusy(fixedBlocks, classHoursLine, cards, spans, alreadyPlanned, timedCards);
+    return cardIds;
   }
 
   // 놓을 칸이 없을 때의 응답. totalMinutes 는 놓은 칸이 없으니 0 입니다.
