@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Set;
 
 // 학생의 말(질문 · 문제 주제)에 맞는 성취기준 몇 줄을 고릅니다. "가벼운 RAG" 의 "찾기" 부분입니다. (2026-10-18)
-// 벡터 DB · 임베딩 없이 글자 맞추기로만 고릅니다. 성취기준이 1,100줄 정도라 이걸로 충분하고, 학생이 읽고 고칠 수 있습니다.
+// 벡터 DB · 임베딩 없이 글자 맞추기로만 고릅니다. 성취기준이 교육과정 버전마다 1,200줄 정도라 이걸로 충분하고, 학생이 읽고 고칠 수 있습니다.
 // 값만 계산하는 도구라서 객체를 만들 일이 없습니다.
 //
 // ■ 점수 (성취기준 한 줄마다)
@@ -50,14 +50,18 @@ public final class CurriculumSearch {
 
   private CurriculumSearch() {}
 
-  // 비교하려고 글자를 고르게 바꿉니다. 띄어쓰기를 지우고, 로마 숫자(Ⅰ · Ⅱ · Ⅲ, 한글 뒤의 I · II · III)를 아라비아 숫자로,
+  // 가운뎃점처럼 생긴 글자들. 고시 파일마다(･ ⋅ ·) · NEIS 시간표마다 다른 글자를 써서 지우고 비교합니다.
+  static final String MIDDLE_DOTS = "[·･⋅‧・ㆍ∙․]";
+
+  // 비교하려고 글자를 고르게 바꿉니다. 띄어쓰기 · 가운뎃점을 지우고, 로마 숫자(Ⅰ · Ⅱ · Ⅲ, 한글 뒤의 I · II · III)를 아라비아 숫자로,
   // 영어는 소문자로 바꿉니다. NEIS 시간표의 "영어Ⅱ" 와 고시의 "영어 Ⅱ" 를 같은 과목으로 보려고 합니다.
   //   normalize("영어 Ⅱ") → "영어2"   normalize("미적분I") → "미적분1"   normalize("공통수학1") → "공통수학1"
+  //   normalize("사회･문화") → "사회문화" (2015 고시)   normalize("사회·문화") → "사회문화" (시간표)
   public static String normalize(String text) {
     if (text == null) {
       return "";
     }
-    String s = text.replaceAll("\\s+", "");
+    String s = text.replaceAll("\\s+", "").replaceAll(MIDDLE_DOTS, "");
     s = s.replace("Ⅲ", "3").replace("Ⅱ", "2").replace("Ⅰ", "1");
     s = s.replaceAll("(?<=[가-힣])III", "3").replaceAll("(?<=[가-힣])II", "2");
     s = s.replaceAll("(?<=[가-힣])I", "1");

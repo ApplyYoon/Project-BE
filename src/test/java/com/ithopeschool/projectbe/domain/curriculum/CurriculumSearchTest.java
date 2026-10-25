@@ -34,6 +34,41 @@ class CurriculumSearchTest {
   }
 
   @Test
+  @DisplayName("가운뎃점은 글자가 달라도 지운다 (고시 '사회･문화' 와 시간표 '사회·문화' · '사회ㆍ문화' 가 같게)")
+  void normalizeMiddleDots() {
+    assertThat(CurriculumSearch.normalize("사회･문화")).isEqualTo("사회문화");
+    assertThat(CurriculumSearch.normalize("사회·문화")).isEqualTo("사회문화");
+    assertThat(CurriculumSearch.normalize("사회ㆍ문화")).isEqualTo("사회문화");
+    assertThat(CurriculumSearch.normalize("듣기⋅말하기")).isEqualTo("듣기말하기");
+  }
+
+  @Test
+  @DisplayName("오늘 시간표 과목 '사회·문화' 가 고시 과목 '사회･문화' 에 점수를 준다 (가운뎃점이 달라도)")
+  void todaySubjectWithOtherMiddleDot() {
+    List<AchievementStandard> standards =
+        List.of(
+            new AchievementStandard(
+                "2015",
+                "통합사회",
+                "10통사06-03",
+                "사회 정의와 불평등",
+                "사회 및 공간 불평등 현상의 사례를 조사하고, 정의로운 사회를 만들기 위한 다양한 제도와 실천 방안을 탐색한다."),
+            new AchievementStandard(
+                "2015",
+                "사회･문화",
+                "12사문04-01",
+                "사회 계층과 불평등",
+                "기능론과 갈등론을 활용하여 사회 불평등 현상을 설명하고 각 이론의 특징을 비교한다."));
+
+    assertThat(CurriculumSearch.rank(standards, List.of("사회·문화"), "불평등 현상", 1))
+        .extracting(AchievementStandard::code)
+        .containsExactly("12사문04-01");
+    assertThat(CurriculumSearch.rank(standards, List.of(), "사회·문화 불평등 현상", 1))
+        .extracting(AchievementStandard::code)
+        .containsExactly("12사문04-01");
+  }
+
+  @Test
   @DisplayName("질문을 낱말로: 조사를 떼고, 2글자 미만 · 흔한 말은 빼고, 같은 낱말은 하나만")
   void keywords() {
     assertThat(CurriculumSearch.keywords("수열의 극한이 뭔지 모르겠어")).containsExactly("수열", "극한");
