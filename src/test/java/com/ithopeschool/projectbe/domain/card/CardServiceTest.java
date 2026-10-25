@@ -121,13 +121,15 @@ class CardServiceTest {
         null,
         null,
         null,
+        null,
         null);
   }
 
   // 바꿀 칸이 하나도 없는 바꾸기 요청. 테스트마다 필요한 칸만 채워서 씁니다.
   private static CardUpdateRequest emptyUpdate() {
     return new CardUpdateRequest(
-        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+        null);
   }
 
   private static void assertError(Runnable action, ErrorCode code, String message) {
@@ -236,7 +238,8 @@ class CardServiceTest {
             "피곤함",
             List.of("폰을 볼 것 같다"),
             new CardAlertRequest("call", 10, "단어 외울 시간이야"),
-            42000L);
+            42000L,
+            null);
 
     CardResponse saved = cardService.create(request);
 
@@ -297,6 +300,7 @@ class CardServiceTest {
                     null,
                     null,
                     null,
+                    null,
                     null)),
         ErrorCode.VALIDATION_ERROR,
         "반복 요일이 겹치지 않게 보내 주세요");
@@ -313,6 +317,7 @@ class CardServiceTest {
                     null,
                     null,
                     "urgent",
+                    null,
                     null,
                     null,
                     null,
@@ -339,6 +344,7 @@ class CardServiceTest {
                     null,
                     null,
                     null,
+                    null,
                     null)),
         ErrorCode.VALIDATION_ERROR,
         "카드 유형은 self, lecture 중에서 골라 주세요");
@@ -360,6 +366,7 @@ class CardServiceTest {
                     null,
                     null,
                     new CardAlertRequest("push", 0, null),
+                    null,
                     null)),
         ErrorCode.VALIDATION_ERROR,
         "알림 방법은 message, call 중에서 골라 주세요");
@@ -378,6 +385,7 @@ class CardServiceTest {
                     null,
                     null,
                     3,
+                    null,
                     null,
                     null,
                     null,
@@ -414,6 +422,7 @@ class CardServiceTest {
                 null,
                 null,
                 null,
+                null,
                 null));
 
     assertThat(changed.title()).isEqualTo("수학 2권");
@@ -442,7 +451,7 @@ class CardServiceTest {
             7L,
             new CardUpdateRequest(
                 null, null, List.of(), "", null, null, "", null, null, null, null, "", List.of(),
-                null, null));
+                null, null, null));
 
     assertThat(changed.repeatDays()).isNull();
     assertThat(changed.startTime()).isNull();
@@ -464,6 +473,7 @@ class CardServiceTest {
             null,
             null,
             List.of(item("i2", "43쪽"), item(null, "새 항목")),
+            null,
             null,
             null,
             null,
@@ -504,6 +514,7 @@ class CardServiceTest {
             null,
             null,
             null,
+            null,
             null);
 
     assertError(
@@ -532,7 +543,7 @@ class CardServiceTest {
                 99L,
                 new CardUpdateRequest(
                     "x", null, null, null, null, null, null, null, null, null, null, null, null,
-                    null, null)),
+                    null, null, null)),
         ErrorCode.NOT_FOUND,
         "카드를 찾을 수 없어요");
     assertError(() -> cardService.delete(99L), ErrorCode.NOT_FOUND, "카드를 찾을 수 없어요");
@@ -569,6 +580,7 @@ class CardServiceTest {
         null,
         null,
         null,
+        null,
         null);
   }
 
@@ -576,7 +588,7 @@ class CardServiceTest {
   private static CardUpdateRequest updateSubject(String subjectId) {
     return new CardUpdateRequest(
         null, null, null, null, null, null, null, subjectId, null, null, null, null, null, null,
-        null);
+        null, null);
   }
 
   @Test
@@ -619,7 +631,7 @@ class CardServiceTest {
             7L,
             new CardUpdateRequest(
                 "수학 2권", null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null));
+                null, null, null));
     assertThat(titleOnly.subjectId()).isEqualTo("4");
 
     assertThat(cardService.update(7L, updateSubject("")).subjectId()).isNull();
@@ -637,6 +649,7 @@ class CardServiceTest {
         startTime,
         minutes,
         List.of(new ChecklistItemRequest(null, "42쪽")),
+        null,
         null,
         null,
         null,
@@ -688,12 +701,13 @@ class CardServiceTest {
     CardUpdateRequest titleOnly =
         new CardUpdateRequest(
             "새 제목", null, null, null, null, null, null, null, null, null, null, null, null, null,
-            null);
+            null, null);
     assertThat(cardService.update(7L, titleOnly).title()).isEqualTo("새 제목");
 
     CardUpdateRequest longer =
         new CardUpdateRequest(
-            null, null, null, null, 90, null, null, null, null, null, null, null, null, null, null);
+            null, null, null, null, 90, null, null, null, null, null, null, null, null, null, null,
+            null);
     assertThatThrownBy(() -> cardService.update(7L, longer))
         .isInstanceOf(ApiException.class)
         .hasMessage("수면 보호 시간(23:00~07:00)과 겹쳐요");
@@ -714,5 +728,118 @@ class CardServiceTest {
     verify(cardRepository).save(any());
 
     assertThat(cardService.create(createAt("16:50", 60)).bufferWarning()).isNull();
+  }
+
+  // ---- 반복을 그만하는 날 (endDate, 2026-10-25 QA) ----
+
+  // 월요일마다 하는 반복 카드 만들기 요청. endDate 만 바꿔 가며 씁니다.
+  private static CardCreateRequest createRepeatUntil(LocalDate endDate) {
+    return new CardCreateRequest(
+        "수학 문제집",
+        MON_OCT_12,
+        List.of(1),
+        "19:00",
+        60,
+        List.of(new ChecklistItemRequest(null, "42쪽")),
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        endDate);
+  }
+
+  // endDate 만 바꾸는 바꾸기 요청
+  private static CardUpdateRequest updateEndDate(String endDate) {
+    return new CardUpdateRequest(
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+        endDate);
+  }
+
+  @Test
+  @DisplayName("만들기: endDate 를 보내면 저장되고 응답에도 온다. 안 보내면 null(끝 없이 반복)")
+  void createWithEndDate() {
+    LocalDate oct30 = LocalDate.of(2026, 10, 30);
+
+    assertThat(cardService.create(createRepeatUntil(oct30)).endDate()).isEqualTo(oct30);
+    assertThat(cardService.create(createRepeatUntil(null)).endDate()).isNull();
+    // 시작한 날과 같은 날도 됩니다. (그날 하루만 하고 끝)
+    assertThat(cardService.create(createRepeatUntil(MON_OCT_12)).endDate()).isEqualTo(MON_OCT_12);
+  }
+
+  @Test
+  @DisplayName("만들기: endDate 가 시작한 날보다 앞이면 400 이고 저장하지 않는다")
+  void createEndDateBeforeStartIs400() {
+    assertError(
+        () -> cardService.create(createRepeatUntil(LocalDate.of(2026, 10, 11))),
+        ErrorCode.VALIDATION_ERROR,
+        "끝나는 날은 시작한 날보다 앞일 수 없어요");
+    verify(cardRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("바꾸기: endDate 를 보내면 바뀌고, \"\" 면 비우고(끝 없이 반복), 안 보내면(null) 그대로다")
+  void updateEndDate() {
+    Card card = myCard(7L, "수학", MON_OCT_12, List.of(1));
+    given(cardRepository.findByIdAndUserId(7L, ME)).willReturn(Optional.of(card));
+
+    assertThat(cardService.update(7L, updateEndDate("2026-10-26")).endDate())
+        .isEqualTo(LocalDate.of(2026, 10, 26));
+    // 다른 칸만 바꾸면 endDate 는 그대로입니다.
+    assertThat(cardService.update(7L, updateSubject("3")).endDate())
+        .isEqualTo(LocalDate.of(2026, 10, 26));
+    assertThat(cardService.update(7L, updateEndDate("")).endDate()).isNull();
+  }
+
+  @Test
+  @DisplayName("바꾸기: 없는 날짜(2026-02-30)나 시작한 날보다 앞인 날은 400 이다")
+  void updateWrongEndDateIs400() {
+    Card card = myCard(7L, "수학", MON_OCT_12, List.of(1));
+    card.changeEndDate(LocalDate.of(2026, 10, 26));
+    given(cardRepository.findByIdAndUserId(7L, ME)).willReturn(Optional.of(card));
+
+    assertError(
+        () -> cardService.update(7L, updateEndDate("2026-02-30")),
+        ErrorCode.VALIDATION_ERROR,
+        "끝나는 날이 없는 날짜예요");
+    assertError(
+        () -> cardService.update(7L, updateEndDate("2026-10-05")),
+        ErrorCode.VALIDATION_ERROR,
+        "끝나는 날은 시작한 날보다 앞일 수 없어요");
+  }
+
+  @Test
+  @DisplayName("바꾸기: 날짜만 옮겨도 그만하는 날보다 뒤가 되면 400 이다")
+  void moveDateAfterEndDateIs400() {
+    Card card = myCard(7L, "수학", MON_OCT_12, List.of(1));
+    card.changeEndDate(LocalDate.of(2026, 10, 19));
+    given(cardRepository.findByIdAndUserId(7L, ME)).willReturn(Optional.of(card));
+    CardUpdateRequest moveToOct26 =
+        new CardUpdateRequest(
+            null,
+            LocalDate.of(2026, 10, 26),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+    assertError(
+        () -> cardService.update(7L, moveToOct26),
+        ErrorCode.VALIDATION_ERROR,
+        "끝나는 날은 시작한 날보다 앞일 수 없어요");
   }
 }

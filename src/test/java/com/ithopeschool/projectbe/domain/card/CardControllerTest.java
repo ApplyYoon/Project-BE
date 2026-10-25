@@ -67,6 +67,7 @@ class CardControllerTest {
           null,
           null,
           1790000000000L,
+          null,
           null);
 
   // 카드 만들기 요청의 꼭 있어야 하는 칸. 바꾸고 싶은 칸만 뒤에 덧붙여 씁니다.
@@ -89,7 +90,7 @@ class CardControllerTest {
   // ---- 목록 ----
 
   @Test
-  @DisplayName("목록은 200 이고, 카드마다 FE Card 의 열일곱 칸과 bufferWarning(목록에서는 null) 이 있다")
+  @DisplayName("목록은 200 이고, 카드마다 FE Card 의 열여덟 칸(endDate 포함)과 bufferWarning(목록에서는 null) 이 있다")
   void getCards() throws Exception {
     given(cardService.getCards(OCT_12)).willReturn(List.of(MATH));
 
@@ -115,7 +116,8 @@ class CardControllerTest {
         .andExpect(jsonPath("$[0].alert").isEmpty())
         // 버퍼 경고는 만들기 · 바꾸기 응답에만 있어서, 목록에서는 빼지 않고 null 로 보냅니다. (이슈 #223)
         .andExpect(jsonPath("$[0].bufferWarning").isEmpty())
-        .andExpect(jsonPath("$[0].length()").value(18))
+        .andExpect(jsonPath("$[0].endDate").isEmpty())
+        .andExpect(jsonPath("$[0].length()").value(19))
         .andExpect(jsonPath("$[0].userId").doesNotExist());
   }
 
@@ -174,6 +176,7 @@ class CardControllerTest {
                 null,
                 null,
                 new CardAlertRequest("call", 10, null),
+                null,
                 null));
   }
 
@@ -240,14 +243,14 @@ class CardControllerTest {
 
     send(
             patch("/api/v1/cards/7"),
-            "{\"repeatDays\":[],\"startTime\":\"\",\"goalId\":\"\",\"subjectId\":\"\"}")
+            "{\"repeatDays\":[],\"startTime\":\"\",\"goalId\":\"\",\"subjectId\":\"\",\"endDate\":\"\"}")
         .andExpect(status().isOk());
     verify(cardService)
         .update(
             7L,
             new CardUpdateRequest(
                 null, null, List.of(), "", null, null, "", "", null, null, null, null, null, null,
-                null));
+                null, ""));
   }
 
   static Stream<Arguments> wrongUpdateRequests() {
@@ -257,7 +260,8 @@ class CardControllerTest {
         Arguments.of("{\"checklist\":[]}", "체크리스트는 1개 이상 20개까지 적을 수 있어요"),
         Arguments.of("{\"startTime\":\"24:00\"}", "시작 시각은 19:00 처럼 보내 주세요"),
         Arguments.of("{\"goalId\":\"9999999999999999999\"}", "목표 번호가 올바르지 않아요"),
-        Arguments.of("{\"subjectId\":\"-3\"}", "과목 번호가 올바르지 않아요"));
+        Arguments.of("{\"subjectId\":\"-3\"}", "과목 번호가 올바르지 않아요"),
+        Arguments.of("{\"endDate\":\"2026/10/30\"}", "끝나는 날은 2026-10-30 처럼 보내 주세요"));
   }
 
   @ParameterizedTest(name = "{1}")
