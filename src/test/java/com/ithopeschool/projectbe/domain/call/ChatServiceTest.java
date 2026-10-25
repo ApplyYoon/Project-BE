@@ -98,7 +98,7 @@ class ChatServiceTest {
     given(chatAiClient.isEnabled()).willReturn(true);
     // 성취기준 칸은 따로 정하지 않으면 빈 글자(맞는 줄 없음)입니다.
     given(curriculumService.standardsSection(any(), any())).willReturn("");
-    given(callService.prepareScript(eq(USER_ID), any(), eq(NOW), eq(TODAY), eq(CallChannel.CHAT)))
+    given(callService.prepareChatScript(eq(USER_ID), any(), eq(NOW), eq(TODAY), any()))
         .willReturn(new CallService.Script(SCRIPT, null));
     given(callRecordRepository.save(any()))
         .willAnswer(
@@ -766,7 +766,7 @@ class ChatServiceTest {
         SCRIPT
             + ChatRoom.PLANNER.section()
             + CallScript.topicSection(ChatTopic.WEEKLY_REPORT, facts);
-    given(chatAiClient.turn(script, List.of()))
+    given(chatAiClient.turnForPlanner(script, List.of(), null))
         .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("이번 주 72% 했네. 다음 주엔 뭘 바꿔 볼까?")));
 
     ChatReplyResponse response =
@@ -781,7 +781,7 @@ class ChatServiceTest {
   @DisplayName("예전 방 이름 GOAL_MATE 로 열어도 계획 방(PLANNER)으로 열리고 계획 방 대본을 쓴다")
   void startWithOldGoalMateNameOpensPlanner() {
     String script = SCRIPT + ChatRoom.PLANNER.section();
-    given(chatAiClient.turn(script, List.of()))
+    given(chatAiClient.turnForPlanner(script, List.of(), null))
         .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("오늘 할 일부터 말해 줄래?")));
 
     ChatReplyResponse response = service.start(startIn("GOAL_MATE", null));
@@ -789,6 +789,23 @@ class ChatServiceTest {
     assertThat(response.reply()).isEqualTo("오늘 할 일부터 말해 줄래?");
     assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(script);
     assertThat(chatScriptStore.findRoom(CHAT_ID, USER_ID)).contains(ChatRoom.PLANNER);
+  }
+
+  @Test
+  @DisplayName("계획 방은 방을 대본 만들기에 넘기고, 계획 방의 답 모양으로 받아 day_plan 버튼을 돌려준다 (#431)")
+  void plannerRoomUsesPlannerTurn() {
+    String script = SCRIPT + ChatRoom.PLANNER.section();
+    ChatReplyResponse.Action dayPlan =
+        new ChatReplyResponse.Action("day_plan", 120, "수학 먼저", null, "21:00");
+    given(chatAiClient.turnForPlanner(script, List.of(), null))
+        .willReturn(Optional.of(new ChatAiClient.ChatTurn("이렇게 짜 볼게.", List.of(), dayPlan)));
+
+    ChatReplyResponse response = service.start(startIn("PLANNER", null));
+
+    assertThat(response.action()).isEqualTo(dayPlan);
+    verify(callService)
+        .prepareChatScript(eq(USER_ID), any(), eq(NOW), eq(TODAY), eq(ChatRoom.PLANNER));
+    verify(chatAiClient, never()).turn(any(), anyList());
   }
 
   @Test
@@ -1013,13 +1030,15 @@ class ChatServiceTest {
         .turnForTutor(instructions.capture(), eq(AFTER_TEN_MINUTES.lines()), eq(null), eq(true));
     assertThat(instructions.getValue()).contains("[이미 한 말]");
 
-    // 계획 방은 상담 방과 같은 길(turn)로 갑니다.
+    // 계획 방은 계획 방의 답 모양(turnForPlanner)으로 갑니다. (#431)
     chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, null, ChatRoom.PLANNER);
-    given(chatAiClient.turn(any(), anyList()))
+    given(chatAiClient.turnForPlanner(any(), anyList(), any()))
         .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly(FRESH)));
     service.send(CHAT_ID, AFTER_TEN_MINUTES);
-    verify(chatAiClient).turn(instructions.capture(), eq(AFTER_TEN_MINUTES.lines()));
+    verify(chatAiClient)
+        .turnForPlanner(instructions.capture(), eq(AFTER_TEN_MINUTES.lines()), eq(null));
     assertThat(instructions.getValue()).contains("[이미 한 말]");
+    verify(chatAiClient, never()).turn(any(), anyList());
   }
 
   @Test
