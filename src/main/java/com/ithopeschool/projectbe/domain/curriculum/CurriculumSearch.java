@@ -50,14 +50,18 @@ public final class CurriculumSearch {
 
   private CurriculumSearch() {}
 
-  // 비교하려고 글자를 고르게 바꿉니다. 띄어쓰기를 지우고, 로마 숫자(Ⅰ · Ⅱ · Ⅲ, 한글 뒤의 I · II · III)를 아라비아 숫자로,
+  // 가운뎃점처럼 생긴 글자들. 고시 파일마다(･ ⋅ ·) · NEIS 시간표마다 다른 글자를 써서 지우고 비교합니다.
+  static final String MIDDLE_DOTS = "[·･⋅‧・ㆍ∙․]";
+
+  // 비교하려고 글자를 고르게 바꿉니다. 띄어쓰기 · 가운뎃점을 지우고, 로마 숫자(Ⅰ · Ⅱ · Ⅲ, 한글 뒤의 I · II · III)를 아라비아 숫자로,
   // 영어는 소문자로 바꿉니다. NEIS 시간표의 "영어Ⅱ" 와 고시의 "영어 Ⅱ" 를 같은 과목으로 보려고 합니다.
   //   normalize("영어 Ⅱ") → "영어2"   normalize("미적분I") → "미적분1"   normalize("공통수학1") → "공통수학1"
+  //   normalize("사회･문화") → "사회문화" (2015 고시)   normalize("사회·문화") → "사회문화" (시간표)
   public static String normalize(String text) {
     if (text == null) {
       return "";
     }
-    String s = text.replaceAll("\\s+", "");
+    String s = text.replaceAll("\\s+", "").replaceAll(MIDDLE_DOTS, "");
     s = s.replace("Ⅲ", "3").replace("Ⅱ", "2").replace("Ⅰ", "1");
     s = s.replaceAll("(?<=[가-힣])III", "3").replaceAll("(?<=[가-힣])II", "2");
     s = s.replaceAll("(?<=[가-힣])I", "1");

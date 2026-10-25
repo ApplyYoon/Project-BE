@@ -128,6 +128,23 @@ class CurriculumLibraryTest {
   }
 
   @Test
+  @DisplayName("새로 넣은 과목 이름(2015 물리학Ⅰ · 사회･문화, 2022 현대사회와 윤리)도 과목 이름 · 오늘 과목 점수를 받는다")
+  void newSubjectNamesAreMatched() {
+    // 질문에 과목 이름: 물리학Ⅱ 에도 '뉴턴 운동 법칙' 이 있지만 물리학Ⅰ 이 먼저
+    assertThat(library.search("2015", List.of(), "물리학Ⅰ 뉴턴 운동 법칙", 1))
+        .extracting(AchievementStandard::code)
+        .containsExactly("12물리Ⅰ01-02");
+    // 오늘 시간표 과목(NEIS 는 '사회·문화'): 통합사회에도 '불평등 현상' 이 있지만 사회･문화 가 먼저
+    assertThat(library.search("2015", List.of("사회·문화"), "불평등 현상", 1))
+        .extracting(AchievementStandard::subject)
+        .containsExactly("사회･문화");
+    // 2022 도덕: 생물의 유전에도 '생명윤리' 가 있지만 현대사회와 윤리가 먼저
+    assertThat(library.search("2022", List.of(), "현대사회와 윤리 생명윤리", 1))
+        .extracting(AchievementStandard::code)
+        .containsExactly("12현윤02-01");
+  }
+
+  @Test
   @DisplayName("빈 파일 · 코드나 문장이 빈 줄은 건너뛴다")
   void skipsBrokenLines() {
     CurriculumLibrary.FileShape file =
