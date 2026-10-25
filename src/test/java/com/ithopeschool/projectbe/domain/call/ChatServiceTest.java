@@ -11,6 +11,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.ithopeschool.projectbe.domain.ai.DayPlanService;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest.Line;
 import com.ithopeschool.projectbe.domain.call.dto.CallSessionRequest;
@@ -36,6 +37,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -76,6 +78,8 @@ class ChatServiceTest {
   private final CurriculumService curriculumService = mock(CurriculumService.class);
   // 웹 검색은 진짜 코드를 씁니다. (켜져 있음)
   private final TutorWebSearch tutorWebSearch = new TutorWebSearch(true);
+  // 계획 방의 [오늘 쓸 수 있는 시간] 재료는 가짜입니다. 따로 정하지 않으면 null 이라 칸이 붙지 않습니다. (진짜 계산은 DayPlanServiceTest)
+  private final DayPlanService dayPlanService = mock(DayPlanService.class);
   private final ChatService service =
       new ChatService(
           currentUserProvider,
@@ -90,6 +94,7 @@ class ChatServiceTest {
           psychTestRepository,
           curriculumService,
           tutorWebSearch,
+          dayPlanService,
           clock);
 
   @BeforeEach
@@ -806,6 +811,77 @@ class ChatServiceTest {
     verify(callService)
         .prepareChatScript(eq(USER_ID), any(), eq(NOW), eq(TODAY), eq(ChatRoom.PLANNER));
     verify(chatAiClient, never()).turn(any(), anyList());
+  }
+
+  // 계획 방의 [오늘 쓸 수 있는 시간] 재료 (고정 일정 학원 하나, 빈 시간 하나, 카드 없음)
+  private static final DayPlanService.TodayTime TODAY_TIME =
+      new DayPlanService.TodayTime(
+          LocalTime.of(7, 0),
+          LocalTime.of(23, 0),
+          120,
+          List.of(new DayPlanService.TodayTime.Slot("수학 학원", "18:00", "21:00", 180)),
+          null,
+          List.of(),
+          List.of(new DayPlanService.TodayTime.Slot(null, "21:10", "23:00", 110)));
+
+  @Test
+  @DisplayName("계획 방을 열면 [오늘 쓸 수 있는 시간] 칸을 첫 답에만 붙이고, 기억해 두는 대본에는 넣지 않는다 (#431)")
+  void plannerStartAddsTodayTimeOnlyToTheAnswer() {
+    given(dayPlanService.todayTime()).willReturn(TODAY_TIME);
+    String stored = SCRIPT + ChatRoom.PLANNER.section();
+    String withTime = stored + PlannerTime.section(TODAY_TIME);
+    given(chatAiClient.turnForPlanner(withTime, List.of(), null))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("21:10 부터 수학 50분 어때?")));
+
+    ChatReplyResponse response = service.start(startIn("PLANNER", null));
+
+    assertThat(response.reply()).isEqualTo("21:10 부터 수학 50분 어때?");
+    assertThat(withTime).contains("[오늘 쓸 수 있는 시간]", "「수학 학원」 18:00 ~ 21:00", "21:10 ~ 23:00");
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(stored);
+  }
+
+  @Test
+  @DisplayName("다른 방은 [오늘 쓸 수 있는 시간] 칸을 만들지 않는다")
+  void otherRoomsDoNotLoadTodayTime() {
+    given(chatAiClient.turn(any(), anyList()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("안녕")));
+
+    service.start(startIn("COACH", null));
+
+    verify(dayPlanService, never()).todayTime();
+  }
+
+  @Test
+  @DisplayName("계획 방에 말을 보내면 [오늘 쓸 수 있는 시간] 을 새로 만들어 그 답에만 붙인다 (방금 만든 카드도 보이게)")
+  void plannerSendAddsFreshTodayTime() {
+    givenOpenChat();
+    chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, null, ChatRoom.PLANNER);
+    given(dayPlanService.todayTime()).willReturn(TODAY_TIME);
+    given(chatAiClient.turnForPlanner(any(), anyList(), any()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("좋아, 이렇게 짜 볼게.")));
+    ChatMessageRequest request = said("2시간만, 9시부터 수학 먼저");
+
+    service.send(CHAT_ID, request);
+
+    ArgumentCaptor<String> instructions = ArgumentCaptor.forClass(String.class);
+    verify(chatAiClient).turnForPlanner(instructions.capture(), eq(request.lines()), eq(null));
+    assertThat(instructions.getValue())
+        .isEqualTo(alreadySaid(SCRIPT + PlannerTime.section(TODAY_TIME), request));
+    assertThat(chatScriptStore.find(CHAT_ID, USER_ID)).contains(SCRIPT);
+  }
+
+  @Test
+  @DisplayName("위기 표현이 나온 계획 방 채팅에는 [오늘 쓸 수 있는 시간] 을 붙이지 않는다 (들어 주기만)")
+  void crisisPlannerChatSkipsTodayTime() {
+    CallRecord chat = givenOpenChat();
+    chat.markCrisis();
+    chatScriptStore.save(CHAT_ID, USER_ID, SCRIPT, null, ChatRoom.PLANNER);
+    given(chatAiClient.turnForPlanner(any(), anyList(), any()))
+        .willReturn(Optional.of(ChatAiClient.ChatTurn.textOnly("응, 듣고 있어.")));
+
+    service.send(CHAT_ID, said("그냥 얘기하고 싶어"));
+
+    verify(dayPlanService, never()).todayTime();
   }
 
   @Test

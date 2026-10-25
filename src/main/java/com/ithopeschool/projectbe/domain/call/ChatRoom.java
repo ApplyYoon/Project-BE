@@ -20,6 +20,7 @@ import java.util.Optional;
 //
 // 계획 방은 "먼저 제안하고 덜 묻게" 바꿨습니다. (2026-10-25 #431, 사용자: "계속 물어봐서 깊게 대화가 안 됨")
 //   - 대본에서 [통화 순서] · [생각 습관] 을 빼고, 답 길이를 다섯 문장 또는 짧은 목록까지 풉니다. (CallScript.chatInstructions)
+//   - 서버가 아는 오늘 시간(고정 일정 · 기상/취침 · 빈 시간 · 오늘 카드)을 [오늘 쓸 수 있는 시간] 칸으로 줍니다. (PlannerTime)
 //   - 학생이 "짜 줘" 라고 하면 action day_plan 을 줍니다. 앱이 그 값으로 /ai/day-plan 을 불러 카드 초안을 보여 줍니다.
 //
 // ⚠️ 방을 더하면 dto/CallSessionRequest.ROOMS 에도 더해야 합니다. (ChatRoomTest 가 확인)

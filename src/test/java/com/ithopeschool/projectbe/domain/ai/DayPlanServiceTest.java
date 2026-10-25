@@ -454,4 +454,79 @@ class DayPlanServiceTest {
                     new DayPlanRule.Placed(1120, 40))))
         .isEqualTo("50 · 50 · 40분 세 칸");
   }
+
+  // ---- 계획 방 채팅의 [오늘 쓸 수 있는 시간] 재료 (2026-10-25 #431) ----
+
+  // 한국 시간 2026-10-19(월) 15:00 의 서비스. 오늘이 월요일이라 학교 고정 일정이 들어옵니다.
+  private DayPlanService serviceOnMondayAfternoon() {
+    return new DayPlanService(
+        currentUserProvider,
+        sessions,
+        onboarding,
+        psychTests,
+        fixedBlocks,
+        cards,
+        goals,
+        blockLength,
+        aiClient,
+        Clock.fixed(Instant.parse("2026-10-19T06:00:00Z"), ZoneOffset.UTC),
+        accounts,
+        schoolEvents);
+  }
+
+  @Test
+  @DisplayName("오늘 시간 재료: 고정 일정 · 카드를 시각 순으로, 빈 시간은 하루 계획과 같은 계산(지금 뒤 · 앞뒤 10분)으로 준다")
+  void todayTimeUsesTheSameRule() {
+    OnboardingAnswer.Values values = new OnboardingAnswer.Values();
+    values.grade = Grade.HIGH_2;
+    values.sleepTime = LocalTime.of(23, 0);
+    values.wakeUpTime = LocalTime.of(7, 0);
+    values.chronotype = Chronotype.MORNING;
+    values.dailyAvailableMinutes = 120;
+    given(onboarding.findFirstByUserIdOrderByAnsweredAtDescIdDesc(USER_ID))
+        .willReturn(Optional.of(new OnboardingAnswer(USER_ID, Instant.EPOCH, values)));
+    // 학원을 먼저 만들어도 시각 순(학교 → 학원)으로 줍니다.
+    given(fixedBlocks.findByUserIdOrderById(USER_ID))
+        .willReturn(List.of(fixed("수학 학원", LocalTime.of(18, 0), LocalTime.of(21, 0)), school()));
+    given(cards.findCandidatesOn(USER_ID, MONDAY))
+        .willReturn(
+            List.of(
+                card("문학 읽기", MONDAY, null, 30), card("영어 단어", MONDAY, LocalTime.of(21, 10), 50)));
+
+    DayPlanService.TodayTime today = serviceOnMondayAfternoon().todayTime();
+
+    assertThat(today.wake()).isEqualTo(LocalTime.of(7, 0));
+    assertThat(today.sleep()).isEqualTo(LocalTime.of(23, 0));
+    assertThat(today.dailyMinutes()).isEqualTo(120);
+    assertThat(today.fixed())
+        .containsExactly(
+            new DayPlanService.TodayTime.Slot("학교", "08:00", "16:30", 510),
+            new DayPlanService.TodayTime.Slot("수학 학원", "18:00", "21:00", 180));
+    assertThat(today.cards())
+        .containsExactly(
+            new DayPlanService.TodayTime.Slot("영어 단어", "21:10", "22:00", 50),
+            new DayPlanService.TodayTime.Slot("문학 읽기", null, null, 30));
+    // 지금(15:00) 뒤 · 취침(23:00) 전에서 학교 · 학원 · 카드의 앞뒤 10분을 뺀 나머지
+    assertThat(today.free())
+        .containsExactly(
+            new DayPlanService.TodayTime.Slot(null, "16:40", "17:50", 70),
+            new DayPlanService.TodayTime.Slot(null, "22:10", "23:00", 50));
+    // 학교를 등록하지 않았으니 기본 수업 시간은 따로 피하지 않습니다.
+    assertThat(today.classHours()).isNull();
+  }
+
+  @Test
+  @DisplayName("오늘 시간 재료: 학교를 등록했고 학교 시간을 고정 일정에 안 넣었으면 기본 수업 시간을 피한다")
+  void todayTimeAvoidsClassHours() {
+    schoolRegistered();
+    given(fixedBlocks.findByUserIdOrderById(USER_ID)).willReturn(List.of());
+
+    DayPlanService.TodayTime today = serviceOnMondayAfternoon().todayTime();
+
+    assertThat(today.classHours()).isEqualTo("08:00 ~ 16:30");
+    assertThat(today.fixed()).isEmpty();
+    assertThat(today.cards()).isEmpty();
+    assertThat(today.free())
+        .containsExactly(new DayPlanService.TodayTime.Slot(null, "16:40", "23:00", 380));
+  }
 }

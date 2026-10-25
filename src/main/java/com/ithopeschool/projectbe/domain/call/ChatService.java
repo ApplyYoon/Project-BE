@@ -1,6 +1,7 @@
 package com.ithopeschool.projectbe.domain.call;
 
 import com.ithopeschool.projectbe.domain.ai.CardPhotoService;
+import com.ithopeschool.projectbe.domain.ai.DayPlanService;
 import com.ithopeschool.projectbe.domain.ai.LongPlan;
 import com.ithopeschool.projectbe.domain.ai.StudyBlock;
 import com.ithopeschool.projectbe.domain.call.dto.CallFinishRequest;
@@ -52,6 +53,8 @@ import org.springframework.stereotype.Service;
 // 방은 대본 끝에 [이번 방] 칸을 붙여 바꾸고(ChatRoom.section), 과목 쌤은 학생 성향 칸을 붙이지 않습니다.
 // 계획 방은 대본에서 [통화 순서] · [생각 습관] 을 빼고(CallService.prepareChatScript), 답 모양 규칙도 따로 씁니다.
 // (ChatAiClient.turnForPlanner — 두세 문장 제한 대신 다섯 문장 · 짧은 목록, day_plan 행동. 2026-10-25 #431)
+// 계획 방은 AI 를 부를 때마다 [오늘 쓸 수 있는 시간] 칸(PlannerTime — 고정 일정 · 기상/취침 · 빈 시간 · 오늘 카드)을
+// 새로 만들어 그 한 번의 답에만 붙입니다. 기억해 둔 대본에는 넣지 않아서, 학생이 방금 만든 카드도 다음 답에 보입니다.
 //
 // 사진 질문 (2026-10-18): 말 보내기에 사진(request.image)이 붙으면 그 한 번의 답에만 사진을 AI 에 같이 보내고,
 // 대본 끝에 방마다 다른 [이번 말에 붙은 사진] 칸(ChatRoom.imageRule)을 잠깐 붙입니다. 사진은 저장 · 로그 안 함.
@@ -125,6 +128,8 @@ public class ChatService {
   private final CurriculumService curriculumService;
   // 과목 쌤 방의 웹 검색 켜기 · 출처 검사 (2026-10-18)
   private final TutorWebSearch tutorWebSearch;
+  // 계획 방의 [오늘 쓸 수 있는 시간] 칸 재료. AI 하루 계획과 같은 계산입니다. (#431)
+  private final DayPlanService dayPlanService;
   private final Clock clock;
 
   // 채팅을 엽니다. 요청 모양은 통화 시작(POST /realtime/session)과 같습니다. (학년 · 반 없이)
@@ -217,7 +222,7 @@ public class ChatService {
               topic,
               null);
     } else if (greet && room == ChatRoom.PLANNER) {
-      first = askPlanner(instructions, List.of(), topic, null);
+      first = askPlanner(instructions + plannerTimeSection(), List.of(), topic, null);
     } else if (greet) {
       first = askAi(instructions, List.of(), topic);
     }
@@ -300,6 +305,11 @@ public class ChatService {
     checkAiReady(userId);
     // 방을 잊었으면 코치로 봅니다. 사진 규칙 · 성취기준 칸은 이번 한 번의 답에만 붙이고 기억해 둔 대본에는 남기지 않습니다.
     ChatRoom room = chatScriptStore.findRoom(chatId, userId).orElse(ChatRoom.COACH);
+    // 계획 방이면 [오늘 쓸 수 있는 시간] 칸을 새로 만들어 이번 한 번의 답에만 붙입니다. (#431)
+    // 위기 표현이 나온 채팅에는 붙이지 않습니다. 남은 대화는 공부 · 계획 이야기 없이 들어 주기만 해야 해서입니다.
+    if (room == ChatRoom.PLANNER && !chat.isCrisisDetected()) {
+      instructions += plannerTimeSection();
+    }
     // [이미 한 말] 칸은 고정 문장이라 FE 가 보낸 글자가 지시에 들어가지 않습니다. (RepeatCheck.section)
     String alreadySaid = RepeatCheck.section(lines);
     ChatAiClient.ChatTurn next =
@@ -434,6 +444,11 @@ public class ChatService {
       throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE, "AI 와 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
     }
     return cleanTurn(turn.get(), DayRule.dateOf(clock.instant()), topic);
+  }
+
+  // 계획 방의 [오늘 쓸 수 있는 시간] 칸. 하루 계획과 같은 계산(DayPlanService.todayTime)으로 지금 만듭니다. (#431)
+  private String plannerTimeSection() {
+    return PlannerTime.section(dayPlanService.todayTime());
   }
 
   // 계획 방의 답. 대본 끝에 계획 방의 답 모양(다섯 문장 · 짧은 목록, day_plan)을 붙입니다. (#431)
