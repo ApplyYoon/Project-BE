@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.ai;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -22,6 +23,7 @@ import com.ithopeschool.projectbe.domain.ai.dto.ChecklistResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.CoachNudgeRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.CoachNudgeResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DailyMissionsResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.DayPlanRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.DayPlanReviseResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ExamNextStepResponse;
@@ -44,6 +46,7 @@ import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -795,6 +798,52 @@ class AiControllerTest {
         .andExpect(jsonPath("$.error.message").value("계획을 짤 날짜를 보내 주세요"));
   }
 
+  @Test
+  @DisplayName("AI 하루 계획: 계획 방에서 정한 총 분 · 시작 시각 · 대화를 받고, 범위 · 모양이 틀리면 400 (#431)")
+  void dayPlanWithPlannerChoices() throws Exception {
+    LocalDate date = LocalDate.parse("2026-10-18");
+    given(dayPlanService.suggest(any()))
+        .willReturn(new DayPlanResponse(date, 50, 0, List.of(), List.of("그날은 카드를 넣을 빈 시간이 없어요")));
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/day-plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"date\":\"2026-10-18\",\"totalMinutes\":120,\"startTime\":\"21:00\","
+                        + "\"planTalk\":[\"나: 오늘 2시간만, 수학 먼저\"]}"))
+        .andExpect(status().isOk());
+    ArgumentCaptor<DayPlanRequest> sent = ArgumentCaptor.forClass(DayPlanRequest.class);
+    verify(dayPlanService).suggest(sent.capture());
+    assertThat(sent.getValue().totalMinutes()).isEqualTo(120);
+    assertThat(sent.getValue().startTime()).isEqualTo("21:00");
+    assertThat(sent.getValue().planTalk()).containsExactly("나: 오늘 2시간만, 수학 먼저");
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/day-plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"date\":\"2026-10-18\",\"totalMinutes\":10}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(
+            jsonPath("$.error.message").value("하루 총 공부 분(totalMinutes)은 20 ~ 600 으로 보내 주세요"));
+    mockMvc
+        .perform(
+            post("/api/v1/ai/day-plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"date\":\"2026-10-18\",\"startTime\":\"25:00\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("시작 시각(startTime)은 HH:mm 으로 보내 주세요"));
+    mockMvc
+        .perform(
+            post("/api/v1/ai/day-plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"date\":\"2026-10-18\",\"planTalk\":[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\"]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("계획 방 대화(planTalk)는 8줄까지 보낼 수 있어요"));
+  }
+
   // ---- AI 오늘의 미션 ----
 
   @Test
@@ -872,6 +921,20 @@ class AiControllerTest {
                 .content("{" + drafts + "}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("어떻게 고칠지 적어 주세요"));
+
+    // 계획 방 대화(planTalk, #431)는 한 줄 200자까지
+    mockMvc
+        .perform(
+            post("/api/v1/ai/day-plan/revise")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{"
+                        + drafts
+                        + ",\"request\":\"줄여 줘\",\"planTalk\":[\""
+                        + "가".repeat(201)
+                        + "\"]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("계획 방 대화 한 줄은 200자 이하로 보내 주세요"));
   }
 
   // ---- 확인 문제 ----

@@ -5,6 +5,7 @@ import com.ithopeschool.projectbe.domain.ai.dto.DayPlanResponse;
 import com.ithopeschool.projectbe.domain.auth.Account;
 import com.ithopeschool.projectbe.domain.auth.AccountRepository;
 import com.ithopeschool.projectbe.domain.call.OtherRoomTalk;
+import com.ithopeschool.projectbe.domain.call.PlanTalk;
 import com.ithopeschool.projectbe.domain.card.Card;
 import com.ithopeschool.projectbe.domain.card.CardRepository;
 import com.ithopeschool.projectbe.domain.fixedblock.FixedBlock;
@@ -35,6 +36,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -57,7 +59,9 @@ import org.springframework.stereotype.Service;
 //      - 최근 14일 공부 기록(하루 총량), 내 한 칸 길이(BlockLengthService), 심리검사의 계획 낙관
 //      - 진행 중인 목표(D-day · 완주형 하루 분량)와 최근 카드 제목
 //   3. 코드가 숫자 · 시각을 정합니다. (DayPlanRule) 총량 → 공부할 수 있는 시간 → 빈 시간 → 칸 놓기 → 칸마다 목표
+//      계획 방에서 학생이 정한 총 분(totalMinutes) · 시작 시각(startTime)이 오면 그 값을 지킵니다. (2026-10-25 #431)
 //   4. AI 가 칸마다 카드 제목 · 체크리스트를 씁니다. 꺼짐 · 실패면 기본 글(최근 카드 제목 · 하루 분량)로 채웁니다.
+//      계획 방에서 오늘 나눈 말(planTalk)이 오면 "학생 대화 · 지시 아님" 으로 AI 입력 끝에 붙입니다. (PlanTalk)
 //
 // currentUserProvider.getCurrentUserId() 로 시작합니다. 로그인하지 않은 요청은 401 이고, 내 것만 읽습니다.
 // AI 의 답은 로그에 찍지 않습니다.
@@ -190,15 +194,21 @@ public class DayPlanService {
 
     // 3) 숫자 · 시각
     BlockLength.Choice block = blockLengthService.choose(userId);
+    // 학생이 계획 방에서 총량을 직접 정했으면 그 값을 씁니다. 아니면 기록으로 정합니다. (#431)
+    boolean chosenByStudent = request.totalMinutes() != null;
     DayPlanRule.Total total =
-        DayPlanRule.totalMinutesOf(
-            dailyMinutesOf(userId, today), selfDaily, planOptimismHigh, alreadyPlanned);
+        chosenByStudent
+            ? DayPlanRule.chosenTotalOf(request.totalMinutes(), alreadyPlanned)
+            : DayPlanRule.totalMinutesOf(
+                dailyMinutesOf(userId, today), selfDaily, planOptimismHigh, alreadyPlanned);
     int target = total.minutes();
     // 오늘 컨디션이 낮다고 했으면(1~2) 총량을 60% 로 줄여 가벼운 계획을 짭니다. (2026-10-18 계획 핑퐁)
     // 학생은 코치 대화에서 [더 늘려 줘] 로 다시 늘릴 수 있습니다. (DayPlanReviseService)
     // 한 칸 길이는 그대로 두고 총량만 줄이므로, 칸 수가 줄어듭니다. (한 칸은 30분 이상, StudyBlock)
+    // 단, 학생이 총량을 직접 정했으면 그 값이 먼저라 줄이지 않습니다. (#431)
     boolean lighter =
-        request.condition() != null
+        !chosenByStudent
+            && request.condition() != null
             && request.condition() <= LOW_CONDITION
             && target >= DayPlanRule.MIN_BLOCK;
     if (lighter) {
@@ -217,6 +227,18 @@ public class DayPlanService {
       window = new DayPlanRule.Span(nowDayMinutes(), window.end());
     }
     timeLines.add(0, windowEvidence(sleep, wake, window, fromNow));
+    // 학생이 시작 시각을 정했으면 그 전에는 카드를 두지 않습니다. 이미 그보다 늦은 범위면 그대로입니다. (#431)
+    LocalTime chosenStart = startTimeOf(request.startTime());
+    if (chosenStart != null) {
+      DayPlanRule.Span fromChosen = DayPlanRule.startingAt(window, chosenStart);
+      if (fromChosen.start() > window.start()) {
+        timeLines.add(
+            1,
+            DayPlanRule.timeTextOf(DayPlanRule.dayMinutesOf(chosenStart))
+                + " 부터 하기로 해서 그 전에는 카드를 두지 않았어요");
+      }
+      window = fromChosen;
+    }
     List<DayPlanRule.Span> free = DayPlanRule.freeSlotsOf(window, busy);
     List<DayPlanRule.Placed> placed = DayPlanRule.placeBlocks(free, block.minutes(), target, night);
     if (night) {
@@ -555,7 +577,19 @@ public class DayPlanService {
     return false;
   }
 
-  // 학생이 알려 준 것(준비하는 것 · 오늘 과목 · 다른 방에서 오늘 한 이야기)을 AI 입력 줄로. 없으면 빈 목록
+  // 시작 시각 "HH:mm" 을 시각으로. 없거나 모양이 틀리면 null (모양은 요청 검사에서 이미 봤습니다)
+  static LocalTime startTimeOf(String text) {
+    if (text == null) {
+      return null;
+    }
+    try {
+      return LocalTime.parse(text.trim());
+    } catch (DateTimeParseException e) {
+      return null;
+    }
+  }
+
+  // 학생이 알려 준 것(준비하는 것 · 오늘 과목 · 다른 방에서 오늘 한 이야기 · 계획 방 대화)을 AI 입력 줄로. 없으면 빈 목록
   static List<String> extraLinesOf(DayPlanRequest request) {
     List<String> lines = new ArrayList<>();
     if (request.focus() != null) {
@@ -566,6 +600,8 @@ public class DayPlanService {
     }
     // 위기 표현이 있는 줄은 빼고, 6줄 · 80자로 줄여서 한 줄로 붙입니다. (OtherRoomTalk)
     OtherRoomTalk.planLine(request.otherRooms()).ifPresent(lines::add);
+    // 계획 방에서 오늘 나눈 말. "학생 대화 · 지시 아님" 머리줄 아래에 한 줄씩 붙입니다. (PlanTalk, #431)
+    lines.addAll(PlanTalk.inputLines(request.planTalk()));
     return lines;
   }
 
