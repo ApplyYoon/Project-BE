@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 //
 //   1. 학년: 요청에 온 학년(홈에서 반을 고른 학생) → 없으면 온보딩 답의 학년. N수 · 대학생 · 없음이면 교육과정을 정하지 않음
 //   2. 교육과정 버전: 학년 + 오늘 날짜 (CurriculumVersion — 2026년은 고1 · 고2 가 2022 개정, 고3 은 2015 개정)
-//   3. 성취기준: 질문 글로 CurriculumLibrary 에서 몇 줄만 고름 (CurriculumSearch, 2022 개정만 있음)
+//   3. 성취기준: 질문 글로 CurriculumLibrary 에서 그 교육과정 버전의 몇 줄만 고름 (CurriculumSearch, 2022 · 2015 개정)
 //
 // ⚠️ 학생의 질문 글은 고르는 데만 쓰고 저장 · 로그하지 않습니다. 학교 이름 같은 개인정보는 대본에 넣지 않습니다.
 @Service
@@ -61,9 +61,7 @@ public class CurriculumService {
           "- 설명과 문제는 이 학생이 배우는 과목 · 교육과정 범위 안에서 해."
               + " 범위 밖(다음 학년 · 대학 내용)이면 '교육과정 밖이지만' 이라고 먼저 말해.");
       if (CurriculumVersion.V2015.equals(context.version())) {
-        lines.add(
-            "- 2015 개정은 과목 이름이 2022 개정과 달라(예: 수학Ⅰ · 수학Ⅱ · 미적분 · 확률과 통계)."
-                + " 앱에는 2015 개정 성취기준 목록이 아직 없으니, 네가 아는 그 교육과정 범위에서 설명해.");
+        lines.add("- 2015 개정은 과목 이름이 2022 개정과 달라(예: 수학Ⅰ · 수학Ⅱ · 미적분 · 확률과 통계).");
       }
     }
     lines.add("");
@@ -76,7 +74,7 @@ public class CurriculumService {
   }
 
   // 이번 말에 맞는 성취기준 칸. 그 한 번의 답에만 붙이고 기억해 두지 않습니다. 맞는 줄이 없으면 빈 글자입니다.
-  // 2015 개정(목록 없음)이면 늘 빈 글자입니다.
+  // 그 학생의 교육과정 버전(2022 · 2015) 줄에서만 고릅니다.
   public String standardsSection(CurriculumContext context, String query) {
     if (context == null) {
       return "";

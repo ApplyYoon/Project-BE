@@ -10,6 +10,8 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 // 진짜 파일(src/main/resources/curriculum/*.json)을 읽어서 모양을 확인합니다. 파일을 고치면 여기서 깨지는지 봅니다.
 class CurriculumLibraryTest {
@@ -36,13 +38,26 @@ class CurriculumLibraryTest {
             "통합사회1",
             "현대사회와 윤리",
             "윤리와 사상");
-    assertThat(library.standards("2015")).isEmpty();
   }
 
   @Test
-  @DisplayName("모든 줄은 고등학교 코드(10 · 12 로 시작)와 문장이 있고, 코드는 겹치지 않는다")
-  void everyLineIsWellFormed() {
-    List<AchievementStandard> all = library.standards("2022");
+  @DisplayName("2015 개정(2026년 고3) 국어 · 수학 · 영어의 고등학교 성취기준도 읽는다")
+  void loads2015Files() {
+    List<AchievementStandard> all = library.standards("2015");
+    Set<String> subjects =
+        all.stream().map(AchievementStandard::subject).collect(Collectors.toSet());
+
+    assertThat(all).hasSizeGreaterThan(500);
+    assertThat(subjects)
+        .contains("국어", "화법과 작문", "언어와 매체", "수학", "수학Ⅰ", "수학Ⅱ", "미적분", "확률과 통계", "영어Ⅰ", "영어Ⅱ");
+    assertThat(all).allSatisfy(s -> assertThat(s.curriculum()).isEqualTo("2015"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"2022", "2015"})
+  @DisplayName("모든 줄은 고등학교 코드(10 · 12 로 시작)와 문장이 있고, 코드는 그 교육과정 안에서 겹치지 않는다")
+  void everyLineIsWellFormed(String version) {
+    List<AchievementStandard> all = library.standards(version);
 
     assertThat(all)
         .allSatisfy(
@@ -54,12 +69,13 @@ class CurriculumLibraryTest {
         .isEqualTo(all.size());
   }
 
-  @Test
+  @ParameterizedTest
+  @ValueSource(strings = {"2022", "2015"})
   @DisplayName("한 과목의 코드는 앞부분이 모두 같다 (해설에 잘못 적힌 '[12동역-01-01]' 같은 줄이 섞이지 않게)")
-  void codesShareSubjectPrefix() {
+  void codesShareSubjectPrefix(String version) {
     // 코드 끝의 "두자리-두자리" 를 뗀 앞부분. 12동역01-01 → "12동역", 10공수1-01-01 → "10공수1-"
     Map<String, Set<String>> prefixes = new TreeMap<>();
-    for (AchievementStandard s : library.standards("2022")) {
+    for (AchievementStandard s : library.standards(version)) {
       prefixes
           .computeIfAbsent(s.subject(), subject -> new TreeSet<>())
           .add(s.code().replaceAll("\\d\\d-\\d\\d$", ""));
@@ -83,10 +99,29 @@ class CurriculumLibraryTest {
   }
 
   @Test
-  @DisplayName("고르기는 그 교육과정 안에서만 한다")
+  @DisplayName("2015 개정 원문 문장도 그대로 들어 있다 (수학Ⅱ 함수의 극한)")
+  void keeps2015OriginalText() {
+    AchievementStandard standard =
+        library.standards("2015").stream()
+            .filter(s -> s.code().equals("12수학Ⅱ01-02"))
+            .findFirst()
+            .orElseThrow();
+
+    assertThat(standard.subject()).isEqualTo("수학Ⅱ");
+    assertThat(standard.area()).isEqualTo("함수의 극한과 연속");
+    assertThat(standard.text()).isEqualTo("함수의 극한에 대한 성질을 이해하고, 함수의 극한값을 구할 수 있다.");
+  }
+
+  @Test
+  @DisplayName("고르기는 그 교육과정 안에서만 한다 (2022 는 미적분Ⅰ, 2015 는 수학Ⅱ 줄)")
   void searchInVersion() {
-    assertThat(library.search("2022", List.of(), "함수의 극한값", 2)).isNotEmpty();
-    assertThat(library.search("2015", List.of(), "함수의 극한값", 2)).isEmpty();
+    List<AchievementStandard> v2022 = library.search("2022", List.of(), "함수의 극한값", 2);
+    List<AchievementStandard> v2015 = library.search("2015", List.of(), "함수의 극한값", 2);
+
+    assertThat(v2022).isNotEmpty().allSatisfy(s -> assertThat(s.curriculum()).isEqualTo("2022"));
+    assertThat(v2022.get(0).code()).isEqualTo("12미적Ⅰ-01-02");
+    assertThat(v2015).isNotEmpty().allSatisfy(s -> assertThat(s.curriculum()).isEqualTo("2015"));
+    assertThat(v2015.get(0).code()).isEqualTo("12수학Ⅱ01-02");
   }
 
   @Test

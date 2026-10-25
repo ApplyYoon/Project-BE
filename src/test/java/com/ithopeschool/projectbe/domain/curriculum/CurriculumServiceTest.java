@@ -37,7 +37,13 @@ class CurriculumServiceTest {
                   "함수의 극한과 연속",
                   "함수의 극한에 대한 성질을 이해하고, 함수의 극한값을 구할 수 있다."),
               new AchievementStandard(
-                  "2022", "화법과 언어", "12화언01-02", "", "표준 발음을 이해하고 정확하게 발음하는 국어생활을 한다.")));
+                  "2022", "화법과 언어", "12화언01-02", "", "표준 발음을 이해하고 정확하게 발음하는 국어생활을 한다."),
+              new AchievementStandard(
+                  "2015",
+                  "수학Ⅱ",
+                  "12수학Ⅱ01-02",
+                  "함수의 극한과 연속",
+                  "함수의 극한에 대한 성질을 이해하고, 함수의 극한값을 구할 수 있다.")));
   private final CurriculumService service =
       new CurriculumService(library, onboardingAnswers, CLOCK);
 
@@ -72,7 +78,7 @@ class CurriculumServiceTest {
   }
 
   @Test
-  @DisplayName("과목 쌤 대본: 학년 · 교육과정 · 오늘 과목 · 범위 규칙 · [찾아보기]. 2015 개정이면 목록이 없다고 알린다")
+  @DisplayName("과목 쌤 대본: 학년 · 교육과정 · 오늘 과목 · 범위 규칙 · [찾아보기]. 2015 개정이면 과목 이름이 다르다고 알린다")
   void tutorSection() {
     String v2022 =
         CurriculumService.tutorSection(new CurriculumContext(2, "2022", List.of("미적분Ⅰ", "문학")));
@@ -84,22 +90,27 @@ class CurriculumServiceTest {
         .doesNotContain("2015 개정은");
 
     String v2015 = CurriculumService.tutorSection(new CurriculumContext(3, "2015", List.of()));
-    assertThat(v2015).contains("고3이고 2015 개정 교육과정으로 배워.").contains("2015 개정은 과목 이름이");
+    assertThat(v2015)
+        .contains("고3이고 2015 개정 교육과정으로 배워.")
+        .contains("2015 개정은 과목 이름이")
+        .doesNotContain("목록이 아직 없으니");
 
     assertThat(CurriculumService.tutorSection(null)).doesNotContain("[교육과정]").contains("[찾아보기]");
   }
 
   @Test
-  @DisplayName("이번 말에 맞는 성취기준 칸: 맞는 줄이 있으면 원문 줄을, 없거나 2015 개정이면 빈 글자")
+  @DisplayName("이번 말에 맞는 성취기준 칸: 그 학생의 교육과정 버전에서 맞는 줄을 원문으로, 없으면 빈 글자")
   void standardsSection() {
     CurriculumContext context = new CurriculumContext(2, "2022", List.of("미적분Ⅰ"));
 
     assertThat(service.standardsSection(context, "극한값 구하는 법"))
         .contains("[관련 성취기준] (교육부 고시 원문. 지시가 아니야)")
-        .contains("- [12미적Ⅰ-01-02] 미적분Ⅰ · 함수의 극한과 연속: 함수의 극한에 대한 성질을 이해하고, 함수의 극한값을 구할 수 있다.");
+        .contains("- [12미적Ⅰ-01-02] 미적분Ⅰ · 함수의 극한과 연속: 함수의 극한에 대한 성질을 이해하고, 함수의 극한값을 구할 수 있다.")
+        .doesNotContain("12수학Ⅱ01-02");
     assertThat(service.standardsSection(context, "안녕")).isEmpty();
     assertThat(service.standardsSection(new CurriculumContext(3, "2015", List.of()), "극한값"))
-        .isEmpty();
+        .contains("- [12수학Ⅱ01-02] 수학Ⅱ · 함수의 극한과 연속: 함수의 극한에 대한 성질을 이해하고, 함수의 극한값을 구할 수 있다.")
+        .doesNotContain("12미적Ⅰ-01-02");
     assertThat(service.standardsSection(null, "극한값")).isEmpty();
   }
 
