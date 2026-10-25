@@ -203,6 +203,9 @@ class LoginRequiredFlowTest {
               "/api/v1/weekly-goals",
               "/api/v1/weekly-goals?from=2026-10-01&to=2026-10-31",
               null),
+          // 주간 점수 (내 퀴즈 결과 · 계획 · 기록을 봅니다. 이슈 #412)
+          new Api(
+              "GET", "/api/v1/weekly-scores/{weekStart}", "/api/v1/weekly-scores/2026-10-19", null),
           // 달력 (내 카드 결과 · 체크인을 봅니다. 이슈 #235)
           new Api("GET", "/api/v1/calendar", "/api/v1/calendar?month=2026-10", null),
           // 관리 단계 (내 카드 결과 · 체크인으로 판정해 저장합니다. 이슈 #62)
@@ -558,6 +561,12 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/cards/from-photo",
               "/api/v1/ai/cards/from-photo",
               "{\"image\":\"data:image/jpeg;base64,AAAA\",\"date\":\"2026-10-18\"}"),
+          // 사진으로 증빙 적기 (방금 한 공부의 사진이라 학생의 정보입니다. Project-FE#670)
+          new Api(
+              "POST",
+              "/api/v1/ai/proof-from-photo",
+              "/api/v1/ai/proof-from-photo",
+              "{\"image\":\"data:image/jpeg;base64,AAAA\"}"),
           // 카드 폼 기본값 (내 카드 · 목표 · 기록을 봅니다. 이슈 #237)
           new Api(
               "POST", "/api/v1/ai/card-defaults", "/api/v1/ai/card-defaults", "{\"title\":\"수학\"}"),
