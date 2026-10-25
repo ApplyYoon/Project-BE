@@ -222,6 +222,13 @@ class LoginRequiredFlowTest {
               "/api/v1/experiments",
               "{\"hypothesis\":\"폰\",\"strategyId\":\"phone-bag\",\"cardIds\":[\"1\"]}"),
           new Api("GET", "/api/v1/experiments", "/api/v1/experiments", null),
+          // 나 사용설명서 (효과가 확인된 실험 · 확실성 높은 인사이트. 이슈 #46)
+          new Api("GET", "/api/v1/manual", "/api/v1/manual", null),
+          new Api(
+              "PUT",
+              "/api/v1/manual/hidden-items/{itemId}",
+              "/api/v1/manual/hidden-items/experiment-1",
+              null),
           // 잠금 해제 기록
           new Api(
               "POST",
