@@ -125,6 +125,7 @@ create table cards (
     alert_minutes_before integer,
     card_date date not null,
     duration_minutes integer not null,
+    end_date date,
     expected_done integer,
     start_time time(0),
     created_at timestamp(6) with time zone not null,

@@ -61,6 +61,32 @@ class CardTest {
   }
 
   @Test
+  @DisplayName("반복 카드는 그만하는 날(endDate)까지만 한다. 그날은 하고, 그 뒤 같은 요일은 안 한다")
+  void repeatCardUntilEndDate() {
+    // 10-01 시작, 월·수, 10-12(월) 까지
+    Card card = card(LocalDate.of(2026, 10, 1), List.of(1, 3));
+    card.changeEndDate(MON_OCT_12);
+
+    assertThat(card.isOnDate(LocalDate.of(2026, 10, 7))).isTrue(); // 수요일, 끝나기 전
+    assertThat(card.isOnDate(MON_OCT_12)).isTrue(); // 그만하는 날 당일
+    assertThat(card.isOnDate(LocalDate.of(2026, 10, 14))).isFalse(); // 수요일, 끝난 뒤
+    assertThat(card.isOnDate(LocalDate.of(2026, 10, 19))).isFalse(); // 월요일, 끝난 뒤
+
+    // 다시 null 로 두면 끝 없이 반복합니다.
+    card.changeEndDate(null);
+    assertThat(card.isOnDate(LocalDate.of(2026, 10, 19))).isTrue();
+  }
+
+  @Test
+  @DisplayName("1회성 카드는 endDate 를 보지 않는다 (카드 날짜에 한다)")
+  void oneOffCardIgnoresEndDate() {
+    Card card = card(MON_OCT_12, List.of());
+    card.changeEndDate(LocalDate.of(2026, 10, 1));
+
+    assertThat(card.isOnDate(MON_OCT_12)).isTrue();
+  }
+
+  @Test
   @DisplayName("요일 번호는 FE 와 같다: 일요일 0, 월요일 1, 토요일 6")
   void weekdayNumbers() {
     assertThat(Card.weekdayOf(LocalDate.of(2026, 10, 11))).isZero();
