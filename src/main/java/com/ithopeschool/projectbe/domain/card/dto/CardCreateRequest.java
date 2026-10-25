@@ -19,7 +19,7 @@ import java.util.List;
 //     "expectedDoneReason": null, "expectedFailCauses": ["폰을 볼 것 같다"],
 //     "alert": { "method": "message", "minutesBefore": 0 }, "planningMs": 42000 }
 // - 꼭 보내야 하는 것: title · date · durationMinutes · checklist
-// - 안 보내면: 1회성 카드 · 시작 시각 없음 · 목표 없음 · 과목 없음 · 유연(flexible) · 자습(self) · 알림 기본
+// - 안 보내면: 1회성 카드 · 끝 없이 반복(endDate) · 시작 시각 없음 · 목표 없음 · 과목 없음 · 유연(flexible) · 자습(self) · 알림 기본
 // - subjectId 는 내 과목이어야 합니다. (없는 과목 · 남의 과목은 Service 에서 404)
 // - startTime 이 없는 카드는 옛 계획에서 옮긴 카드뿐입니다. 새 카드는 FE 가 꼭 보냅니다.
 // - 요일이 겹치는지, priority · type · alert.method 가 정해진 값인지, expectedDone 이 체크리스트 개수 이하인지는
@@ -59,7 +59,10 @@ public record CardCreateRequest(
                 @Size(max = 100, message = "예상 실패 원인은 100자 이하로 적어 주세요") String>
             expectedFailCauses,
     @Valid CardAlertRequest alert,
-    @Min(value = 0, message = "계획에 쓴 시간은 0 이상이어야 해요") Long planningMs) {
+    @Min(value = 0, message = "계획에 쓴 시간은 0 이상이어야 해요") Long planningMs,
+    // 반복을 그만하는 날 (이 날까지 함). 안 보내면 끝 없이 반복합니다. date 보다 앞이면 Service 에서 400 입니다.
+    // (2026-10-25 에 더한 칸이라 맨 끝에 둡니다)
+    LocalDate endDate) {
 
   // 값이 들어오는 순간에 앞뒤 공백을 지웁니다. 그래서 위의 검사는 공백을 지운 값으로 돌아갑니다.
   public CardCreateRequest {

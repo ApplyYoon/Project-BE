@@ -70,6 +70,10 @@ public class Card {
   @Column(length = 20)
   private String repeatDays;
 
+  // 반복 카드를 그만하는 날 (이 날까지는 함). 비어 있으면(null) 끝 없이 반복합니다.
+  // 연결한 목표를 그만두거나 D-day 가 지나면 FE 가 채웁니다. 1회성 카드는 이 값을 보지 않습니다. (2026-10-25 QA)
+  private LocalDate endDate;
+
   // 시작 시각. 예: 19:00 (몇 시 몇 분만). 새 카드는 꼭 있고, 옛 계획에서 옮긴 카드만 비어 있을 수 있습니다.
   private LocalTime startTime;
 
@@ -176,18 +180,20 @@ public class Card {
 
   // 그 날짜에 하는 카드인지 알려 줍니다. FE 의 isCardOnDate (src/lib/cards.ts) 와 같은 규칙입니다.
   //   - 1회성 카드: 카드 날짜와 같은 날만
-  //   - 반복 카드: 반복을 시작한 날짜부터, 그 요일이면
+  //   - 반복 카드: 반복을 시작한 날짜부터 그만하는 날(endDate, 있으면)까지, 그 요일이면
   //
   //   (2026-10-12 는 월요일)
-  //   1회성 10-12 카드          → 10-12 true,  10-13 false
-  //   반복 10-01 시작 [월, 수]   → 10-12 true (월요일),  10-13 false (화요일)
-  //   반복 10-20 시작 [월, 수]   → 10-12 false (시작 전)
+  //   1회성 10-12 카드                     → 10-12 true,  10-13 false
+  //   반복 10-01 시작 [월, 수]              → 10-12 true (월요일),  10-13 false (화요일)
+  //   반복 10-20 시작 [월, 수]              → 10-12 false (시작 전)
+  //   반복 10-01 시작 [월, 수] 10-12 까지    → 10-12 true (그날까지 함),  10-14 false (그만한 뒤)
   public boolean isOnDate(LocalDate date) {
     List<Integer> days = repeatDayList();
     if (days.isEmpty()) {
       return cardDate.equals(date);
     }
-    return !date.isBefore(cardDate) && days.contains(weekdayOf(date));
+    boolean isEnded = endDate != null && date.isAfter(endDate);
+    return !date.isBefore(cardDate) && !isEnded && days.contains(weekdayOf(date));
   }
 
   // 날짜의 요일을 FE 와 같은 숫자로 바꿉니다. (0 = 일요일 … 6 = 토요일)
@@ -239,6 +245,11 @@ public class Card {
   // 반복 요일을 바꿉니다. 빈 목록이면 1회성 카드가 됩니다.
   public void changeRepeatDays(List<Integer> days) {
     this.repeatDays = toRepeatDaysText(days);
+  }
+
+  // 반복을 그만하는 날을 바꿉니다. null 이면 끝 없이 반복합니다.
+  public void changeEndDate(LocalDate endDate) {
+    this.endDate = endDate;
   }
 
   // 시작 시각을 바꿉니다. null 이면 시각이 없는 카드가 됩니다.

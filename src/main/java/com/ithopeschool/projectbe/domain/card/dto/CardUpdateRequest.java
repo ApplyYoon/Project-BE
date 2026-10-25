@@ -17,6 +17,7 @@ import java.util.List;
 // - 목록(repeatDays · checklist · expectedFailCauses)은 항목 하나만 고치지 않고 **보낸 목록으로 통째로 바꿉니다.**
 // - 지우는 방법 (계획 바꾸기와 같은 약속: 빈 값을 보냄)
 //     repeatDays: []          → 1회성 카드          startTime: ""          → 시작 시각 없음
+//     endDate: ""             → 끝 없이 반복
 //     goalId: ""              → 목표 없음           expectedDoneReason: "" → 이유 지우기
 //     subjectId: ""           → 과목 없음
 //     expectedFailCauses: []  → 예상 실패 원인 지우기
@@ -52,7 +53,11 @@ public record CardUpdateRequest(
                 @Size(max = 100, message = "예상 실패 원인은 100자 이하로 적어 주세요") String>
             expectedFailCauses,
     @Valid CardAlertRequest alert,
-    @Min(value = 0, message = "계획에 쓴 시간은 0 이상이어야 해요") Long planningMs) {
+    @Min(value = 0, message = "계획에 쓴 시간은 0 이상이어야 해요") Long planningMs,
+    // 반복을 그만하는 날. "2026-10-30" 처럼 보내고, 빈 글자("")는 "끝 없이 반복" 입니다.
+    // 지우는 약속이 startTime 과 같아서 글자로 받습니다. (2026-10-25 에 더한 칸이라 맨 끝에 둡니다)
+    @Pattern(regexp = "|\\d{4}-\\d{2}-\\d{2}", message = "끝나는 날은 2026-10-30 처럼 보내 주세요")
+        String endDate) {
 
   // 값이 들어오는 순간에 앞뒤 공백을 지웁니다. "   " 처럼 공백뿐인 제목은 빈 글자("")가 되어 위의 검사에 걸립니다.
   public CardUpdateRequest {
@@ -66,6 +71,7 @@ public record CardUpdateRequest(
     return title == null
         && date == null
         && repeatDays == null
+        && endDate == null
         && startTime == null
         && durationMinutes == null
         && checklist == null

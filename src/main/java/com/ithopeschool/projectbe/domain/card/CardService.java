@@ -15,6 +15,7 @@ import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -100,6 +101,7 @@ public class CardService {
     if (request.repeatDays() != null) {
       card.changeRepeatDays(checkRepeatDays(request.repeatDays()));
     }
+    card.changeEndDate(request.endDate());
     card.changeStartTime(parseStartTime(request.startTime()));
     card.changeGoalId(parseGoalId(request.goalId()));
     card.changeSubjectId(checkSubject(userId, request.subjectId()));
@@ -121,6 +123,7 @@ public class CardService {
     card.changePlanningMs(request.planningMs());
 
     checkExpectedDone(card);
+    checkEndDate(card);
     checkSleep(userId, card);
     Card saved = cardRepository.save(card);
     return CardResponse.from(saved, bufferWarningOf(userId, saved));
@@ -145,6 +148,10 @@ public class CardService {
     if (request.repeatDays() != null) {
       // 빈 목록([])이면 1회성 카드가 됩니다.
       card.changeRepeatDays(checkRepeatDays(request.repeatDays()));
+    }
+    if (request.endDate() != null) {
+      // 빈 글자("")면 parseEndDate 가 null 을 돌려줘서 "끝 없이 반복" 이 됩니다.
+      card.changeEndDate(parseEndDate(request.endDate()));
     }
     if (request.startTime() != null) {
       // 빈 글자("")면 parseStartTime 이 null 을 돌려줘서 "시작 시각 없음" 이 됩니다.
@@ -195,6 +202,8 @@ public class CardService {
     // 바뀐 뒤의 모습으로 한 번 더 봅니다. (체크리스트만 줄여도 예상 달성 개수가 넘칠 수 있음)
     // 여기서 400 이 나면 @Transactional 이 위에서 바꾼 값을 모두 되돌립니다.
     checkExpectedDone(card);
+    // 날짜만 바꿔도 끝나는 날보다 뒤가 될 수 있어서 늘 봅니다.
+    checkEndDate(card);
     // 시각이나 길이를 바꿀 때만 수면 보호를 봅니다. (제목만 고치는데 예전 카드라 막히지 않게)
     if (request.startTime() != null || request.durationMinutes() != null) {
       checkSleep(userId, card);
@@ -295,6 +304,14 @@ public class CardService {
     return days;
   }
 
+  // 반복을 그만하는 날이 시작한 날보다 앞이면 400 입니다. (같은 날은 됩니다: 그날 하루만 하고 끝)
+  private void checkEndDate(Card card) {
+    LocalDate endDate = card.getEndDate();
+    if (endDate != null && endDate.isBefore(card.getCardDate())) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "끝나는 날은 시작한 날보다 앞일 수 없어요");
+    }
+  }
+
   // 예상 달성 개수가 체크리스트 개수보다 많으면 400 입니다.
   private void checkExpectedDone(Card card) {
     Integer expectedDone = card.getExpectedDone();
@@ -339,6 +356,19 @@ public class CardService {
       return null;
     }
     return LocalTime.parse(value);
+  }
+
+  // 끝나는 날 글자("2026-10-30")를 날짜로 바꿉니다. 빈 글자("")면 "끝 없이 반복"(null) 입니다.
+  // 모양(YYYY-MM-DD)은 요청 DTO 의 @Pattern 이 검사했지만, 2026-02-30 처럼 없는 날짜는 여기서 400 으로 돌려보냅니다.
+  private LocalDate parseEndDate(String value) {
+    if (value.isEmpty()) {
+      return null;
+    }
+    try {
+      return LocalDate.parse(value);
+    } catch (DateTimeParseException e) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "끝나는 날이 없는 날짜예요");
+    }
   }
 
   // 목표 번호를 숫자로 바꿉니다. 보내지 않았거나(null) 빈 글자("")면 "목표 없음"(null) 입니다.

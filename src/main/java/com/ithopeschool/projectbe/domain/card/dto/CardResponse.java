@@ -13,7 +13,7 @@ import java.util.List;
 //     "checklist": [ { "id": "i1", "text": "42~45쪽" } ], "goalId": null, "subjectId": "3",
 //     "priority": "flexible", "type": "self", "expectedDone": null, "expectedDoneReason": null,
 //     "expectedFailCauses": null, "alert": null, "planningMs": null, "createdAt": 1790000000000,
-//     "bufferWarning": null }
+//     "bufferWarning": null, "endDate": null }
 // - id, goalId, subjectId 는 FE 타입이 글자(string)라서 숫자를 글자로 바꿔 보냅니다.
 // - subjectId 는 카드의 과목입니다. "과목 없음" 이면 null 입니다. (이슈 #404)
 // - 1회성 카드는 repeatDays 가 null, 예상 실패 원인이 없으면 expectedFailCauses 가 null 입니다. (값이 없는 칸은 null)
@@ -41,7 +41,9 @@ public record CardResponse(
     AlertResponse alert,
     Long planningMs,
     long createdAt,
-    String bufferWarning) {
+    String bufferWarning,
+    // 반복을 그만하는 날 (이 날까지 함). 끝 없이 반복하거나 1회성 카드면 null
+    LocalDate endDate) {
 
   // 체크리스트 항목 하나 (FE 의 ChecklistItem)
   public record ChecklistItemResponse(String id, String text) {}
@@ -89,6 +91,7 @@ public record CardResponse(
         alert,
         card.getPlanningMs(),
         card.getCreatedAt().toEpochMilli(),
-        bufferWarning);
+        bufferWarning,
+        card.getEndDate());
   }
 }
