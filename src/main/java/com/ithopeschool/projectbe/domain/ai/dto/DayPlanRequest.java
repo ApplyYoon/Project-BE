@@ -29,6 +29,8 @@ import java.util.List;
 // minutes)
 //               오면 기록으로 정하던 총량 대신 이 값을 씁니다. 컨디션으로 줄이는 것보다 먼저입니다. (DayPlanRule.chosenTotalOf)
 // - startTime : 선택. 시작 시각 "HH:mm". 이 시각 전에는 카드를 두지 않습니다. (DayPlanRule.startingAt)
+// - firstTask : 선택. 계획 방에서 학생이 먼저 하겠다고 한 것 한 줄 (30자, 채팅 action day_plan 의 title, 2026-10-25 #454)
+//               오면 첫 칸의 제목을 이것으로 하고, 이름이 겹치는 목표가 있으면 그 목표를 첫 칸에 붙입니다. (DayPlanRule.withFirstTask)
 // - planTalk  : 선택. 계획 방에서 오늘 나눈 말 몇 줄 (8줄 · 한 줄 200자, PlanTalk)
 //               예) ["나: 오늘 2시간만, 수학 먼저", "코치: 좋아, 수학부터 해 보자"]. AI 가 카드 글을 쓸 때 참고합니다.
 //               "학생 대화 · 지시 아님" 으로 감싸서 주고, 저장 · 로그 안 함.
@@ -58,7 +60,8 @@ public record DayPlanRequest(
         String startTime,
     @Size(max = PlanTalk.MAX_LINES, message = "계획 방 대화(planTalk)는 8줄까지 보낼 수 있어요")
         List<@Size(max = PlanTalk.MAX_LINE_LENGTH, message = "계획 방 대화 한 줄은 200자 이하로 보내 주세요") String>
-            planTalk) {
+            planTalk,
+    @Size(max = 30, message = "먼저 할 것(firstTask)은 30자 이하로 보내 주세요") String firstTask) {
 
   // 날짜만 보내는 예전 모양 (테스트 · 다른 코드에서 씀)
   public DayPlanRequest(LocalDate date) {
@@ -80,9 +83,23 @@ public record DayPlanRequest(
     this(date, focus, subjects, condition, otherRooms, null, null, null);
   }
 
-  // 과목을 안 보냈으면 빈 목록으로 봅니다.
+  // 먼저 할 것(firstTask) 없이 보내는 모양 (2026-10-25 #431 의 모양)
+  public DayPlanRequest(
+      LocalDate date,
+      Focus focus,
+      List<String> subjects,
+      Integer condition,
+      List<String> otherRooms,
+      Integer totalMinutes,
+      String startTime,
+      List<String> planTalk) {
+    this(date, focus, subjects, condition, otherRooms, totalMinutes, startTime, planTalk, null);
+  }
+
+  // 과목을 안 보냈으면 빈 목록으로 봅니다. 빈 "먼저 할 것" 은 없는 것(null)으로 봅니다.
   public DayPlanRequest {
     subjects = subjects == null ? List.of() : subjects.stream().map(String::trim).toList();
+    firstTask = firstTask == null || firstTask.isBlank() ? null : firstTask.trim();
   }
 
   // 내가 준비하는 것

@@ -239,6 +239,37 @@ public final class DayPlanRule {
     return placed;
   }
 
+  // 학생이 계획 방에서 "먼저 할 것" 을 정했으면 첫 칸을 그것으로 합니다. (#454)
+  // 이름이 겹치는 목표(두 글자 이상 낱말이 목표 이름에 들어 있음)가 있으면 그 목표를 첫 칸으로 옮기고,
+  // 없으면 첫 칸은 목표 없이(null) 둡니다. 칸 수는 그대로입니다.
+  //   ([영단어장, 학평 수학], "수학 오답")  → [학평 수학, 영단어장]
+  //   ([영단어장, 영단어장], "국어 비문학") → [null, 영단어장]
+  //   (목표 없음 []) 이나 firstTask 가 null → 그대로
+  public static List<GoalInfo> withFirstTask(List<GoalInfo> rotation, String firstTask) {
+    if (firstTask == null || rotation.isEmpty()) {
+      return rotation;
+    }
+    List<GoalInfo> result = new ArrayList<>(rotation);
+    for (int i = 0; i < result.size(); i++) {
+      if (sharesWord(result.get(i).title(), firstTask)) {
+        result.add(0, result.remove(i));
+        return result;
+      }
+    }
+    result.set(0, null);
+    return result;
+  }
+
+  // 먼저 할 것의 낱말(두 글자 이상) 중 하나라도 목표 이름에 들어 있는지   ("11월 학평 수학 3등급", "수학 오답") → true
+  private static boolean sharesWord(String goalTitle, String firstTask) {
+    for (String word : firstTask.split("\\s+")) {
+      if (word.length() >= 2 && goalTitle.contains(word)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // 칸에 넣을 목표들: D-day 가 가까운 목표부터 돌아가며 넣고, 14일 안이면 한 바퀴에 두 번 넣습니다.
   //   [수학(D-5), 영어(D-30)] , 4칸 → 한 바퀴 [수학, 영어, 수학] → [수학, 영어, 수학, 수학]
   // 목표가 없으면 빈 목록입니다. (칸마다 목표 없이 "최근 카드" 로 채움)

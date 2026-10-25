@@ -342,6 +342,26 @@ class DayPlanServiceTest {
   }
 
   @Test
+  @DisplayName("계획 방에서 먼저 할 것(firstTask)을 정하면 첫 칸 제목이 그것이고, 이름이 맞는 목표가 첫 칸에 붙는다")
+  void firstTaskComesFirst() {
+    aiAnswers(null);
+
+    // 목표는 "영단어장 1회독"(번호 4) 하나뿐
+    DayPlanResponse other =
+        service.suggest(
+            new DayPlanRequest(MONDAY, null, null, null, null, 100, null, null, "수학 오답"));
+    DayPlanResponse matching =
+        service.suggest(
+            new DayPlanRequest(MONDAY, null, null, null, null, 100, null, null, "영단어장 복습"));
+
+    assertThat(other.drafts().get(0).title()).isEqualTo("수학 오답");
+    assertThat(other.drafts().get(0).goalId()).isNull();
+    assertThat(other.evidence()).contains("계획 방에서 「수학 오답」 을 먼저 하기로 해서 첫 칸에 넣었어요");
+    assertThat(matching.drafts().get(0).title()).isEqualTo("영단어장 복습");
+    assertThat(matching.drafts().get(0).goalId()).isEqualTo("4");
+  }
+
+  @Test
   @DisplayName("날짜가 오늘보다 앞이거나 14일보다 뒤면 400 이다")
   void dateRange() {
     assertThatThrownBy(() -> service.suggest(new DayPlanRequest(TODAY.minusDays(1))))

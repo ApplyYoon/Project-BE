@@ -195,6 +195,9 @@ class ChatAiClientTest {
         .contains("다섯 문장까지", "짧은 목록 3~5줄", "질문은 한 답에 하나까지만")
         .contains("day_plan", "startTime 은 시작 시각(HH:mm", "안 정한 것은 null")
         .contains("'오늘 계획 짜 줘' 는 앱이 늘 따로 보여 주니 넣지 마")
+        // "지금부터 1시간만 … 할래" 에 minutes 를 비우거나 start_timer 를 고르던 것 (#454)
+        .contains("학생이 시간을 말했으면 minutes 를 비우지 마. 예: '1시간만' → 60")
+        .contains("'~할래' 라고 해도 day_plan")
         .doesNotContain("두세 문장");
     assertThat(ChatAiClient.TURN_RULES)
         .contains("reply: 학생에게 할 말. 두세 문장.")
