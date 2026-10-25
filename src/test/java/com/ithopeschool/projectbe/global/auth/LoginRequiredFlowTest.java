@@ -558,6 +558,12 @@ class LoginRequiredFlowTest {
               "/api/v1/ai/cards/from-photo",
               "/api/v1/ai/cards/from-photo",
               "{\"image\":\"data:image/jpeg;base64,AAAA\",\"date\":\"2026-10-18\"}"),
+          // 사진으로 증빙 적기 (방금 한 공부의 사진이라 학생의 정보입니다. Project-FE#670)
+          new Api(
+              "POST",
+              "/api/v1/ai/proof-from-photo",
+              "/api/v1/ai/proof-from-photo",
+              "{\"image\":\"data:image/jpeg;base64,AAAA\"}"),
           // 카드 폼 기본값 (내 카드 · 목표 · 기록을 봅니다. 이슈 #237)
           new Api(
               "POST", "/api/v1/ai/card-defaults", "/api/v1/ai/card-defaults", "{\"title\":\"수학\"}"),

@@ -31,6 +31,8 @@ import com.ithopeschool.projectbe.domain.ai.dto.FirstStepResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.LongPlanOutline;
 import com.ithopeschool.projectbe.domain.ai.dto.LongPlanResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.ProfileLinesResponse;
+import com.ithopeschool.projectbe.domain.ai.dto.ProofPhotoRequest;
+import com.ithopeschool.projectbe.domain.ai.dto.ProofPhotoResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.QuickCardResponse;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.RoutineCardResponse;
@@ -68,6 +70,7 @@ class AiControllerTest {
   @MockitoBean private ProfileLinesService profileLinesService;
   @MockitoBean private CardParseService cardParseService;
   @MockitoBean private CardPhotoService cardPhotoService;
+  @MockitoBean private ProofPhotoService proofPhotoService;
   @MockitoBean private CardDefaultsService cardDefaultsService;
   @MockitoBean private SelfAnalysisService selfAnalysisService;
   @MockitoBean private DayPlanService dayPlanService;
@@ -567,6 +570,40 @@ class AiControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.message").value("메모는 100자 이하로 보내 주세요"));
     verifyNoInteractions(cardPhotoService);
+  }
+
+  // ---- 사진으로 증빙 적기 ----
+
+  private ResultActions proofFromPhoto(String body) throws Exception {
+    return mockMvc.perform(
+        post("/api/v1/ai/proof-from-photo").contentType(MediaType.APPLICATION_JSON).content(body));
+  }
+
+  @Test
+  @DisplayName("사진으로 증빙 적기: 200 과 한 줄, 카드 제목의 앞뒤 공백은 지워서 넘긴다")
+  void proofFromPhotoReturnsSummary() throws Exception {
+    given(proofPhotoService.summarize(any()))
+        .willReturn(ProofPhotoResponse.of("수학 문제집 42~45쪽 풀고 틀린 3문제 표시함"));
+    proofFromPhoto("{\"image\":\"data:image/jpeg;base64,AQID\",\"cardTitle\":\" 수학 문제집 \"}")
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .json("{\"showHelp\":false,\"summary\":\"수학 문제집 42~45쪽 풀고 틀린 3문제 표시함\"}", true));
+    verify(proofPhotoService)
+        .summarize(new ProofPhotoRequest("data:image/jpeg;base64,AQID", "수학 문제집"));
+  }
+
+  @Test
+  @DisplayName("사진으로 증빙 적기: 사진이 없거나 카드 제목이 100자를 넘으면 400 이고 서비스를 부르지 않는다")
+  void proofFromPhotoRejectsBadRequests() throws Exception {
+    proofFromPhoto("{\"cardTitle\":\"수학\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("사진을 보내 주세요"));
+    proofFromPhoto(
+            "{\"image\":\"data:image/jpeg;base64,AQID\",\"cardTitle\":\"" + "가".repeat(101) + "\"}")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("카드 제목은 100자 이하로 보내 주세요"));
+    verifyNoInteractions(proofPhotoService);
   }
 
   // ---- 카드 폼 기본값 ----
