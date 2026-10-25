@@ -128,6 +128,16 @@ public class ExperimentService {
     return items;
   }
 
+  // 나 사용설명서(#46)에 올릴 "효과 있음" 실험들입니다. 끝났는데 아직 판정 전인 실험은 여기서 먼저 판정합니다.
+  // (판정은 목록을 열 때 하므로, 실험 목록을 한 번도 안 열었어도 사용설명서에 빠지지 않게 하려는 것입니다)
+  // ⚠️ 주소(API)로 열지 않습니다. ManualService 가 CurrentUserProvider 로 얻은 내 번호를 넘겨서 부릅니다.
+  @Transactional
+  public List<Experiment> getEffectiveExperiments(Long userId) {
+    Instant now = clock.instant();
+    judgeEnded(userId, DayRule.dateOf(now), now);
+    return experimentRepository.findByUserIdAndStatus(userId, ExperimentStatus.EFFECTIVE);
+  }
+
   // 14일이 끝난 진행 중 실험을 판정합니다. 기준선(시작 전 14일)부터 마지막 날까지의 카드 기록을 씁니다.
   private void judgeEnded(Long userId, LocalDate today, Instant now) {
     for (Experiment experiment :

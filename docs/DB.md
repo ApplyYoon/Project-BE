@@ -47,6 +47,7 @@ erDiagram
     users ||--o{ accounts : "user_id"
     users ||--o{ login_tokens : "user_id"
     users ||--o{ messages : "user_id"
+    users ||--o{ manual_hidden_items : "user_id"
     users ||--o{ call_records : "user_id"
     users ||--o{ thinking_tests : "user_id"
     users ||--o{ push_subscriptions : "user_id"
@@ -212,6 +213,11 @@ erDiagram
         varchar text "메시지 내용 (500자까지)"
         timestamptz sent_at "메시지를 보낸 시각"
         timestamptz read_at "처음 읽은 시각 (아직 안 읽었으면 비어 있음)"
+    }
+    manual_hidden_items {
+        bigint id PK "숨기기 한 번을 구분하는 고유 번호"
+        bigint user_id FK "누가 숨겼는지 (같은 사람이 같은 항목을 두 번 숨겨도 한 줄만)"
+        varchar item_id "숨긴 항목의 이름표 (예: experiment-3, insight-morning-vs-night)"
     }
     call_records {
         bigint id PK "통화를 구분하는 고유 번호"
@@ -676,6 +682,7 @@ erDiagram
 | AI 메시지 #30 | 완료 | `messages` |
 | 하루 요약 #34 | 대기 | 현재 `DaySummary` 계산 객체만 있고 저장 엔티티 없음 |
 | 개선안·실험 #52 | 완료 | v3 자기 실험 `experiments` · `experiment_cards` (#52 · #54). 옛 v2 개선안 계산 객체는 그대로 |
+| 나 사용설명서 #46 | 완료 | 숨기기 `manual_hidden_items` 엔티티·그림·운영 SQL 반영. 항목은 저장하지 않고 실험·인사이트에서 모읍니다 |
 | 일기 #60 | 완료 | `diaries`와 딸린 `diary_emotions` · `diary_causes` · `diary_keywords` |
 | 구글 캘린더 일정 알림 (2026-10-24) | 완료 | `calendar_alarms` |
 | 사진 채점 (2026-10-24) | 완료 | `answer_checks`, `answer_check_items` |
@@ -707,6 +714,7 @@ erDiagram
 | `login_tokens` | 로그인 한 번으로 내준 토큰 하나가 한 줄 (토큰 해시, 끝나는 시각) | #97 |
 | `consent_records` | 개인정보 동의 한 번이 한 줄 (동의 시각, 문구 버전, 만 14세 확인). 다시 동의하면 **새 줄이 쌓여** 이력이 남음 | #71 |
 | `messages` | AI 가 사용자에게 보낸 메시지 하나가 한 줄 (종류, 내용, 보낸 시각, 읽은 시각) | #30 |
+| `manual_hidden_items` | 한 사람이 숨긴 나 사용설명서 항목 하나가 한 줄 (누가, 어느 항목 이름표). 사용설명서 항목 자체는 저장하지 않습니다 | #46 |
 | `call_records` | AI 통화 한 번이 한 줄 (확인하려던 생각 습관, 요약, 보인 생각 습관과 근거, 약속, 위기 표현 표시) | #28 · #29 |
 | `push_subscriptions` | 웹 푸시(앱을 닫아도 오는 알림)를 받겠다고 한 기기 하나가 한 줄 (보낼 주소, 잠금 열쇠) | #32 |
 | `daily_care_stages` | 한 사람의 하루 관리 단계(0~4)와 그 이유가 한 줄. 하루에 한 번 정하고 바꾸지 않음 | #62 |
@@ -872,6 +880,15 @@ erDiagram
 > - 판정이 끝나면 `status` 와 **근거 숫자**(`baseline_rate` · `experiment_rate`)를 남기고 바꾸지 않습니다. 나중에 판정 규칙이 바뀌어도 그때 학생이 본 결과가 남게 하려는 것입니다.
 > - 이행률(#53)은 저장하지 않고 볼 때마다 카드 기록으로 셉니다. 진행 중에는 매일 바뀌는 값이라서입니다.
 > - `user_id` 가 있어서 탈퇴하면 같이 지워집니다. (붙인 카드 줄도 함께)
+
+> `manual_hidden_items` 는 2026-10-24 에 이슈 #46 에서 **학생이 직접 설계한** 테이블입니다. (AI 는 질문으로 돕고, 아래 "AI 가 더한 것" 만 정했습니다)
+> - **한 줄 = 사용자가 숨긴 사용설명서 항목 하나.** 학생이 고른 칸은 **항목 이름표(`item_id`)** 와 **누가 숨겼는지(`user_id`)** 둘입니다. 숨긴 시각은 필요하다고 고르지 않아서 남기지 않습니다.
+> - **사용설명서 항목은 저장하지 않습니다.** `GET /api/v1/manual` 이 부를 때마다 효과 있음 실험과 확실성 높은 인사이트에서 모아 만들고, 이 표에 이름표가 있는 항목만 뺍니다.
+> - 이름표는 다른 표의 번호가 아니라 글자(`experiment-3` · `insight-morning-vs-night`)라서 실험 · 인사이트 표와 직접 이어져 있지 않습니다. 그래서 숨기기를 받을 때 "지금 내 사용설명서에 있는 이름표" 인지 확인하고, 아니면 404 로 돌려보냅니다.
+> - 인사이트 이름표는 번호가 아니라 **종류(`insight_key`)** 로 만들어서, 같은 종류를 4주 뒤에 다시 보여 줘도 숨긴 것이 유지됩니다.
+> - **AI 가 더한 것:** 표 이름과 칸 이름, 줄을 구분하는 번호(`id`), 이름표 길이(100자), 같은 사람이 같은 항목을 두 번 숨기지 못하게 하는 중복 금지(`uk_manual_hidden_items_user_id_item_id`).
+> - `user_id` 가 있어서 탈퇴하면 같이 지워집니다. (`ManualFlowTest` 가 확인)
+> - ⚠️ 숨기기를 **풀어 주는 API 는 아직 없습니다.** 이슈 #46 에 없어서 만들지 않았습니다.
 
 > `checkin_emotions` 는 2026-10-17 에 이슈 #220(최종 기획서 4.2 「홈」의 하루 첫 태그)에서 **AI 가 만든 딸린 테이블**입니다. (체크인은 선생님이 AI 에게 맡긴 범위)
 > - 하루 첫 태그 = 컨디션(1~5) + 감정 태그 여러 개. 감정은 한 체크인에 여러 개라서 `thinking_test_weaknesses` 처럼 딸린 테이블에 담았습니다. 엔티티는 `CheckIn` 하나입니다.
