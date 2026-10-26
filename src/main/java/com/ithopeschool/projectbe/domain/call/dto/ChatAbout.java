@@ -28,5 +28,5 @@ public record ChatAbout(
 
   // 받을 수 있는 주제 이름들입니다. ChatTopic 에 주제를 더하면 여기에도 더해야 합니다. (ChatTopicTest 가 확인)
   public static final String KINDS =
-      "SESSION_REVIEW|CARD_FAIL|WEEKLY_REPORT|QUIZ_WRONG|PSYCH_RESULT|DAY_REVIEW";
+      "SESSION_REVIEW|CARD_FAIL|WEEKLY_REPORT|QUIZ_WRONG|PSYCH_RESULT|DAY_REVIEW|SCHEDULE_ADJUST";
 }

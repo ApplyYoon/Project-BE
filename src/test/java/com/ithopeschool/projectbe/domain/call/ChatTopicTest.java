@@ -45,5 +45,17 @@ class ChatTopicTest {
     assertThat(ChatTopic.QUIZ_WRONG.tags()).isEmpty();
     assertThat(ChatTopic.PSYCH_RESULT.tags()).isEmpty();
     assertThat(ChatTopic.DAY_REVIEW.tags()).isEmpty();
+    assertThat(ChatTopic.SCHEDULE_ADJUST.tags()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("일정 조정 제안 주제는 탓하지 않고, 시각이나 양 중 하나를 같이 정하게 안내한다")
+  void scheduleAdjustGuide() {
+    assertThat(ChatTopic.from("SCHEDULE_ADJUST")).contains(ChatTopic.SCHEDULE_ADJUST);
+    assertThat(ChatTopic.SCHEDULE_ADJUST.label()).isEqualTo("일정 조정 제안");
+    assertThat(ChatTopic.SCHEDULE_ADJUST.guide())
+        .anyMatch(line -> line.contains("탓하지 마"))
+        .anyMatch(line -> line.contains("day_plan"))
+        .anyMatch(line -> line.contains("깎아내리지 마"));
   }
 }
