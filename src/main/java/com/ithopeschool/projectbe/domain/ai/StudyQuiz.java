@@ -130,6 +130,11 @@ public final class StudyQuiz {
             + MAX_PASSAGE_LENGTH
             + "자까지. 개념 · 용어 · 계산처럼 글 없이 풀리는 문제는 null."
             + " 8번처럼 개인정보는 옮기지 마.");
+    // 13번: 일간 리포트의 "맞은 문제 다시 풀기" (2026-10-26). 입력에 '비슷한 문제 만들기' 줄이 있을 때만 해당합니다.
+    lines.add(
+        "13. 입력에 '비슷한 문제 만들기' 가 있으면 '학생 자료(글)' 의 문제들은 학생이 이미 맞힌 문제야."
+            + " 같은 단원 · 같은 유형 · 같은 개념을 쓰되 숫자 · 조건 · 보기를 바꾼 새 문제를 내."
+            + " 원래 문제를 그대로 옮기거나 답까지 똑같은 문제는 내지 마. 이때는 2번의 '자료 안에서만' 대신 이 규칙을 따라.");
     return String.join("\n", lines);
   }
 
@@ -160,6 +165,9 @@ public final class StudyQuiz {
       input.append("\n체크리스트: ").append(String.join(" / ", request.checklist()));
     }
     input.append("\n문제 수: ").append(request.count());
+    if (request.similar()) {
+      input.append("\n비슷한 문제 만들기: 예 (학생 자료(글)는 학생이 이미 맞힌 문제들)");
+    }
     if (request.material() != null) {
       input.append("\n학생 자료(글):\n").append(request.material());
     }

@@ -16,6 +16,8 @@ import java.util.List;
 // - image    : 선택. 교과서 · 필기 · 문제집 사진 한 장을 data URL 로 (jpeg · png · webp, 4MB).
 //              "사진으로 카드 만들기"(CardPhotoRequest)와 같은 규칙이고, 모양 · 크기 검사는 StudyQuizService 가 합니다.
 // - count    : 선택. 문제 수 1 ~ 5 (안 보내면 3)
+// - similar  : 선택. true 면 material 에 넣은 문제들(학생이 맞힌 문제)과 "비슷한 유형" 의 새 문제를 냅니다.
+//              일간 리포트의 "맞은 문제 다시 풀기" 가 씁니다. true 인데 material 이 없으면 400. (2026-10-26)
 public record StudyQuizRequest(
     @NotBlank(message = "무엇을 공부했는지 보내 주세요") @Size(max = 100, message = "주제는 100자 이하로 보내 주세요")
         String topic,
@@ -29,10 +31,17 @@ public record StudyQuizRequest(
         String image,
     @Min(value = 1, message = "문제 수는 1 ~ 5 로 보내 주세요")
         @Max(value = 5, message = "문제 수는 1 ~ 5 로 보내 주세요")
-        Integer count) {
+        Integer count,
+    Boolean similar) {
 
   // 문제 수를 안 보냈을 때
   public static final int DEFAULT_COUNT = 3;
+
+  // 비슷한 문제가 아닌 보통 확인 문제 (similar 없이 만들 때)
+  public StudyQuizRequest(
+      String topic, List<String> checklist, String material, String image, Integer count) {
+    this(topic, checklist, material, image, count, false);
+  }
 
   // 값이 들어오는 순간에 앞뒤 공백을 지우고, 빈 칸은 없는 것(null · 빈 목록)으로 봅니다.
   public StudyQuizRequest {
@@ -41,5 +50,7 @@ public record StudyQuizRequest(
     material = material == null || material.isBlank() ? null : material.trim();
     image = image == null || image.isBlank() ? null : image;
     count = count == null ? DEFAULT_COUNT : count;
+    // 안 보내면(null) false 입니다. 그래서 similar() 는 늘 true 아니면 false 입니다.
+    similar = Boolean.TRUE.equals(similar);
   }
 }

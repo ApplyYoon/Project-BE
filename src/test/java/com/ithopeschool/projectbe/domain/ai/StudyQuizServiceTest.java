@@ -57,6 +57,31 @@ class StudyQuizServiceTest {
   }
 
   @Test
+  @DisplayName("비슷한 문제(similar)는 원래 문제 글(material)이 없으면 AI 를 부르지 않고 400")
+  void similarNeedsMaterial() {
+    assertThatThrownBy(
+            () -> service.make(new StudyQuizRequest("오늘 맞은 문제", null, null, null, 3, true)))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("원래 문제 글");
+    verifyNoInteractions(aiClient);
+  }
+
+  @Test
+  @DisplayName("비슷한 문제(similar)면 AI 입력에 '비슷한 문제 만들기' 줄과 맞힌 문제 글이 들어간다")
+  void similarAddsLine() {
+    given(aiClient.ask(eq(USER_ID), eq(GptUsageKind.ASSIST), any(), eq(StudyQuiz.Answer.class)))
+        .willReturn(Optional.of(new StudyQuiz.Answer(false, false, List.of(ITEM))));
+
+    service.make(new StudyQuizRequest("오늘 맞은 문제", null, "1. x + 3 = 8 일 때 x 는?", null, 1, true));
+
+    ArgumentCaptor<AiQuestion> question = ArgumentCaptor.forClass(AiQuestion.class);
+    verify(aiClient)
+        .ask(eq(USER_ID), eq(GptUsageKind.ASSIST), question.capture(), eq(StudyQuiz.Answer.class));
+    assertThat(question.getValue().input()).contains("비슷한 문제 만들기: 예", "1. x + 3 = 8 일 때 x 는?");
+    assertThat(question.getValue().instructions()).contains("13. 입력에 '비슷한 문제 만들기'");
+  }
+
+  @Test
   @DisplayName("단원은 교육과정 영역 목록을 AI 입력에 붙여 고르게 하고, 목록에 없는 이름이면 null (2026-10-26)")
   void unitFromCurriculumList() {
     given(curriculumService.unitsOf(USER_ID))

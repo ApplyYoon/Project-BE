@@ -7,6 +7,8 @@ import com.ithopeschool.projectbe.domain.curriculum.CurriculumUnits;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.safety.CrisisText;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
+import com.ithopeschool.projectbe.global.exception.ApiException;
+import com.ithopeschool.projectbe.global.exception.ErrorCode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -39,6 +41,11 @@ public class StudyQuizService {
   // AI 를 기다리는 동안 DB 연결을 붙잡지 않으려고 @Transactional 을 붙이지 않았습니다. (CardPhotoService 와 같음)
   public StudyQuizResponse make(StudyQuizRequest request) {
     Long userId = currentUserProvider.getCurrentUserId();
+
+    // 0) 비슷한 문제는 원래 문제 글(material)이 있어야 만들 수 있습니다. (일간 리포트 "맞은 문제 다시 풀기")
+    if (request.similar() && request.material() == null) {
+      throw new ApiException(ErrorCode.VALIDATION_ERROR, "비슷한 문제를 내려면 원래 문제 글(material)을 보내 주세요");
+    }
 
     // 1) 사진 모양
     if (request.image() != null) {

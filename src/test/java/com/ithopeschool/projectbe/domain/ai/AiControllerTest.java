@@ -1002,6 +1002,23 @@ class AiControllerTest {
   }
 
   @Test
+  @DisplayName("확인 문제: similar 를 보내면 그대로 넘기고, 안 보내면 false 로 넘긴다 (맞은 문제 다시 확인)")
+  void quizPassesSimilar() throws Exception {
+    given(studyQuizService.make(any())).willReturn(StudyQuizResponse.notMade());
+
+    mockMvc
+        .perform(
+            post("/api/v1/ai/quiz")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"topic\":\"다항식 비슷한 문제\",\"material\":\"1. x^2 - 9 를 인수분해하시오.\",\"similar\":true}"))
+        .andExpect(status().isOk());
+    verify(studyQuizService)
+        .make(
+            new StudyQuizRequest("다항식 비슷한 문제", List.of(), "1. x^2 - 9 를 인수분해하시오.", null, 3, true));
+  }
+
+  @Test
   @DisplayName("확인 문제: 주제가 없거나 · 문제 수가 1~5 밖이거나 · 자료 글이 2000자를 넘으면 400 이고 서비스를 부르지 않는다")
   void quizRejectsBadRequests() throws Exception {
     mockMvc
