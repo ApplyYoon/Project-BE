@@ -5,6 +5,8 @@ import com.ithopeschool.projectbe.domain.ai.CardPhotoService;
 import com.ithopeschool.projectbe.domain.answercheck.dto.AnswerCheckCreateRequest;
 import com.ithopeschool.projectbe.domain.answercheck.dto.AnswerCheckItemUpdateRequest;
 import com.ithopeschool.projectbe.domain.answercheck.dto.AnswerCheckResponse;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumService;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumUnits;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.safety.CrisisText;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
@@ -51,6 +53,7 @@ public class AnswerCheckService {
   private final AnswerCheckRepository answerCheckRepository;
   private final AnswerCheckItemRepository answerCheckItemRepository;
   private final AiClient aiClient;
+  private final CurriculumService curriculumService;
   private final TransactionTemplate transactionTemplate;
   private final Clock clock;
 
@@ -64,12 +67,13 @@ public class AnswerCheckService {
     // 1) 사진 검사
     CardPhotoService.checkImage(request.image());
 
-    // 2) 사진과 함께 AI
+    // 2) 사진과 함께 AI. 문제마다 문제 글 · 단원도 같이 읽습니다. (BE #401)
+    CurriculumUnits units = curriculumService.unitsOf(userId);
     Optional<AnswerGrading.Answer> answer =
         aiClient.askWithImage(
             userId,
             GptUsageKind.ASSIST,
-            AnswerGrading.question(mode),
+            AnswerGrading.question(mode, units),
             request.image(),
             AnswerGrading.Answer.class);
     if (answer.isEmpty()) {
@@ -77,7 +81,7 @@ public class AnswerCheckService {
     }
 
     // 3) 위기 표현 (AI 판단 · 읽은 글의 단어 목록)
-    List<AnswerGrading.Graded> items = AnswerGrading.gradedItems(mode, answer.get().items());
+    List<AnswerGrading.Graded> items = AnswerGrading.gradedItems(mode, answer.get().items(), units);
     if (Boolean.TRUE.equals(answer.get().crisis()) || hasCrisisText(items)) {
       return AnswerCheckResponse.help(date, mode);
     }
@@ -113,6 +117,8 @@ public class AnswerCheckService {
                     userId,
                     i,
                     item.number(),
+                    item.questionText(),
+                    item.unit(),
                     item.myAnswer(),
                     item.aiAnswer(),
                     item.markRead(),
@@ -196,10 +202,11 @@ public class AnswerCheckService {
         answerCheckItemRepository.findByUserIdAndAnswerCheckIdOrderBySortOrderAsc(userId, checkId));
   }
 
-  // AI 가 사진에서 읽은 글(학생 답 · AI 답)에 위기 표현이 있는지 봅니다.
+  // AI 가 사진에서 읽은 글(문제 글 · 학생 답 · AI 답)에 위기 표현이 있는지 봅니다.
   private static boolean hasCrisisText(List<AnswerGrading.Graded> items) {
     List<String> texts = new ArrayList<>();
     for (AnswerGrading.Graded item : items) {
+      texts.add(item.questionText());
       texts.add(item.myAnswer());
       texts.add(item.aiAnswer());
     }

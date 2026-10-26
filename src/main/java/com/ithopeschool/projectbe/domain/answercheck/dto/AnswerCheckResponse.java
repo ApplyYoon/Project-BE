@@ -13,7 +13,8 @@ import java.util.List;
 //   { "showHelp": false, "graded": true, "reason": null,
 //     "id": "12", "date": "2026-10-24", "mode": "UNMARKED", "subjectText": "수학",
 //     "counts": { "correct": 2, "wrong": 1, "unsure": 1 },
-//     "items": [ { "id": "31", "number": "1", "myAnswer": "x = 5", "aiAnswer": "x = 5",
+//     "items": [ { "id": "31", "number": "1", "questionText": "x + 3 = 8 일 때 x 의 값은?",
+//                  "unit": "문자와 식", "myAnswer": "x = 5", "aiAnswer": "x = 5",
 //                  "markRead": null, "result": "CORRECT", "correctAnswer": null,
 //                  "editedByUser": false } ],
 //     "createdAt": "2026-10-24T11:02:00Z" }
@@ -24,6 +25,7 @@ import java.util.List;
 // - showHelp 가 true 면 사진 속 글에서 위기 표현이 감지된 것입니다. 저장하지 않았고, FE 는 도움 연결 안내를 먼저 보여 줍니다.
 // - counts 는 저장하지 않고 items 의 result(지금 판정)를 세어서 만듭니다.
 // - editedByUser 는 학생이 직접 고친 문제인지입니다.
+// - questionText 는 AI 가 사진에서 읽은 문제 글(200자까지), unit 은 교육과정 영역 단원입니다. 못 읽었으면 null. (BE #401)
 // - 누구의 기록인지(userId)는 담지 않습니다.
 public record AnswerCheckResponse(
     boolean showHelp,
@@ -48,6 +50,8 @@ public record AnswerCheckResponse(
   public record Item(
       String id,
       String number,
+      String questionText,
+      String unit,
       String myAnswer,
       String aiAnswer,
       MarkRead markRead,
@@ -59,6 +63,8 @@ public record AnswerCheckResponse(
       return new Item(
           String.valueOf(item.getId()),
           item.getProblemNumber(),
+          item.getQuestionText(),
+          item.getUnit(),
           item.getMyAnswer(),
           item.getAiAnswer(),
           item.getMarkRead(),

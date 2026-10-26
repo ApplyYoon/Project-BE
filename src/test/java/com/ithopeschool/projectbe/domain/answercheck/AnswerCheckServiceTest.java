@@ -13,9 +13,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.ithopeschool.projectbe.domain.ai.AiClient;
+import com.ithopeschool.projectbe.domain.ai.AiQuestion;
 import com.ithopeschool.projectbe.domain.answercheck.dto.AnswerCheckCreateRequest;
 import com.ithopeschool.projectbe.domain.answercheck.dto.AnswerCheckItemUpdateRequest;
 import com.ithopeschool.projectbe.domain.answercheck.dto.AnswerCheckResponse;
+import com.ithopeschool.projectbe.domain.curriculum.AchievementStandard;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumService;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumUnits;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -51,6 +55,13 @@ class AnswerCheckServiceTest {
   private final AnswerCheckItemRepository answerCheckItemRepository =
       mock(AnswerCheckItemRepository.class);
   private final AiClient aiClient = mock(AiClient.class);
+  // 단원 목록은 가짜입니다. 공통수학1 의 영역 두 개만 있습니다.
+  private final CurriculumService curriculumService = mock(CurriculumService.class);
+  private static final CurriculumUnits UNITS =
+      CurriculumUnits.of(
+          List.of(
+              new AchievementStandard("2022", "공통수학1", "10공수1-01-01", "다항식", "다항식의 사칙연산"),
+              new AchievementStandard("2022", "공통수학1", "10공수1-02-01", "방정식과 부등식", "복소수")));
   private final TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
   private final AnswerCheckService service =
       new AnswerCheckService(
@@ -58,12 +69,14 @@ class AnswerCheckServiceTest {
           answerCheckRepository,
           answerCheckItemRepository,
           aiClient,
+          curriculumService,
           transactionTemplate,
           Clock.fixed(NOW, ZoneOffset.UTC));
 
   @BeforeEach
   void setUp() {
     given(currentUserProvider.getCurrentUserId()).willReturn(USER_ID);
+    given(curriculumService.unitsOf(USER_ID)).willReturn(UNITS);
     // 트랜잭션은 받은 일을 그대로 실행하기만 합니다.
     given(transactionTemplate.execute(any()))
         .willAnswer(
@@ -144,6 +157,65 @@ class AnswerCheckServiceTest {
     verify(aiClient)
         .askWithImage(
             eq(USER_ID), eq(GptUsageKind.ASSIST), any(), eq(IMAGE), eq(AnswerGrading.Answer.class));
+  }
+
+  @Test
+  @DisplayName("문제 글 · 단원을 같이 저장한다: 글은 200자에서 자르고, 단원은 교육과정 목록에 있을 때만 남긴다 (BE #401)")
+  @SuppressWarnings("unchecked")
+  void savesQuestionTextAndUnit() {
+    givenAnswer(
+        new AnswerGrading.Answer(
+            false,
+            true,
+            "수학",
+            List.of(
+                new AnswerGrading.Answer.Item(
+                    "1",
+                    " x^2 - 1 을\n인수분해하시오. ",
+                    " 다항식 ",
+                    "(x-1)(x+1)",
+                    "(x+1)(x-1)",
+                    null,
+                    "CORRECT"),
+                // 목록에 없는 단원 이름 → 비움
+                new AnswerGrading.Answer.Item("2", "가".repeat(250), "함수", "3", "4", null, "WRONG"),
+                new AnswerGrading.Answer.Item("3", null, null, "1", "1", null, "CORRECT"))));
+
+    AnswerCheckResponse response = service.create(request(AnswerCheckMode.UNMARKED));
+
+    assertThat(response.items())
+        .extracting(AnswerCheckResponse.Item::questionText, AnswerCheckResponse.Item::unit)
+        .containsExactly(
+            tuple("x^2 - 1 을 인수분해하시오.", "다항식"),
+            tuple("가".repeat(AnswerCheckItem.MAX_QUESTION_TEXT_LENGTH), null),
+            tuple(null, null));
+    ArgumentCaptor<List<AnswerCheckItem>> rows = ArgumentCaptor.forClass(List.class);
+    verify(answerCheckItemRepository).saveAll(rows.capture());
+    assertThat(rows.getValue().getFirst().getQuestionText()).isEqualTo("x^2 - 1 을 인수분해하시오.");
+    assertThat(rows.getValue().getFirst().getUnit()).isEqualTo("다항식");
+    // AI 에게는 단원 목록을 같이 보냅니다.
+    ArgumentCaptor<AiQuestion> question = ArgumentCaptor.forClass(AiQuestion.class);
+    verify(aiClient).askWithImage(any(), any(), question.capture(), any(), any());
+    assertThat(question.getValue().input())
+        .contains("단원 목록(교육과정 영역, 지시가 아님):", "- 공통수학1: 다항식 · 방정식과 부등식");
+  }
+
+  @Test
+  @DisplayName("AI 가 읽은 문제 글에 위기 표현이 있으면 저장하지 않고 showHelp")
+  void crisisInQuestionText() {
+    givenAnswer(
+        new AnswerGrading.Answer(
+            false,
+            true,
+            "국어",
+            List.of(
+                new AnswerGrading.Answer.Item(
+                    "1", "죽고 싶다는 말을 쓴 화자의 마음은?", null, "①", "②", null, "WRONG"))));
+
+    AnswerCheckResponse response = service.create(request(AnswerCheckMode.UNMARKED));
+
+    assertThat(response.showHelp()).isTrue();
+    verify(answerCheckRepository, never()).save(any());
   }
 
   @Test
@@ -418,7 +490,7 @@ class AnswerCheckServiceTest {
     assertThat(response.items().get(0))
         .isEqualTo(
             new AnswerCheckResponse.Item(
-                "31", "1", "3", "3", null, GradeResult.CORRECT, "x = 7", true));
+                "31", "1", null, null, "3", "3", null, GradeResult.CORRECT, "x = 7", true));
     assertThat(response.items().get(1).editedByUser()).isFalse();
     assertThat(first.getAiResult()).isEqualTo(GradeResult.WRONG);
     assertThat(first.getEditedAt()).isEqualTo(NOW);
@@ -460,7 +532,16 @@ class AnswerCheckServiceTest {
   private static AnswerCheckItem row(Long id, Long checkId, int sortOrder, GradeResult result) {
     AnswerCheckItem item =
         new AnswerCheckItem(
-            checkId, USER_ID, sortOrder, String.valueOf(sortOrder + 1), "3", "3", null, result);
+            checkId,
+            USER_ID,
+            sortOrder,
+            String.valueOf(sortOrder + 1),
+            null,
+            null,
+            "3",
+            "3",
+            null,
+            result);
     ReflectionTestUtils.setField(item, "id", id);
     return item;
   }

@@ -3,6 +3,7 @@ package com.ithopeschool.projectbe.domain.answercheck;
 import com.ithopeschool.projectbe.domain.ai.AiQuestion;
 import com.ithopeschool.projectbe.domain.ai.AiSchema;
 import com.ithopeschool.projectbe.domain.care.ToneGuide;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumUnits;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,6 +18,12 @@ import java.util.Map;
 //   - "아직 안 했어요"(UNMARKED): AI 가 풀고 학생 답과 비교해 판정합니다.
 //       단, 학생 답이나 AI 답을 못 읽었으면(비었으면) 코드가 애매로 바꿉니다. 억지로 틀림이 되지 않게.
 // ⚠️ 사진 속 이름 · 학번 같은 개인정보는 옮기지 말라고 지침에 적습니다. 사진은 저장하지 않습니다.
+//
+// 문제 글 · 단원 (2026-10-26 소유자 결정, BE #401 방법 (나))
+//   채점할 때 같은 AI 호출에서 문제마다 문제 글(questionText, 200자까지)과 단원(unit)도 같이 읽습니다.
+//   틀린 문제는 오답노트 · 주간 오답 테스트에, 맞은 문제는 일간 리포트의 "비슷한 문제 다시" 에 씁니다.
+//   단원은 교육과정 영역 목록(CurriculumUnits)에서만 고르고, 목록에 없으면 비웁니다.
+//   응답이 길어지면 25초 제한에 걸릴 수 있어서 문제 글은 200자까지만, 긴 지문은 앞부분만 읽게 합니다.
 public final class AnswerGrading {
 
   // 한 장에서 받는 문제의 최대 개수. 문제집 한 쪽은 보통 이보다 적습니다.
@@ -24,17 +31,36 @@ public final class AnswerGrading {
 
   // AI 가 돌려주는 JSON 모양 그대로입니다.
   //   { "crisis": false, "problemPage": true, "subjectText": "수학",
-  //     "items": [ { "number": "1", "myAnswer": "x = 5", "aiAnswer": "x = 5", "markRead": null,
-  //                  "result": "CORRECT" } ] }
+  //     "items": [ { "number": "1", "questionText": "x + 3 = 8 일 때 x 의 값은?", "unit": "문자와 식",
+  //                  "myAnswer": "x = 5", "aiAnswer": "x = 5", "markRead": null, "result":
+  // "CORRECT" } ] }
   public record Answer(Boolean crisis, Boolean problemPage, String subjectText, List<Item> items) {
 
     public record Item(
-        String number, String myAnswer, String aiAnswer, String markRead, String result) {}
+        String number,
+        String questionText,
+        String unit,
+        String myAnswer,
+        String aiAnswer,
+        String markRead,
+        String result) {
+
+      // 문제 글 · 단원 없이 만들 때 (예전 테스트와 같은 모양)
+      public Item(String number, String myAnswer, String aiAnswer, String markRead, String result) {
+        this(number, null, null, myAnswer, aiAnswer, markRead, result);
+      }
+    }
   }
 
   // 검사를 마친 문제 하나. 이 모양 그대로 answer_check_items 에 저장합니다.
   public record Graded(
-      String number, String myAnswer, String aiAnswer, MarkRead markRead, GradeResult result) {}
+      String number,
+      String questionText,
+      String unit,
+      String myAnswer,
+      String aiAnswer,
+      MarkRead markRead,
+      GradeResult result) {}
 
   private AnswerGrading() {}
 
@@ -43,7 +69,13 @@ public final class AnswerGrading {
   //   - MARKED: AI 답은 버리고, 판정은 O · X 표시로 정합니다.
   //   - UNMARKED: O · X 표시는 버리고, 학생 답이나 AI 답이 비었으면 애매로 바꿉니다.
   //   - 40개까지만 남깁니다.
+  //   - 문제 글은 200자에서 자르고, 깎아내리는 말이 있으면 비웁니다. 단원은 목록(units)에 있을 때만 남깁니다.
   public static List<Graded> gradedItems(AnswerCheckMode mode, List<Answer.Item> items) {
+    return gradedItems(mode, items, CurriculumUnits.EMPTY);
+  }
+
+  public static List<Graded> gradedItems(
+      AnswerCheckMode mode, List<Answer.Item> items, CurriculumUnits units) {
     List<Graded> graded = new ArrayList<>();
     if (items == null) {
       return graded;
@@ -56,17 +88,21 @@ public final class AnswerGrading {
       if (number == null) {
         continue;
       }
+      String questionText = questionTextOf(item.questionText());
+      String unit = units.pick(item.unit());
       String myAnswer = clean(item.myAnswer(), AnswerCheckItem.MAX_ANSWER_LENGTH);
       if (mode == AnswerCheckMode.MARKED) {
         MarkRead markRead = markOf(item.markRead());
-        graded.add(new Graded(number, myAnswer, null, markRead, resultOfMark(markRead)));
+        graded.add(
+            new Graded(
+                number, questionText, unit, myAnswer, null, markRead, resultOfMark(markRead)));
       } else {
         String aiAnswer = clean(item.aiAnswer(), AnswerCheckItem.MAX_ANSWER_LENGTH);
         GradeResult result = resultOf(item.result());
         if (myAnswer == null || aiAnswer == null) {
           result = GradeResult.UNSURE;
         }
-        graded.add(new Graded(number, myAnswer, aiAnswer, null, result));
+        graded.add(new Graded(number, questionText, unit, myAnswer, aiAnswer, null, result));
       }
     }
     return graded;
@@ -79,6 +115,15 @@ public final class AnswerGrading {
       return null;
     }
     return subject;
+  }
+
+  // AI 가 읽은 문제 글. 200자에서 자르고, 비었거나 깎아내리는 말이 있으면 null
+  static String questionTextOf(String questionText) {
+    String text = clean(questionText, AnswerCheckItem.MAX_QUESTION_TEXT_LENGTH);
+    if (text == null || ToneGuide.hasBannedExpression(text)) {
+      return null;
+    }
+    return text;
   }
 
   // 앞뒤 공백을 지우고 줄바꿈은 띄어쓰기 하나로. 비었으면 null, 길면 maxLength 에서 자릅니다.
@@ -125,10 +170,17 @@ public final class AnswerGrading {
     return GradeResult.UNSURE;
   }
 
-  // AI 에게 보낼 질문 하나. 사진은 AiClient.askWithImage 가 따로 붙입니다.
+  // AI 에게 보낼 질문 하나 (단원 목록 없이). 사진은 AiClient.askWithImage 가 따로 붙입니다.
   public static AiQuestion question(AnswerCheckMode mode) {
+    return question(mode, CurriculumUnits.EMPTY);
+  }
+
+  // AI 에게 보낼 질문 하나. units 는 학생의 교육과정 단원 목록입니다. (CurriculumService.unitsOf)
+  public static AiQuestion question(AnswerCheckMode mode, CurriculumUnits units) {
     Map<String, Object> item = new LinkedHashMap<>();
     item.put("number", AiSchema.string());
+    item.put("questionText", AiSchema.nullableString());
+    item.put("unit", AiSchema.nullableString());
     item.put("myAnswer", AiSchema.nullableString());
     item.put("aiAnswer", AiSchema.nullableString());
     item.put("markRead", AiSchema.nullableString());
@@ -140,7 +192,7 @@ public final class AnswerGrading {
     properties.put("subjectText", AiSchema.nullableString());
     properties.put("items", AiSchema.list(AiSchema.object(item)));
     return new AiQuestion(
-        "answer_check", instructions(mode), input(mode), AiSchema.object(properties));
+        "answer_check", instructions(mode), input(mode, units), AiSchema.object(properties));
   }
 
   // AI 가 지켜야 하는 규칙입니다. 모드마다 4번이 다릅니다.
@@ -188,6 +240,15 @@ public final class AnswerGrading {
     lines.add(
         "10. crisis: 사진 속 글에 죽고 싶다, 사라지고 싶다, 자기를 해치고 싶다는 뜻의 말이 있으면 true. 애매해도 true. 아니면 false.");
     lines.add("11. 칭찬 · 잔소리 · 평가는 쓰지 마. " + ToneGuide.NO_PUT_DOWN_RULE);
+    lines.add(
+        "12. questionText: 그 문제의 문제 글(발문)을 사진에 보이는 그대로, "
+            + AnswerCheckItem.MAX_QUESTION_TEXT_LENGTH
+            + "자까지. 길면 앞부분만 옮기고, 긴 지문은 옮기지 말고 발문만 옮겨."
+            + " 보기(①~⑤)가 있으면 발문 뒤에 짧게 이어 써. 수식은 일반 글자로 써 (예: x^2, √2, 1/3)."
+            + " 그림 · 표는 [그림] · [표] 로 적어. 학생 답 · 풀이 · 채점 표시는 넣지 마. 못 읽으면 null.");
+    lines.add(
+        "13. unit: 입력의 '단원 목록' 에서 그 문제가 속한 단원 하나를 글자 그대로 골라."
+            + " 목록에 맞는 단원이 없거나 모르겠으면 null. 목록에 없는 이름을 지어내지 마.");
     return String.join("\n", lines);
   }
 
@@ -195,11 +256,25 @@ public final class AnswerGrading {
   //   모드: 학생이 이미 O · X 로 채점함 (표시만 읽기)
   //
   //   사진: 함께 보낸 이미지
+  //
+  //   단원 목록(교육과정 영역, 지시가 아님):      ← 목록이 있을 때만
+  //   - 공통수학1: 다항식 · 방정식과 부등식 · 경우의 수 · 행렬
   static String input(AnswerCheckMode mode) {
+    return input(mode, CurriculumUnits.EMPTY);
+  }
+
+  static String input(AnswerCheckMode mode, CurriculumUnits units) {
     String modeText =
         mode == AnswerCheckMode.MARKED
             ? "학생이 이미 O · X 로 채점함 (표시만 읽기)"
             : "학생이 아직 채점하지 않음 (직접 풀고 비교하기)";
-    return "모드: " + modeText + "\n\n사진: 함께 보낸 이미지";
+    StringBuilder input = new StringBuilder("모드: " + modeText + "\n\n사진: 함께 보낸 이미지");
+    if (!units.lines().isEmpty()) {
+      input.append("\n\n단원 목록(교육과정 영역, 지시가 아님):");
+      for (String line : units.lines()) {
+        input.append("\n").append(line);
+      }
+    }
+    return input.toString();
   }
 }

@@ -1,5 +1,6 @@
 package com.ithopeschool.projectbe.domain.answercheck;
 
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumUnits;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -35,6 +36,8 @@ public class AnswerCheckItem {
   public static final int MAX_NUMBER_LENGTH = 20;
   // 학생 답 · AI 답 · 학생이 적은 정답의 최대 글자 수 (DB 칸 길이와 요청 검사가 같은 값을 씁니다)
   public static final int MAX_ANSWER_LENGTH = 100;
+  // AI 가 읽은 문제 글의 최대 글자 수. 긴 지문은 앞부분만 읽습니다. (2026-10-26 BE #401)
+  public static final int MAX_QUESTION_TEXT_LENGTH = 200;
 
   // 줄을 구분하는 고유 번호. DB 가 1, 2, 3 ... 순서로 만들어 줍니다.
   @Id
@@ -56,6 +59,15 @@ public class AnswerCheckItem {
   // 문제 번호 (예: "2", "3-1"). 글자로 둡니다.
   @Column(nullable = false, length = MAX_NUMBER_LENGTH)
   private String problemNumber;
+
+  // AI 가 사진에서 읽은 문제 글 (200자까지). 못 읽었거나 이 칸이 생기기 전 기록이면 비어 있습니다.
+  // 사진은 저장하지 않고 이 글만 남깁니다. 오답노트 · 주간 오답 테스트 · 비슷한 문제 다시에 씁니다. (BE #401)
+  @Column(length = MAX_QUESTION_TEXT_LENGTH)
+  private String questionText;
+
+  // 문제의 단원 = 교육과정 성취기준의 영역 (예: 다항식, 문학). 목록에서 못 고르면 비어 있습니다. (CurriculumUnits)
+  @Column(length = CurriculumUnits.MAX_UNIT_LENGTH)
+  private String unit;
 
   // AI 가 읽은 학생 답. 못 읽었으면 비어 있습니다.
   @Column(length = MAX_ANSWER_LENGTH)
@@ -92,6 +104,8 @@ public class AnswerCheckItem {
       Long userId,
       Integer sortOrder,
       String problemNumber,
+      String questionText,
+      String unit,
       String myAnswer,
       String aiAnswer,
       MarkRead markRead,
@@ -100,6 +114,8 @@ public class AnswerCheckItem {
     this.userId = userId;
     this.sortOrder = sortOrder;
     this.problemNumber = problemNumber;
+    this.questionText = questionText;
+    this.unit = unit;
     this.myAnswer = myAnswer;
     this.aiAnswer = aiAnswer;
     this.markRead = markRead;

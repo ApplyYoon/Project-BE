@@ -42,9 +42,11 @@ create table answer_check_items (
     ai_result varchar(10) not null check ((ai_result in ('CORRECT','WRONG','UNSURE'))),
     result varchar(10) not null check ((result in ('CORRECT','WRONG','UNSURE'))),
     problem_number varchar(20) not null,
+    unit varchar(30),
     ai_answer varchar(100),
     correct_answer varchar(100),
     my_answer varchar(100),
+    question_text varchar(200),
     primary key (id)
 );
 

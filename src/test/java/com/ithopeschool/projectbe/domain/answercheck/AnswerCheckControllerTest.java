@@ -53,7 +53,16 @@ class AnswerCheckControllerTest {
         new AnswerCheckResponse.Counts(1, 0, 0),
         List.of(
             new AnswerCheckResponse.Item(
-                "31", "1", "x = 5", "x = 5", null, GradeResult.CORRECT, null, false)),
+                "31",
+                "1",
+                "x + 3 = 8 일 때 x 의 값은?",
+                "문자와 식",
+                "x = 5",
+                "x = 5",
+                null,
+                GradeResult.CORRECT,
+                null,
+                false)),
         Instant.parse("2026-10-24T11:02:00Z"));
   }
 
@@ -84,6 +93,8 @@ class AnswerCheckControllerTest {
         .andExpect(jsonPath("$.counts.wrong").value(0))
         .andExpect(jsonPath("$.counts.unsure").value(0))
         .andExpect(jsonPath("$.items[0].id").value("31"))
+        .andExpect(jsonPath("$.items[0].questionText").value("x + 3 = 8 일 때 x 의 값은?"))
+        .andExpect(jsonPath("$.items[0].unit").value("문자와 식"))
         .andExpect(jsonPath("$.items[0].number").value("1"))
         .andExpect(jsonPath("$.items[0].myAnswer").value("x = 5"))
         .andExpect(jsonPath("$.items[0].aiAnswer").value("x = 5"))

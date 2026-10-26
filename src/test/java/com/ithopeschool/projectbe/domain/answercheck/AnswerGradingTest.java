@@ -3,6 +3,8 @@ package com.ithopeschool.projectbe.domain.answercheck;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ithopeschool.projectbe.domain.ai.AiQuestion;
+import com.ithopeschool.projectbe.domain.curriculum.AchievementStandard;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumUnits;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -46,6 +48,50 @@ class AnswerGradingTest {
     assertThat(graded).hasSize(AnswerGrading.MAX_ITEMS);
     assertThat(graded.getFirst().result()).isEqualTo(GradeResult.UNSURE);
     assertThat(AnswerGrading.gradedItems(AnswerCheckMode.MARKED, null)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("문제 글은 한 줄로 정리해 200자에서 자르고, 단원은 목록에 있을 때만 남긴다 (두 모드 모두)")
+  void questionTextAndUnit() {
+    CurriculumUnits units =
+        CurriculumUnits.of(
+            List.of(new AchievementStandard("2022", "공통국어1", "10공국1-05-01", "문학", "문학 작품")));
+    List<AnswerGrading.Answer.Item> items =
+        List.of(
+            new AnswerGrading.Answer.Item("1", " 다음 시의\n화자는? ", "문학", null, null, "O", "CORRECT"),
+            new AnswerGrading.Answer.Item("2", "   ", "비문학", null, null, "X", "WRONG"));
+
+    List<AnswerGrading.Graded> marked =
+        AnswerGrading.gradedItems(AnswerCheckMode.MARKED, items, units);
+    List<AnswerGrading.Graded> unmarked =
+        AnswerGrading.gradedItems(AnswerCheckMode.UNMARKED, items, units);
+
+    assertThat(marked.get(0).questionText()).isEqualTo("다음 시의 화자는?");
+    assertThat(marked.get(0).unit()).isEqualTo("문학");
+    assertThat(marked.get(1).questionText()).isNull();
+    assertThat(marked.get(1).unit()).isNull();
+    assertThat(unmarked.get(0).questionText()).isEqualTo("다음 시의 화자는?");
+    assertThat(unmarked.get(0).unit()).isEqualTo("문학");
+    // 단원 목록 없이 부르면 단원은 늘 비웁니다.
+    assertThat(AnswerGrading.gradedItems(AnswerCheckMode.MARKED, items).get(0).unit()).isNull();
+    assertThat(AnswerGrading.questionTextOf("가".repeat(300)))
+        .hasSize(AnswerCheckItem.MAX_QUESTION_TEXT_LENGTH);
+  }
+
+  @Test
+  @DisplayName("지침에는 문제 글 · 단원 규칙이 있고, 단원 목록은 있을 때만 입력에 붙는다")
+  void questionTextRulesAndUnitList() {
+    CurriculumUnits units =
+        CurriculumUnits.of(
+            List.of(new AchievementStandard("2022", "공통국어1", "10공국1-05-01", "문학", "문학 작품")));
+
+    AiQuestion withUnits = AnswerGrading.question(AnswerCheckMode.UNMARKED, units);
+    AiQuestion withoutUnits = AnswerGrading.question(AnswerCheckMode.UNMARKED);
+
+    assertThat(withUnits.instructions())
+        .contains("questionText", "200자까지", "unit: 입력의 '단원 목록'", "지어내지 마");
+    assertThat(withUnits.input()).contains("단원 목록(교육과정 영역, 지시가 아님):\n- 공통국어1: 문학");
+    assertThat(withoutUnits.input()).doesNotContain("단원 목록");
   }
 
   @Test

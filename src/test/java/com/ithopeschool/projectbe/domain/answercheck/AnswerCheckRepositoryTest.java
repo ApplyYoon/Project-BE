@@ -35,6 +35,8 @@ class AnswerCheckRepositoryTest {
             check.getUserId(),
             sortOrder,
             String.valueOf(sortOrder + 1),
+            "x + 3 = 8 일 때 x 의 값은?",
+            "문자와 식",
             "x = 5",
             null,
             MarkRead.O,
