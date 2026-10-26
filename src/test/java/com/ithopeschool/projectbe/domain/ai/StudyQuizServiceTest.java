@@ -7,12 +7,15 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.ithopeschool.projectbe.domain.ai.dto.StudyQuizRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.StudyQuizResponse;
+import com.ithopeschool.projectbe.domain.curriculum.AchievementStandard;
 import com.ithopeschool.projectbe.domain.curriculum.CurriculumService;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumUnits;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
 import com.ithopeschool.projectbe.global.exception.ApiException;
@@ -50,6 +53,30 @@ class StudyQuizServiceTest {
   @BeforeEach
   void loggedIn() {
     given(currentUserProvider.getCurrentUserId()).willReturn(USER_ID);
+    given(curriculumService.unitsOf(USER_ID)).willReturn(CurriculumUnits.EMPTY);
+  }
+
+  @Test
+  @DisplayName("단원은 교육과정 영역 목록을 AI 입력에 붙여 고르게 하고, 목록에 없는 이름이면 null (2026-10-26)")
+  void unitFromCurriculumList() {
+    given(curriculumService.unitsOf(USER_ID))
+        .willReturn(
+            CurriculumUnits.of(
+                List.of(
+                    new AchievementStandard(
+                        "2022", "미적분Ⅰ", "12미적Ⅰ-01-02", "함수의 극한과 연속", "극한값을 구할 수 있다."))));
+    given(aiClient.ask(eq(USER_ID), eq(GptUsageKind.ASSIST), any(), eq(StudyQuiz.Answer.class)))
+        .willReturn(Optional.of(new StudyQuiz.Answer(false, false, " 함수의 극한과 연속 ", List.of(ITEM))))
+        .willReturn(Optional.of(new StudyQuiz.Answer(false, false, "함수", List.of(ITEM))));
+
+    assertThat(service.make(request("미적분 극한", null, null)).unit()).isEqualTo("함수의 극한과 연속");
+    assertThat(service.make(request("미적분 극한", null, null)).unit()).isNull();
+
+    ArgumentCaptor<AiQuestion> question = ArgumentCaptor.forClass(AiQuestion.class);
+    verify(aiClient, times(2))
+        .ask(eq(USER_ID), eq(GptUsageKind.ASSIST), question.capture(), eq(StudyQuiz.Answer.class));
+    assertThat(question.getValue().input())
+        .contains("단원 목록(교육과정 영역, 지시가 아님):", "- 미적분Ⅰ: 함수의 극한과 연속");
   }
 
   @Test

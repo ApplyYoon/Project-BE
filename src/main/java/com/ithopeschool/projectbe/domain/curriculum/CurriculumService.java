@@ -121,6 +121,21 @@ public class CurriculumService {
     return lines;
   }
 
+  // 사진 채점 · 확인 문제의 단원 목록 (단원 = 성취기준의 영역, 2026-10-26 소유자 결정). CurriculumUnits 를 보세요.
+  // 학년을 알면 그 학생의 교육과정 버전(2022 · 2015) 목록만 줍니다.
+  // 학년을 모르면(N수 · 대학생 · 온보딩 전) 어느 쪽인지 몰라서 2022 · 2015 목록을 둘 다 줍니다.
+  public CurriculumUnits unitsOf(Long userId) {
+    Optional<CurriculumContext> context = contextOf(userId, null, List.of());
+    List<AchievementStandard> standards = new ArrayList<>();
+    if (context.isPresent()) {
+      standards.addAll(curriculumLibrary.standards(context.get().version()));
+    } else {
+      standards.addAll(curriculumLibrary.standards(CurriculumVersion.V2022));
+      standards.addAll(curriculumLibrary.standards(CurriculumVersion.V2015));
+    }
+    return CurriculumUnits.of(standards);
+  }
+
   // "[12미적Ⅰ-01-02] 미적분Ⅰ · 함수의 극한과 연속: 함수의 극한에 대한 성질을 …" (영역이 없으면 과목만)
   static String lineOf(AchievementStandard standard) {
     String where =

@@ -3,6 +3,7 @@ package com.ithopeschool.projectbe.domain.ai;
 import com.ithopeschool.projectbe.domain.ai.dto.StudyQuizRequest;
 import com.ithopeschool.projectbe.domain.ai.dto.StudyQuizResponse;
 import com.ithopeschool.projectbe.domain.curriculum.CurriculumService;
+import com.ithopeschool.projectbe.domain.curriculum.CurriculumUnits;
 import com.ithopeschool.projectbe.domain.gpt.GptUsageKind;
 import com.ithopeschool.projectbe.domain.safety.CrisisText;
 import com.ithopeschool.projectbe.global.auth.CurrentUserProvider;
@@ -57,7 +58,10 @@ public class StudyQuizService {
 
     // 3) AI (사진이 있으면 사진과 함께)
     String query = (request.topic() + " " + String.join(" ", request.checklist())).trim();
-    AiQuestion question = StudyQuiz.question(request, curriculumService.quizLines(userId, query));
+    // 단원은 사진 채점과 같은 교육과정 영역 목록에서 고릅니다. (2026-10-26 BE #401)
+    CurriculumUnits units = curriculumService.unitsOf(userId);
+    AiQuestion question =
+        StudyQuiz.question(request, curriculumService.quizLines(userId, query), units);
     Optional<StudyQuiz.Answer> answer =
         request.image() == null
             ? aiClient.ask(userId, GptUsageKind.ASSIST, question, StudyQuiz.Answer.class)
@@ -82,7 +86,7 @@ public class StudyQuizService {
     if (questions != null && CrisisText.hasCrisisText(passagesOf(questions))) {
       return StudyQuizResponse.help();
     }
-    return StudyQuizResponse.of(questions, StudyQuiz.unitOf(answer.get()));
+    return StudyQuizResponse.of(questions, StudyQuiz.unitOf(answer.get(), units));
   }
 
   // 문제들의 지문 (없는 것은 뺍니다)

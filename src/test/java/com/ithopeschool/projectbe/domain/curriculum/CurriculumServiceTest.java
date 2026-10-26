@@ -115,6 +115,22 @@ class CurriculumServiceTest {
   }
 
   @Test
+  @DisplayName("단원 목록: 학년을 알면 그 교육과정 버전만, 모르면 2022 · 2015 둘 다 (2026-10-26)")
+  void unitsOf() {
+    onboardingGrade(Grade.HIGH_2);
+    CurriculumUnits v2022 = service.unitsOf(USER_ID);
+    assertThat(v2022.lines()).containsExactly("- 미적분Ⅰ: 함수의 극한과 연속", "- 화법과 언어: 화법과 언어");
+    assertThat(v2022.pick("화법과 언어")).isEqualTo("화법과 언어");
+
+    onboardingGrade(Grade.HIGH_3);
+    assertThat(service.unitsOf(USER_ID).lines()).containsExactly("- 수학Ⅱ: 함수의 극한과 연속");
+
+    onboardingGrade(Grade.REPEATER);
+    assertThat(service.unitsOf(USER_ID).lines())
+        .containsExactly("- 미적분Ⅰ: 함수의 극한과 연속", "- 화법과 언어: 화법과 언어", "- 수학Ⅱ: 함수의 극한과 연속");
+  }
+
+  @Test
   @DisplayName("영역이 없는 과목은 과목 이름만 쓴다")
   void lineWithoutArea() {
     assertThat(
